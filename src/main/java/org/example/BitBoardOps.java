@@ -15,6 +15,17 @@ public class BitBoardOps {
         return bits | left | right | up | down;
     }
 
+    public static long dilateTwoStep(long bits){
+        long result= bits;
+        for (int i=1; i<3; i++){
+            result |= (bits >>> i) & ~FILE_H; // shift right, block H->G wrap
+            result |= (bits << i) & ~FILE_A  ; // shift left, block A->B wrap
+            result |= (bits << 8*i);
+            result |= (bits >>> 8*i);
+        }
+        return result;
+    }
+
     public static long erodeOrthogonal(long bits){
         long left= (bits << 1) & ~FILE_H;
         long right = (bits >>> 1) & ~FILE_A;
@@ -52,6 +63,12 @@ public class BitBoardOps {
         Up, Down, Left, Right;
     }
 
+    /**
+     * @param player1 the player (you)
+     * @param player2 the enemy
+     * @param dir Direction to look for neighbours
+     * @return the enemy neighbours in the given direction
+     */
     public static long enemyNeighboursInDirection(long player1, long player2, Direction dir){
         switch (dir){
             case Left -> {return (player1 >>> 1) & ~FILE_H & player2;}
@@ -99,13 +116,17 @@ public class BitBoardOps {
 //
 //        printBitboard(neighbourInDirection(input, Direction.Up));
 
-        long player1= 1L << 4 | 1L << 5 | 1L << 6;
-        long player2= 1L << 20 | 1L << 13 | 1L << 14 | 1L << 3;
-        System.out.println("Board with both Players:");
-        printBitboard(player1 | player2);
+//        long player1= 1L << 4 | 1L << 5 | 1L << 6;
+//        long player2= 1L << 20 | 1L << 13 | 1L << 14 | 1L << 3;
+//        System.out.println("Board with both Players:");
+//        printBitboard(player1 | player2);
+//
+//        System.out.println("Enemy neighbours:");
+//        printBitboard(enemyNeighboursInDirection(player1, player2, Direction.Left));
 
-        System.out.println("Enemy neighbours:");
-        printBitboard(enemyNeighboursInDirection(player1, player2, Direction.Left));
+        long board= 1L << 28;
+        printBitboard(board);
+        printBitboard(dilateTwoStep(board));
     }
 }
 
