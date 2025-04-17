@@ -52,6 +52,16 @@ public class BitBoardOps {
         Up, Down, Left, Right;
     }
 
+    public static long enemyNeighboursInDirection(long player1, long player2, Direction dir){
+        switch (dir){
+            case Left -> {return (player1 >>> 1) & ~FILE_H & player2;}
+            case Right -> {return (player1 << 1) & ~FILE_A & player2;}
+            case Down -> {return player1 >>> 8 & player2;}
+            case Up -> {return player1 << 8 & player2;}
+            default -> {return 0x0;}
+        }
+    }
+
     public static void printBitboard(long bits) {
         System.out.println("  +------------------------+");
         for (int rank = 7; rank >= 0; rank--) {
@@ -71,8 +81,9 @@ public class BitBoardOps {
     public static void main(String[] args) {
         // Example: vertical line in the center (file D)
         long input = 1L << 28 | 1L << 20 | 1L << 36 | 1L << 27 | 1L << 29; // Cross pattern
-        System.out.println("Original:");
-        printBitboard(input);
+
+//        System.out.println("Original:");
+//        printBitboard(input);
 
 //        long dilated = dilateOrthogonal(input);
 //        System.out.println("Dilated:");
@@ -85,8 +96,16 @@ public class BitBoardOps {
 //
 //        System.out.println("Neighbours:");
 //        printBitboard(neighbourFilter(input));
+//
+//        printBitboard(neighbourInDirection(input, Direction.Up));
 
-        printBitboard(neighbourInDirection(input, Direction.Up));
+        long player1= 1L << 4 | 1L << 5 | 1L << 6;
+        long player2= 1L << 20 | 1L << 13 | 1L << 14 | 1L << 3;
+        System.out.println("Board with both Players:");
+        printBitboard(player1 | player2);
+
+        System.out.println("Enemy neighbours:");
+        printBitboard(enemyNeighboursInDirection(player1, player2, Direction.Left));
     }
 }
 
