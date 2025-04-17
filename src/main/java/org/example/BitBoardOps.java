@@ -36,7 +36,7 @@ public class BitBoardOps {
     /**
      * @param bits the board
      * @param dir the direction
-     * @return the empty neighbours in the given direction
+     * @return the empty neighbours in a given direction
      */
     public static long neighbourInDirection(long bits, Direction dir){
         switch (dir){
