@@ -15,13 +15,13 @@ public class BitBoardOps {
         return bits | left | right | up | down;
     }
 
-    public static long dilateTwoStep(long bits){
+    public static long dilateSteps(long bits, int steps){
         long result= bits;
-        for (int i=1; i<3; i++){
+        for (int i=1; i<=steps; i++){
             result |= (bits >>> i) & ~FILE_H; // shift right, block H->G wrap
-            result |= (bits << i) & ~FILE_A  ; // shift left, block A->B wrap
-            result |= (bits << 8*i);
-            result |= (bits >>> 8*i);
+//            result |= (bits << i) & ~FILE_A  ; // shift left, block A->B wrap
+//            result |= (bits << 8*i);
+//            result |= (bits >>> 8*i);
         }
         return result;
     }
@@ -124,9 +124,9 @@ public class BitBoardOps {
 //        System.out.println("Enemy neighbours:");
 //        printBitboard(enemyNeighboursInDirection(player1, player2, Direction.Left));
 
-        long board= 1L << 28;
+        long board= 0L;
         printBitboard(board);
-        printBitboard(dilateTwoStep(board));
+        printBitboard(dilateSteps(board,4));
     }
 }
 
