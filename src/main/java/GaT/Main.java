@@ -9,15 +9,15 @@ public class Main implements BitBoardUtil {
     public static void main(String[] args) {
 //        long board =133739L;
         GameState board = new GameState();
-        long piece =1 | 1<<6 | 1L<<42 | 1L<< 48 ;
-        int[] arr = new int[49];
-        arr[24]= 2;
-        int[] height= new int[7];
-        height[0] = 2;
-        height[6] = 2;
-        GameState custom = new GameState(0L, piece, height, 0L, 0L, new int[0], true);
-        custom.printBoard();
-        List<Move> moves = MoveGenerator.generateAllMoves(custom);
+        long towers= 1 | 2 | 1<<14;
+        int[] weight = new int[49];
+        weight[0] = 2;
+        weight[1] = 1;
+        weight[14]= 1;
+
+        GameState state = new GameState(0, towers,weight,0L, 0L,new int[0], true);
+        state.printBoard();
+        List<Move> moves = MoveGenerator.generateAllMoves(state);
         System.out.println(moves);
 
     }
