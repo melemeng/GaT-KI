@@ -39,6 +39,92 @@ public class GameState {
         return index % BOARD_SIZE;
     }
 
+    /**
+     * @param move Move to execute
+     * @apiNote This function implies that the given move is legal
+     */
+    public void applyMove(Move move) {
+
+
+        boolean isRed = redToMove;
+
+        // Get source & target info
+        int from = move.from;
+        int to = move.to;
+        int amount = move.amountMoved;
+
+        long fromBit = bit(from);
+        long toBit = bit(to);
+
+        //Optional but may help at one point
+        assert (redGuard & redTowers & toBit) == 0 : "Red guard and tower overlap!";
+        assert (blueGuard & blueTowers & toBit) == 0 : "Blue guard and tower overlap!";
+
+        if (amount == 1 && ((isRed ? redGuard : blueGuard) & fromBit) != 0) {
+            // Moving the guard
+            if (isRed) {
+                redGuard &= ~fromBit;       //Remove old position
+                redGuard |= toBit;          //Add new position
+            } else {
+                blueGuard &= ~fromBit;
+                blueGuard |= toBit;
+            }
+
+            // Remove captured enemy piece (checking if it is free before would take the same time so we just clear it)
+            clearEnemyPieceAt(to, !isRed);
+
+        } else {
+            // Moving a tower stack (possibly partial)
+
+            // Remove amount from source stack
+            int[] stackHeights = isRed ? redStackHeights : blueStackHeights;
+            long towers = isRed ? redTowers : blueTowers;
+
+            stackHeights[from] -= amount;
+            if (stackHeights[from] <= 0) {
+                // Remove tower from source
+                towers &= ~fromBit;
+            }
+
+            // Handle destination
+            if (((redGuard | blueGuard) & toBit) != 0 || ((redTowers | blueTowers) & toBit) != 0) {
+                clearEnemyPieceAt(to, !isRed); // capture if needed
+            }
+
+            // Stack on destination
+            int[] targetStacks = isRed ? redStackHeights : blueStackHeights;
+            targetStacks[to] += amount;
+
+            // Store back updated bitboards
+            if (isRed) {
+                redTowers = towers | toBit;     //Adding the piece back to its new index
+                redStackHeights = stackHeights;
+            } else {
+                blueTowers = towers | toBit;
+                blueStackHeights = stackHeights;
+            }
+        }
+
+        // Switch turn
+        redToMove = !redToMove;
+    }
+
+    private void clearEnemyPieceAt(int index, boolean isRed) {
+        long mask = ~bit(index);        //Only the target index is off
+
+        if (isRed) {
+            redTowers &= mask;      //remove piece from index
+            redGuard &= mask;
+            redStackHeights[index] = 0;
+        } else {
+            blueTowers &= mask;
+            blueGuard &= mask;
+            blueStackHeights[index] = 0;
+        }
+    }
+
+
+
     public GameState() {
         // White guard on D1
         int blueGuardIndex = getIndex(0, 3);

@@ -44,6 +44,14 @@ public class MoveGeneratorUnitTests {
     }
 
     @Test
+    public void testGuardCantStack(){
+        String board = "7/7/7/7/7/r16/RGr15 r";
+        GameState state = GameState.fromFen(board);
+        List<Move> moves = MoveGenerator.generateAllMoves(state);
+        assertFalse("Guard should not be able to move from this position", moves.stream().anyMatch(x-> x.from == 0 && x.to !=0));
+    }
+
+    @Test
     public void testTowerMoves() {
         long tower= GameState.bit(GameState.getIndex(3,3)); //tower on D4
         int [] height= new int[49];

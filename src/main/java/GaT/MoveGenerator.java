@@ -17,7 +17,7 @@ public class MoveGenerator {
         return moves;
     }
 
-    private static void generateGuardMoves(long guardBit, GameState state, boolean isWhite, List<Move> moves) {
+    private static void generateGuardMoves(long guardBit, GameState state, boolean isRed, List<Move> moves) {
         int from = Long.numberOfTrailingZeros(guardBit);
         int[] directions = { -1, 1, -GameState.BOARD_SIZE, GameState.BOARD_SIZE }; // ← → ↑ ↓
 
@@ -29,13 +29,13 @@ public class MoveGenerator {
 
             if (!isOccupied(to, state)) {
                 moves.add(new Move(from, to, 1));
-            } else if (canCaptureGuard(from, to, isWhite, state)) {
+            } else if (canCaptureGuard(from, to, isRed, state)) {
                 moves.add(new Move(from, to, 1));
             }
         }
     }
 
-    private static void generateTowerMoves(long towers, int[] heights, GameState state, boolean isWhite, List<Move> moves) {
+    private static void generateTowerMoves(long towers, int[] heights, GameState state, boolean isRed, List<Move> moves) {
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
             //Checks if there is tower on square i
             if (((towers >>> i) & 1) == 0) continue;
@@ -56,9 +56,9 @@ public class MoveGenerator {
                     if (isPathClear(i, dir, amount, state)) {
                         if (!isOccupied(to, state)) {
                             moves.add(new Move(i, to, amount));
-                        } else if (canCaptureTower(i, to, amount, isWhite, state)) {
+                        } else if (canCaptureTower(i, to, amount, isRed, state)) {
                             moves.add(new Move(i, to, amount));
-                        } else if (isOwnTower(to, isWhite, state)) {
+                        } else if (isOwnTower(to, isRed, state)) {
                             moves.add(new Move(i, to, amount)); // stacking
                         }
                     }
@@ -75,25 +75,25 @@ public class MoveGenerator {
         return ((state.redTowers | state.blueTowers | state.redGuard | state.blueGuard) & GameState.bit(index)) != 0;
     }
 
-    private static boolean isOwnTower(int index, boolean isWhite, GameState state) {
-        return ((isWhite ? state.redTowers : state.blueTowers) & GameState.bit(index)) != 0;
+    private static boolean isOwnTower(int index, boolean isRed, GameState state) {
+        return ((isRed ? state.redTowers : state.blueTowers) & GameState.bit(index)) != 0;
     }
 
-    private static boolean canCaptureGuard(int from, int to, boolean isWhite, GameState state) {
-        long targetGuard = isWhite ? state.blueGuard : state.redGuard;
+    private static boolean canCaptureGuard(int from, int to, boolean isRed, GameState state) {
+        long targetGuard = isRed ? state.blueGuard : state.redGuard;
         return (targetGuard & GameState.bit(to)) != 0;
     }
 
-    private static boolean canCaptureTower(int from, int to, int amount, boolean isWhite, GameState state) {
-        long enemyTowers = isWhite ? state.blueTowers : state.redTowers;
-        int[] enemyHeights = isWhite ? state.blueStackHeights : state.redStackHeights;
+    private static boolean canCaptureTower(int from, int to, int amount, boolean isRed, GameState state) {
+        long enemyTowers = isRed ? state.blueTowers : state.redTowers;
+        int[] enemyHeights = isRed ? state.blueStackHeights : state.redStackHeights;
 
         //If there is a tower on target
         if ((enemyTowers & GameState.bit(to)) != 0) {
             return amount >= enemyHeights[to]; // tower height must be >= to capture
         }
 
-        long enemyGuard = isWhite ? state.blueGuard : state.redGuard;
+        long enemyGuard = isRed ? state.blueGuard : state.redGuard;
         return (enemyGuard & GameState.bit(to)) != 0; // any tower can capture guard
     }
 
