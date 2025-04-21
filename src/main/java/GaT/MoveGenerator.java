@@ -6,12 +6,12 @@ public class MoveGenerator {
     public static List<Move> generateAllMoves(GameState state) {
         List<Move> moves = new ArrayList<>();
 
-        if (state.whiteToMove) {
-            generateGuardMoves(state.whiteGuard, state, true, moves);
-            generateTowerMoves(state.whiteTowers, state.whiteStackHeights, state, true, moves);
+        if (state.redToMove) {
+            generateGuardMoves(state.redGuard, state, true, moves);
+            generateTowerMoves(state.redTowers, state.redStackHeights, state, true, moves);
         } else {
-            generateGuardMoves(state.blackGuard, state, false, moves);
-            generateTowerMoves(state.blackTowers, state.blackStackHeights, state, false, moves);
+            generateGuardMoves(state.blueGuard, state, false, moves);
+            generateTowerMoves(state.blueTowers, state.blueStackHeights, state, false, moves);
         }
 
         return moves;
@@ -72,28 +72,28 @@ public class MoveGenerator {
     }
 
     private static boolean isOccupied(int index, GameState state) {
-        return ((state.whiteTowers | state.blackTowers | state.whiteGuard | state.blackGuard) & GameState.bit(index)) != 0;
+        return ((state.redTowers | state.blueTowers | state.redGuard | state.blueGuard) & GameState.bit(index)) != 0;
     }
 
     private static boolean isOwnTower(int index, boolean isWhite, GameState state) {
-        return ((isWhite ? state.whiteTowers : state.blackTowers) & GameState.bit(index)) != 0;
+        return ((isWhite ? state.redTowers : state.blueTowers) & GameState.bit(index)) != 0;
     }
 
     private static boolean canCaptureGuard(int from, int to, boolean isWhite, GameState state) {
-        long targetGuard = isWhite ? state.blackGuard : state.whiteGuard;
+        long targetGuard = isWhite ? state.blueGuard : state.redGuard;
         return (targetGuard & GameState.bit(to)) != 0;
     }
 
     private static boolean canCaptureTower(int from, int to, int amount, boolean isWhite, GameState state) {
-        long enemyTowers = isWhite ? state.blackTowers : state.whiteTowers;
-        int[] enemyHeights = isWhite ? state.blackStackHeights : state.whiteStackHeights;
+        long enemyTowers = isWhite ? state.blueTowers : state.redTowers;
+        int[] enemyHeights = isWhite ? state.blueStackHeights : state.redStackHeights;
 
         //If there is a tower on target
         if ((enemyTowers & GameState.bit(to)) != 0) {
             return amount >= enemyHeights[to]; // tower height must be >= to capture
         }
 
-        long enemyGuard = isWhite ? state.blackGuard : state.whiteGuard;
+        long enemyGuard = isWhite ? state.blueGuard : state.redGuard;
         return (enemyGuard & GameState.bit(to)) != 0; // any tower can capture guard
     }
 

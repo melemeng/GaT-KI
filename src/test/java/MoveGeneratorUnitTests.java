@@ -23,6 +23,7 @@ public class MoveGeneratorUnitTests {
     @Test
     public void testWhiteGuardMoves() {
         GameState state = new GameState();
+        state.redToMove = false;
         List<Move> moves = MoveGenerator.generateAllMoves(state);
 
         Move D1toD2 = new Move(GameState.getIndex(0, 3), GameState.getIndex(1, 3),1);
@@ -61,7 +62,7 @@ public class MoveGeneratorUnitTests {
         assertTrue("With height of 1 tower should move in all four directions", movesH1.containsAll(expectedMoves));
 
         //Change tower height to 2
-        state.whiteStackHeights[24]= 2;
+        state.redStackHeights[24]= 2;
         List<Move> movesH2 = MoveGenerator.generateAllMoves(state);
         Move D4toD6 = new Move(GameState.getIndex(3, 3), GameState.getIndex(5,3),2);
         Move D4toD1 = new Move(GameState.getIndex(3, 3), GameState.getIndex(1,3),2);

@@ -20,6 +20,9 @@ public class Main implements BitBoardUtil {
         List<Move> moves = MoveGenerator.generateAllMoves(state);
         System.out.println(moves);
 
+//        GameState state = GameState.fromFen("r1r11RG1r1r1/2r11r12/3r13/7/3b13/2b11b12/b1b11BG1b1b1 r");
+//        state.printBoard();
+
     }
 
 
