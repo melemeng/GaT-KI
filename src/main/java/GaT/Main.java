@@ -23,6 +23,7 @@ public class Main implements BitBoardUtil {
         state.applyMove(toExecute);
         state.printBoard();
         System.out.println("Executed: " + toExecute);
+        //test
 
 
 
