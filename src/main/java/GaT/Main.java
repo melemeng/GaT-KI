@@ -3,6 +3,8 @@ package GaT;
 import java.util.ArrayList;
 import java.util.List;
 
+import static GaT.GameState.getIndex;
+import static GaT.Minimax.evaluate;
 import static GaT.Minimax.scoreMove;
 
 public class Main implements BitBoardUtil {
@@ -26,19 +28,13 @@ public class Main implements BitBoardUtil {
 //        state.printBoard();
 //        System.out.println("Executed: " + toExecute);
 
-        GameState state = GameState.fromFen("r1r11RG1r1r1/2r11r12/3r13/7/3b13/2b11b12/b1b11BG1b1b1 b");
+        GameState state = GameState.fromFen("7/7/BG6/RG6/6r1/7/7 b");
+        state.printBoard();
         List<Move> moves = MoveGenerator.generateAllMoves(state);
-//        Move best = Minimax.findBestMove(state, 10); // try depth 3
-//        System.out.println("Best move: " + best);
-
-        moves.sort((a, b) -> Integer.compare(
-                scoreMove(state, b),
-                scoreMove(state, a)
-        ));
-        System.out.println("Ordered moves:");
-        for (Move m : moves) {
-            System.out.println("  " + m + " [score=" + scoreMove(state, m) + "]");
-        }
+        System.out.println(moves);
+        Move best = Minimax.findBestMove(state, 2); // try depth 3
+        System.out.println("Best move: " + best);
+        System.out.println("Evalutation: "+ evaluate(state));
 
 
 

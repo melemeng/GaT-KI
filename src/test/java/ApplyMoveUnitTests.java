@@ -15,7 +15,6 @@ public class ApplyMoveUnitTests {
         assertTrue("Piece should be at the updated position", hasMovedCorrect);
 
         boolean oldSpotCleared = (state.redTowers & GameState.bit(toExecute.from)) == 0;
-        System.out.println(state.redTowers >>> toExecute.from);
         assertTrue("Tower should give up his spot", oldSpotCleared);
     }
 
@@ -29,7 +28,6 @@ public class ApplyMoveUnitTests {
         assertTrue("Piece should be at the updated position", hasMovedCorrect);
 
         boolean oldSpotCleared = (state.redTowers & GameState.bit(toExecute.from)) != 0;
-        System.out.println(state.redTowers >>> toExecute.from);
         assertTrue("Tower should not give up his spot", oldSpotCleared);
 
         assertEquals("Tower height should be split at destination",2, state.redStackHeights[toExecute.from]);
@@ -52,4 +50,5 @@ public class ApplyMoveUnitTests {
         state.applyMove(toExecute);
         assertEquals("Tower should only move the correct amount", 2, state.redStackHeights[toExecute.to]);
     }
+
 }

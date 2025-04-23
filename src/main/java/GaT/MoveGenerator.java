@@ -13,7 +13,6 @@ public class MoveGenerator {
             generateGuardMoves(state.blueGuard, state, false, moves);
             generateTowerMoves(state.blueTowers, state.blueStackHeights, state, false, moves);
         }
-
         return moves;
     }
 
@@ -29,7 +28,7 @@ public class MoveGenerator {
 
             if (!isOccupied(to, state)) {
                 moves.add(new Move(from, to, 1));
-            } else if (canCaptureGuard(from, to, isRed, state)) {
+            } else if (!isOwnPieceAtIndex(to, isRed, state)) {
                 moves.add(new Move(from, to, 1));
             }
         }
@@ -95,6 +94,11 @@ public class MoveGenerator {
 
         long enemyGuard = isRed ? state.blueGuard : state.redGuard;
         return (enemyGuard & GameState.bit(to)) != 0; // any tower can capture guard
+    }
+
+    private static boolean isOwnPieceAtIndex(int index, boolean isRed, GameState state){
+        long towers= isRed ? state.redTowers : state.blueTowers;
+        return (towers & GameState.bit(index)) !=0;
     }
 
     private static boolean isPathClear(int from, int dir, int steps, GameState state) {

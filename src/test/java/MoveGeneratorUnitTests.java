@@ -135,4 +135,20 @@ public class MoveGeneratorUnitTests {
         assertTrue("Pieces should stack correctly according to the path length", moves.containsAll(expectedMoves));
     }
 
+    @Test
+    public void testGuardCanTakeAnyTower(){
+        String board = "RGb45/b16/7/7/7/7/7 r";
+        GameState state = GameState.fromFen(board);
+        List<Move> moves = MoveGenerator.generateAllMoves(state);
+        assertEquals("There should be exactly two moves from this position", 2, moves.size());
+    }
+
+    @Test
+    public void towersCanCapture(){
+        String board = "r4b15/7/7/7/b46/7/7 r";       //Also checks that pieces cant be jumped Over
+        GameState state = GameState.fromFen(board);
+        List<Move> moves = MoveGenerator.generateAllMoves(state);
+        assertEquals("There should be exactly three moves from this position", 5, moves.size());
+    }
+
 }
