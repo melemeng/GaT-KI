@@ -1,9 +1,6 @@
 package GUI;
 
-import GaT.GameState;
-import GaT.Minimax;
-import GaT.Move;
-import GaT.MoveGenerator;
+import GaT.*;
 
 import javax.swing.*;
 import java.awt.*;
@@ -13,7 +10,7 @@ import java.util.List;
 import static GaT.Minimax.scoreMove;
 
 public class GameFrame extends JFrame {
-    private GameState state = GameState.fromFen("BG6/7/7/RG6/6r1/7/7 r");
+    private GameState state = GameState.fromFen("7/7/7/1r21RG3/2r1r13/2BGb43/7 b");
     //"BG6/7/7/RG6/6r1/7/7 r"
     //"7/7/BG6/RG6/6r1/7/7 r"
 //    private GameState state = new GameState();
@@ -50,7 +47,7 @@ public class GameFrame extends JFrame {
         // Let AI respond
         if (!state.redToMove) {
             new Thread(() -> {
-                Move aiMove = Minimax.findBestMove(state, 7);
+                Move aiMove = Minimax.findBestMove(state, 8);
                 state.applyMove(aiMove);
                 System.out.println(aiMove);
 
@@ -68,7 +65,8 @@ public class GameFrame extends JFrame {
     private void runAiMatch() {
         new Thread(() -> {
             while (!Minimax.isGameOver(state)) {
-                Move move = Minimax.findBestMove(state, 6);
+                Move move = TimedMinimax.findBestMoveWithTime(state,99, 2000);
+//                Move move = Minimax.findBestMove(state, 8);
                 state.applyMove(move);
                 board.repaint();
                 try { Thread.sleep(300); } catch (InterruptedException ignored) {}

@@ -1,6 +1,8 @@
 package GaT;
 
 import java.util.List;
+import java.util.Set;
+
 import static GaT.GameState.getIndex;
 
 
@@ -27,7 +29,8 @@ public class Minimax {
             copy.applyMove(move);
 
             //Start algorithm with !isRed to simulate the next move from the enemy
-            int score = minimax(copy, depth - 1, Integer.MIN_VALUE, Integer.MAX_VALUE, !isRed);
+            int score = minimax(copy, depth - 1, Integer.MIN_VALUE, Integer.MAX_VALUE, copy.redToMove);
+            System.out.println(move + " -> Score: " + score);
 
             //Update the best move depending on if we are the max- or minimizer
             if ((isRed && score > bestScore) || (!isRed && score < bestScore) || bestMove == null) {
@@ -42,7 +45,7 @@ public class Minimax {
 
     private static int minimax(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer) {
         if (depth == 0 || isGameOver(state)) {
-            return  evaluate(state);
+            return evaluate(state);
         }
 
         List<Move> moves = MoveGenerator.generateAllMoves(state);
@@ -82,15 +85,15 @@ public class Minimax {
      * @apiNote this function is bases of reds POV --> positive values are good for red | negative values are good for blue
      */
     public static int evaluate(GameState state) {
-        boolean redWinsByCastle = state.blueGuard == GameState.bit(RED_CASTLE_INDEX);
-        boolean blueWinsByCastle = state.redGuard == GameState.bit(BLUE_CASTLE_INDEX);
-
-        //If the done move took the guard or "rushed the castle" give it a huge favor
-        if (state.redGuard == 0 || blueWinsByCastle) return -10000;
-        if (state.blueGuard == 0 || redWinsByCastle) return 10000;
+        boolean redWinsByCastle = state.redGuard == GameState.bit(BLUE_CASTLE_INDEX);
+        boolean blueWinsByCastle =state.blueGuard == GameState.bit(RED_CASTLE_INDEX);
 
         int redScore = 0;
         int blueScore = 0;
+
+        //If the done move took the guard or "rushed the castle" give it a huge favor
+        if (state.redGuard == 0 || blueWinsByCastle) blueScore+= 10000;
+        if (state.blueGuard == 0 || redWinsByCastle) redScore += 10000;
 
         boolean redGuardInDanger = isGuardInDanger(state, true);
         boolean blueGuardInDanger = isGuardInDanger(state, false);
@@ -103,6 +106,36 @@ public class Minimax {
         }else{
             if(blueGuardInDanger && redGuardInDanger) blueScore += 10000;
             if(blueGuardInDanger && !redGuardInDanger) blueScore -= 10000;
+        }
+
+//        Bonus for red guard being close to blue castle
+        if (state.redGuard != 0) {
+            int guardIndex = Long.numberOfTrailingZeros(state.redGuard);
+            int guardRank = GameState.rank(guardIndex);
+            int guardFile = GameState.file(guardIndex);
+
+            int distanceToBlueCastleRank = Math.abs(guardRank - 0);  // red wants to reach rank 0
+            int distanceToBlueCastleFile = Math.abs(guardFile - 3);  // D-file is column 3
+
+            int rankBonus = (6 - distanceToBlueCastleRank) * 2000;   // moving down = good
+            int fileBonus = (3 - distanceToBlueCastleFile) * 2000;    // closer to D-file = good
+
+            redScore += rankBonus + fileBonus;
+        }
+
+        // Bonus for blue guard being close to red castle
+        if (state.blueGuard != 0) {
+            int guardIndex = Long.numberOfTrailingZeros(state.blueGuard);
+            int guardRank = GameState.rank(guardIndex);
+            int guardFile = GameState.file(guardIndex);
+
+            int distanceToRedCastleRank = Math.abs(guardRank - 6);  // blue wants to reach rank 6 (row 7)
+            int distanceToRedCastleFile = Math.abs(guardFile - 3);
+
+            int rankBonus = (6 - distanceToRedCastleRank) * 2000;   // moving up = good
+            int fileBonus = (3 - distanceToRedCastleFile) * 2000;
+
+            blueScore += rankBonus + fileBonus;
         }
 
         //Count Material Diff (might want to remove that)
@@ -159,12 +192,12 @@ public class Minimax {
         int score = 0;
         if (entersCastle && isGuardMove) score += 10000;
         if (capturesGuard) score += 10000;
-        if (capturesTower) score += 5000;
+        if (capturesTower) score += 500 * (isRed ? state.redStackHeights[move.to] : state.blueStackHeights[move.to]);
         if (stacksOnOwn) score += 10;
         score += move.amountMoved;
 
         if (isGuardMove && isExposed(move, state)) {
-            score -= 8000;
+            score -= 10000;
         }
 
         return score;
