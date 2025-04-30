@@ -177,6 +177,19 @@ public class GameState {
         this.redToMove = redToMove;
     }
 
+    public GameState copy() {
+        GameState copy = new GameState();
+        copy.redGuard = this.redGuard;
+        copy.blueGuard = this.blueGuard;
+        copy.redTowers = this.redTowers;
+        copy.blueTowers = this.blueTowers;
+        copy.redToMove = this.redToMove;
+        copy.redStackHeights = Arrays.copyOf(this.redStackHeights, NUM_SQUARES);
+        copy.blueStackHeights = Arrays.copyOf(this.blueStackHeights, NUM_SQUARES);
+        return copy;
+    }
+
+
     public void printBoard() {
         System.out.println("  +---------------------------+");
 
