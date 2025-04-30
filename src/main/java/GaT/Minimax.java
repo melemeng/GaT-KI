@@ -156,7 +156,6 @@ public class Minimax {
         copy.redToMove = !checkRed;     //Invert to make the enemy move next
         long targetGuard = checkRed ? state.redGuard : state.blueGuard;
 
-        List<Move> moves = MoveGenerator.generateAllMoves(copy);
         for (Move m : MoveGenerator.generateAllMoves(copy)) {
             if (GameState.bit(m.to) == targetGuard) return true;
         }

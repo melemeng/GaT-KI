@@ -10,7 +10,7 @@ import java.util.List;
 import static GaT.Minimax.scoreMove;
 
 public class GameFrame extends JFrame {
-    private GameState state = GameState.fromFen("7/7/7/1r21RG3/2r1r13/2BGb43/7 b");
+    private GameState state = GameState.fromFen("r1r11RG1r1r1/2r11r12/3r13/7/3b13/2b11b12/b1b11BG1b1b1 r");
     //"BG6/7/7/RG6/6r1/7/7 r"
     //"7/7/BG6/RG6/6r1/7/7 r"
 //    private GameState state = new GameState();

@@ -69,20 +69,28 @@ public class BoardPanel extends JPanel {
     private void drawPiece(Graphics g, int index, int x, int y) {
         long bit = GameState.bit(index);
 
+        // Set a bold, larger font
+        Font originalFont = g.getFont();
+        g.setFont(new Font("SansSerif", Font.BOLD, 21)); // You can tweak the size as needed
+
         if ((state.redGuard & bit) != 0) {
             g.setColor(Color.RED);
-            g.drawString("R", x + 35, y + 45);
+            g.drawString("R", x + 30, y + 50);
         } else if ((state.blueGuard & bit) != 0) {
             g.setColor(Color.BLUE);
-            g.drawString("B", x + 35, y + 45);
+            g.drawString("B", x + 30, y + 50);
         } else if ((state.redTowers & bit) != 0) {
             g.setColor(Color.RED);
-            g.drawString("" + state.redStackHeights[index], x + 35, y + 45);
+            g.drawString("" + state.redStackHeights[index], x + 30, y + 50);
         } else if ((state.blueTowers & bit) != 0) {
             g.setColor(Color.BLUE);
-            g.drawString("" + state.blueStackHeights[index], x + 35, y + 45);
+            g.drawString("" + state.blueStackHeights[index], x + 30, y + 50);
         }
+
+        // Reset to original font if needed
+        g.setFont(originalFont);
     }
+
 
     public Dimension getPreferredSize() {
         return new Dimension(7 * squareSize, 7 * squareSize);

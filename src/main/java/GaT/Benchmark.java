@@ -28,7 +28,8 @@ public class Benchmark {
            float avgSeconds = (float) avg / 1000;
            System.out.println("Raw Values: " + benchmarks);
            System.out.println("Average Execution Time: " + avg + " milliseconds");
-           System.out.println("Average Execution Time: " + avgSeconds + " seconds \n");
+           System.out.println("Average Execution Time: " + avgSeconds + " seconds");
+           System.out.println("Number of Moves: " + MoveGenerator.generateAllMoves(state).size()+ "\n");
        }
     }
 
