@@ -1,34 +1,39 @@
 package GaT;
 
-import java.util.ArrayList;
-import java.util.List;
+import GaT.Objects.GameState;
+import GaT.Objects.Move;
 
-import static GaT.GameState.getIndex;
 import static GaT.Minimax.evaluate;
-import static GaT.Minimax.scoreMove;
 
-public class Main implements BitBoardUtil {
+public class Main {
 
 
     public static void main(String[] args) {
-        GameState state = GameState.fromFen("3RG3/7/7/7/7/3r42BG/7 r");
+        GameState state = GameState.fromFen("7/7/7/BG6/3b33/3RG3/7 r");
 
         state.printBoard();
         GameState copy = state.copy();
-        Move best = Minimax.findBestMove(state, 9);
+
+        long startTime = System.currentTimeMillis();
+        Move best = Minimax.findBestMove(state, 5);
+        long endTime = System.currentTimeMillis();
         copy.applyMove(best);
         System.out.println("Best move: " + best);
-        System.out.println("Evaluation: "+ evaluate(copy));
+        System.out.println("Evaluation: "+ evaluate(copy, 0));
         copy.printBoard();
+        System.out.println("Time taken: "+ (endTime -startTime) + "ms");
+        System.out.println(MoveGenerator.generateAllMoves(state).size());
 
-//        Move best1 = TimedMinimax.findBestMoveWithTime(state, 99, 5000); // depth cap 99, time limit 5s
+
+//        Move best1 = TimedMinimax.findBestMoveWithTime(state, 99, 2000); // depth cap 99, time limit 5s
 //        GameState copy1 = state.copy();
 //        copy.applyMove(best1);
 //        System.out.println("Best move: " + best1);
-//        System.out.println("Evalutation: "+ evaluate(copy1));
+//        System.out.println("Evalutation: "+ evaluate(copy1, 1));
 
 
     }
+
 
 
 

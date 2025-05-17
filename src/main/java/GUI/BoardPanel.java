@@ -1,7 +1,7 @@
 package GUI;
 
-import GaT.GameState;
-import GaT.Move;
+import GaT.Objects.GameState;
+import GaT.Objects.Move;
 import GaT.MoveGenerator;
 
 import javax.swing.*;
@@ -11,6 +11,7 @@ import java.awt.event.*;
 public class BoardPanel extends JPanel {
     private final GameState state;
     private final int squareSize = 80;
+    private final int labelSize = 30;  // Space for drawing labels
     private final MoveConsumer moveConsumer;
 
     private int selectedIndex = -1;
@@ -21,35 +22,46 @@ public class BoardPanel extends JPanel {
 
         addMouseListener(new MouseAdapter() {
             public void mousePressed(MouseEvent e) {
-                int file = e.getX() / squareSize;
-                int rank = 6 - (e.getY() / squareSize);
-                int index = GameState.getIndex(rank, file);
+                int file = (e.getX() - labelSize) / squareSize;
+                int rank = 6 - ((e.getY() - labelSize) / squareSize);
 
-                if (selectedIndex == -1) {
-                    selectedIndex = index;
-                } else {
-                    // Try move
-                    for (Move move : MoveGenerator.generateAllMoves(state)) {
-                        if (move.from == selectedIndex && move.to == index) {
-                            moveConsumer.onMove(move);
-                            break;
+                // Ensure click is within the board
+                if (file >= 0 && file < 7 && rank >= 0 && rank < 7) {
+                    int index = GameState.getIndex(rank, file);
+
+                    if (selectedIndex == -1) {
+                        selectedIndex = index;
+                    } else {
+                        // Try move
+                        for (Move move : MoveGenerator.generateAllMoves(state)) {
+                            if (move.from == selectedIndex && move.to == index) {
+                                moveConsumer.onMove(move);
+                                break;
+                            }
                         }
+                        selectedIndex = -1;
                     }
-                    selectedIndex = -1;
+                    repaint();
                 }
-                repaint();
             }
         });
     }
 
     public void paintComponent(Graphics g) {
         super.paintComponent(g);
+        Graphics2D g2d = (Graphics2D) g;
+
+        // Use anti-aliasing for smoother text
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        // Draw rank numbers (1-7) and file letters (a-f)
+        drawLabels(g2d);
 
         // Draw grid
         for (int r = 0; r < 7; r++) {
             for (int f = 0; f < 7; f++) {
-                int x = f * squareSize;
-                int y = (6 - r) * squareSize;
+                int x = labelSize + f * squareSize;
+                int y = labelSize + (6 - r) * squareSize;
                 g.setColor((r + f) % 2 == 0 ? Color.LIGHT_GRAY : Color.WHITE);
                 g.fillRect(x, y, squareSize, squareSize);
 
@@ -62,7 +74,33 @@ public class BoardPanel extends JPanel {
             int f = GameState.file(selectedIndex);
             int r = GameState.rank(selectedIndex);
             g.setColor(Color.RED);
-            g.drawRect(f * squareSize, (6 - r) * squareSize, squareSize, squareSize);
+            g.drawRect(labelSize + f * squareSize, labelSize + (6 - r) * squareSize, squareSize, squareSize);
+        }
+    }
+
+    private void drawLabels(Graphics2D g) {
+        g.setFont(new Font("SansSerif", Font.BOLD, 16));
+
+        // Draw file letters (a-f)
+        for (int f = 0; f < 7; f++) {
+            String fileLetter = String.valueOf((char)('A' + f));
+            FontMetrics metrics = g.getFontMetrics();
+            int x = labelSize + f * squareSize + (squareSize - metrics.stringWidth(fileLetter)) / 2;
+            int y = labelSize + 7 * squareSize + 20; // Position below the board
+
+            g.setColor(Color.BLACK);
+            g.drawString(fileLetter, x, y);
+        }
+
+        // Draw rank numbers (1-7)
+        for (int r = 0; r < 7; r++) {
+            String rankNumber = String.valueOf(r + 1);
+            FontMetrics metrics = g.getFontMetrics();
+            int x = (labelSize - metrics.stringWidth(rankNumber)) / 2;
+            int y = labelSize + (6 - r) * squareSize + squareSize/2 + metrics.getAscent()/2;
+
+            g.setColor(Color.BLACK);
+            g.drawString(rankNumber, x, y);
         }
     }
 
@@ -91,9 +129,9 @@ public class BoardPanel extends JPanel {
         g.setFont(originalFont);
     }
 
-
     public Dimension getPreferredSize() {
-        return new Dimension(7 * squareSize, 7 * squareSize);
+        // Add space for the labels on each side
+        return new Dimension(7 * squareSize + labelSize * 2, 7 * squareSize + labelSize * 2);
     }
 
     @FunctionalInterface
@@ -101,5 +139,3 @@ public class BoardPanel extends JPanel {
         void onMove(Move move);
     }
 }
-
-

@@ -1,5 +1,5 @@
-import GaT.GameState;
-import GaT.Move;
+import GaT.Objects.GameState;
+import GaT.Objects.Move;
 import GaT.MoveGenerator;
 import org.junit.Test;
 

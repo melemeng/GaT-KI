@@ -1,5 +1,8 @@
 package GaT;
 
+import GaT.Objects.GameState;
+import GaT.Objects.Move;
+
 import java.util.*;
 
 public class MoveGenerator {

@@ -1,4 +1,7 @@
-package GaT;
+package GaT.Benchmark;
+
+import GaT.MoveGenerator;
+import GaT.Objects.GameState;
 
 import java.util.ArrayList;
 import java.util.Arrays;

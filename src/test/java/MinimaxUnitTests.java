@@ -1,4 +1,4 @@
-import GaT.GameState;
+import GaT.Objects.GameState;
 import GaT.Minimax;
 import org.junit.Test;
 import static org.junit.Assert.*;

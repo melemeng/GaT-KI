@@ -1,7 +1,8 @@
-package GaT;
+package GaT.Objects;
 
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.Random;
 
 public class GameState {
     public static final int BOARD_SIZE = 7;
@@ -17,6 +18,17 @@ public class GameState {
     public int[] blueStackHeights = new int[NUM_SQUARES];
 
     public boolean redToMove = true;
+
+    private static final long[][] ZOBRIST_RED_TOWER = new long[49][8];
+    private static final long[][] ZOBRIST_BLUE_TOWER = new long[49][8];
+    private static final long[] ZOBRIST_RED_GUARD = new long[49];
+    private static final long[] ZOBRIST_BLUE_GUARD = new long[49];
+    private static long ZOBRIST_TURN; // redToMove
+
+    // static Syntax to Init static variables outside a non-static function
+    static {
+        initializeZobristKeys();
+    }
 
     // Utilities
     public static long bit(int index) {
@@ -39,13 +51,65 @@ public class GameState {
         return index % BOARD_SIZE;
     }
 
+    //initializes the Random Keys for the Zobrest-Hashing
+    private static void initializeZobristKeys(){
+        Random rand = new Random(42); // Fixed seed for reproducibility
+
+        for (int i = 0; i < 49; i++) {
+            ZOBRIST_RED_GUARD[i] = rand.nextLong();
+            ZOBRIST_BLUE_GUARD[i] = rand.nextLong();
+
+            for (int h = 1; h <= 7; h++) {
+                ZOBRIST_RED_TOWER[i][h] = rand.nextLong();
+                ZOBRIST_BLUE_TOWER[i][h] = rand.nextLong();
+            }
+        }
+
+        ZOBRIST_TURN = rand.nextLong();
+    }
+
+    /**
+     * @return a "unique" long, representing the current gamestate
+     */
+    public long hash() {
+        long hash = 0;
+
+        for (int i = 0; i < NUM_SQUARES; i++) {
+            int heightRed = redStackHeights[i];
+            int heightBlue = blueStackHeights[i];
+
+            if (heightRed > 0) {
+                hash ^= ZOBRIST_RED_TOWER[i][heightRed];
+            }
+            if (heightBlue > 0) {
+                hash ^= ZOBRIST_BLUE_TOWER[i][heightBlue];
+            }
+
+        }
+
+        if (redGuard != 0) {
+            int index = Long.numberOfTrailingZeros(redGuard);
+            hash ^= ZOBRIST_RED_GUARD[index];
+        }
+
+        if (blueGuard != 0) {
+            int idx = Long.numberOfTrailingZeros(blueGuard);
+            hash ^= ZOBRIST_BLUE_GUARD[idx];
+        }
+
+        if (redToMove) {
+            hash ^= ZOBRIST_TURN;
+        }
+
+        return hash;
+    }
+
+
     /**
      * @param move Move to execute
      * @apiNote This function implies that the given move is legal
      */
     public void applyMove(Move move) {
-
-
         boolean isRed = redToMove;
 
         // Get source & target info

@@ -1,19 +1,14 @@
 package GUI;
 
 import GaT.*;
+import GaT.Objects.GameState;
+import GaT.Objects.Move;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.*;
-import java.util.List;
-
-import static GaT.Minimax.scoreMove;
 
 public class GameFrame extends JFrame {
-    private GameState state = GameState.fromFen("r1r11RG1r1r1/2r11r12/3r13/7/3b13/2b11b12/b1b11BG1b1b1 r");
-    //"BG6/7/7/RG6/6r1/7/7 r"
-    //"7/7/BG6/RG6/6r1/7/7 r"
-//    private GameState state = new GameState();
+    private GameState state = GameState.fromFen("7/7/7/BG6/3b33/3RG3/7 r");
     private BoardPanel board;
 
     public GameFrame() {
@@ -28,7 +23,8 @@ public class GameFrame extends JFrame {
         aiVsAiButton.addActionListener(e -> runAiMatch());
         add(aiVsAiButton, BorderLayout.SOUTH);
 
-        setSize(600, 650);
+        // Adjust the frame size to accommodate the larger board with labels
+        setSize(660, 710); // Increased from 600, 650 to account for labels
         setResizable(false);
         setLocationRelativeTo(null);
         setVisible(true);
@@ -36,7 +32,6 @@ public class GameFrame extends JFrame {
 
     private void onMoveSelected(Move move) {
         state.applyMove(move);
-        Minimax.evaluate(state);
         board.repaint();
 
         if (Minimax.isGameOver(state)) {
@@ -47,7 +42,7 @@ public class GameFrame extends JFrame {
         // Let AI respond
         if (!state.redToMove) {
             new Thread(() -> {
-                Move aiMove = Minimax.findBestMove(state, 8);
+                Move aiMove = TimedMinimax.findBestMoveWithTime(state,99, 2000);
                 state.applyMove(aiMove);
                 System.out.println(aiMove);
 
@@ -61,18 +56,15 @@ public class GameFrame extends JFrame {
         }
     }
 
-
     private void runAiMatch() {
         new Thread(() -> {
             while (!Minimax.isGameOver(state)) {
                 Move move = TimedMinimax.findBestMoveWithTime(state,99, 2000);
-//                Move move = Minimax.findBestMove(state, 8);
                 state.applyMove(move);
                 board.repaint();
                 try { Thread.sleep(300); } catch (InterruptedException ignored) {}
             }
             showGameOverDialog();
-
         }).start();
     }
 
@@ -85,11 +77,7 @@ public class GameFrame extends JFrame {
         JOptionPane.showMessageDialog(this, winner, "Game Over", JOptionPane.INFORMATION_MESSAGE);
     }
 
-
     public static void main(String[] args) {
         SwingUtilities.invokeLater(GameFrame::new);
     }
 }
-
-
-

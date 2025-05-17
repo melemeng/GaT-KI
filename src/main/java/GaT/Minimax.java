@@ -1,14 +1,28 @@
 package GaT;
 
-import java.util.List;
-import java.util.Set;
+import GaT.Objects.GameState;
+import GaT.Objects.Move;
+import GaT.Objects.TTEntry;
 
-import static GaT.GameState.getIndex;
+import java.util.HashMap;
+import java.util.List;
+
+import static GaT.Objects.GameState.getIndex;
 
 
 public class Minimax {
     public static final int RED_CASTLE_INDEX = getIndex(6, 3); // D7
     public static final int BLUE_CASTLE_INDEX = getIndex(0, 3); // D1
+    static int counter= 0;
+
+    private static final HashMap<Long, TTEntry> transpositionTable = new HashMap<>();
+
+    final static int[] centralSquares = {
+            GameState.getIndex(2, 3), // D3
+            GameState.getIndex(3, 3), // D4
+            GameState.getIndex(4, 3)  // D5
+    };
+
 
 
     public static Move findBestMove(GameState state, int depth) {
@@ -27,10 +41,11 @@ public class Minimax {
         for (Move move : moves) {
             GameState copy = state.copy();
             copy.applyMove(move);
+            counter++;
 
             //Start algorithm with !isRed to simulate the next move from the enemy
             int score = minimax(copy, depth - 1, Integer.MIN_VALUE, Integer.MAX_VALUE, copy.redToMove);
-            System.out.println(move + " -> Score: " + score);
+            System.out.println(move + " -> Score: " + score);       //Debug line
 
             //Update the best move depending on if we are the max- or minimizer
             if ((isRed && score > bestScore) || (!isRed && score < bestScore) || bestMove == null) {
@@ -38,14 +53,21 @@ public class Minimax {
                 bestMove = move;
             }
         }
-
+        System.out.println("Zustände: "+counter);
         return bestMove;
     }
 
 
     private static int minimax(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer) {
+        //Check for existing Entry in the Transposition Table
+        long hash= state.hash();
+        TTEntry entry = transpositionTable.get(hash);
+        if(entry !=null && entry.depth >= depth){
+            return entry.score;
+        }
+
         if (depth == 0 || isGameOver(state)) {
-            return evaluate(state);
+            return evaluate(state, depth);
         }
 
         List<Move> moves = MoveGenerator.generateAllMoves(state);
@@ -55,22 +77,26 @@ public class Minimax {
             for (Move move : moves) {
                 GameState copy = state.copy();
                 copy.applyMove(move);
+                counter++;
                 int eval = minimax(copy, depth - 1, alpha, beta, false);
                 maxEval = Math.max(maxEval, eval);
                 alpha = Math.max(alpha, eval);
                 if (beta <= alpha) break;   //prune
             }
+            transpositionTable.put(hash, new TTEntry(maxEval, depth, alpha, beta));
             return maxEval;
         } else {
             int minEval = Integer.MAX_VALUE;
             for (Move move : moves) {
                 GameState copy = state.copy();
                 copy.applyMove(move);
+                counter++;
                 int eval = minimax(copy, depth - 1, alpha, beta, true);
                 minEval = Math.min(minEval, eval);
                 beta = Math.min(beta, eval);
                 if (beta <= alpha) break;   //prune
             }
+            transpositionTable.put(hash, new TTEntry(minEval, depth, alpha, beta));
             return minEval;
         }
     }
@@ -84,7 +110,7 @@ public class Minimax {
     /**
      * @apiNote this function is bases of reds POV --> positive values are good for red | negative values are good for blue
      */
-    public static int evaluate(GameState state) {
+    public static int evaluate(GameState state, int depth) {
         boolean redWinsByCastle = state.redGuard == GameState.bit(BLUE_CASTLE_INDEX);
         boolean blueWinsByCastle =state.blueGuard == GameState.bit(RED_CASTLE_INDEX);
 
@@ -92,20 +118,22 @@ public class Minimax {
         int blueScore = 0;
 
         //If the done move took the guard or "rushed the castle" give it a huge favor
-        if (state.redGuard == 0 || blueWinsByCastle) blueScore+= 10000;
-        if (state.blueGuard == 0 || redWinsByCastle) redScore += 10000;
+        //Include the depth to reward early wins and penalize early losses
+        if (state.redGuard == 0 || blueWinsByCastle) return -10000 - depth;
+        if (state.blueGuard == 0 || redWinsByCastle) return 10000 + depth;
+
 
         boolean redGuardInDanger = isGuardInDanger(state, true);
         boolean blueGuardInDanger = isGuardInDanger(state, false);
 
         if(state.redToMove){
             //If red can move and the enemy guard can be taken --> win
-            if(redGuardInDanger && blueGuardInDanger) redScore += 10000;
+            if(redGuardInDanger && blueGuardInDanger) return 10000 + depth;
             //If red can move and only red is in danger --> potential lose, so avoid this position
-            if(redGuardInDanger && !blueGuardInDanger) redScore -= 10000;
+            if(redGuardInDanger && !blueGuardInDanger) return -10000 - depth;
         }else{
-            if(blueGuardInDanger && redGuardInDanger) blueScore += 10000;
-            if(blueGuardInDanger && !redGuardInDanger) blueScore -= 10000;
+            if(blueGuardInDanger && redGuardInDanger) return 10000 + depth;
+            if(blueGuardInDanger && !redGuardInDanger) return -10000 - depth;
         }
 
 //        Bonus for red guard being close to blue castle
@@ -117,8 +145,8 @@ public class Minimax {
             int distanceToBlueCastleRank = Math.abs(guardRank - 0);  // red wants to reach rank 0
             int distanceToBlueCastleFile = Math.abs(guardFile - 3);  // D-file is column 3
 
-            int rankBonus = (6 - distanceToBlueCastleRank) * 2000;   // moving down = good
-            int fileBonus = (3 - distanceToBlueCastleFile) * 2000;    // closer to D-file = good
+            int rankBonus = (6 - distanceToBlueCastleRank) * 500;   // moving down = good
+            int fileBonus = (3 - distanceToBlueCastleFile) * 500;    // closer to D-file = good
 
             redScore += rankBonus + fileBonus;
         }
@@ -132,13 +160,23 @@ public class Minimax {
             int distanceToRedCastleRank = Math.abs(guardRank - 6);  // blue wants to reach rank 6 (row 7)
             int distanceToRedCastleFile = Math.abs(guardFile - 3);
 
-            int rankBonus = (6 - distanceToRedCastleRank) * 2000;   // moving up = good
-            int fileBonus = (3 - distanceToRedCastleFile) * 2000;
+            int rankBonus = (6 - distanceToRedCastleRank) * 500;   // moving up = good
+            int fileBonus = (3 - distanceToRedCastleFile) * 500;
 
             blueScore += rankBonus + fileBonus;
         }
+        for (int index : centralSquares){
+            long bit = GameState.bit(index);
+            if ((state.redTowers & bit) != 0) redScore += 300;
+            if ((state.blueTowers & bit) !=0) blueScore += 300;
 
-        //Count Material Diff (might want to remove that)
+            if((state.redGuard & bit) != 0) redScore += 200;
+            if(((state.blueGuard & bit) != 0)) blueScore += 200;
+        }
+
+
+
+        //Count Material Diff
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
             redScore += state.redStackHeights[i];
             blueScore += state.blueStackHeights[i];

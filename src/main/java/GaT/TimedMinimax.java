@@ -1,4 +1,9 @@
 package GaT;
+import GaT.Objects.GameState;
+import GaT.Objects.Move;
+import GaT.Objects.TTEntry;
+
+import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
 
@@ -6,6 +11,8 @@ public class TimedMinimax {
 
     private static long timeLimitMillis;
     private static long startTime;
+
+    private static final HashMap<Long, TTEntry> transpositionTable = new HashMap<>();
 
     public static Move findBestMoveWithTime(GameState state, int maxDepth, long timeMillis) {
         TimedMinimax.timeLimitMillis = timeMillis;
@@ -32,12 +39,16 @@ public class TimedMinimax {
     private static Move searchDepth(GameState state, int depth) throws TimeoutException {
         List<Move> moves = MoveGenerator.generateAllMoves(state);
         Random rand = new Random();
-        moves.sort((a, b) -> {
-            int scoreA = Minimax.scoreMove(state, a);
-            int scoreB = Minimax.scoreMove(state, b);
-            int cmp = Integer.compare(scoreB, scoreA);
-            return cmp != 0 ? cmp : rand.nextInt(3) - 1; // shuffle equally good moves
-        });
+//        moves.sort((a, b) -> {
+//            int scoreA = Minimax.scoreMove(state, a);
+//            int scoreB = Minimax.scoreMove(state, b);
+//            int cmp = Integer.compare(scoreB, scoreA);
+//            return cmp != 0 ? cmp : rand.nextInt(3) - 1; // shuffle equally good moves
+//        });
+        moves.sort((a, b) -> Integer.compare(
+                Minimax.scoreMove(state, b),
+                Minimax.scoreMove(state, a)
+        ));
 
 
         Move bestMove = null;
@@ -64,8 +75,14 @@ public class TimedMinimax {
     private static int minimax(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer) throws TimeoutException {
         if (timedOut()) throw new TimeoutException();
 
+        long hash= state.hash();
+        TTEntry entry = transpositionTable.get(hash);
+        if(entry !=null && entry.depth >= depth){
+            return entry.score;
+        }
+
         if (depth == 0 || Minimax.isGameOver(state)) {
-            return Minimax.evaluate(state);
+            return Minimax.evaluate(state, depth);
         }
 
         List<Move> moves = MoveGenerator.generateAllMoves(state);
@@ -82,6 +99,7 @@ public class TimedMinimax {
                 alpha = Math.max(alpha, eval);
                 if (beta <= alpha) break;
             }
+            transpositionTable.put(hash, new TTEntry(maxEval, depth, alpha, beta));
             return maxEval;
         } else {
             int minEval = Integer.MAX_VALUE;
@@ -95,6 +113,7 @@ public class TimedMinimax {
                 beta = Math.min(beta, eval);
                 if (beta <= alpha) break;
             }
+            transpositionTable.put(hash, new TTEntry(minEval, depth, alpha, beta));
             return minEval;
         }
     }

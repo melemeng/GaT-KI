@@ -1,4 +1,4 @@
-package GaT;
+package GaT.Objects;
 
 import java.util.Objects;
 
