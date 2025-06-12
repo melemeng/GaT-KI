@@ -112,7 +112,7 @@ public class Minimax {
      */
     public static int evaluate(GameState state, int depth) {
         boolean redWinsByCastle = state.redGuard == GameState.bit(BLUE_CASTLE_INDEX);
-        boolean blueWinsByCastle =state.blueGuard == GameState.bit(RED_CASTLE_INDEX);
+        boolean blueWinsByCastle = state.blueGuard == GameState.bit(RED_CASTLE_INDEX);
 
         int redScore = 0;
         int blueScore = 0;
@@ -127,16 +127,15 @@ public class Minimax {
         boolean blueGuardInDanger = isGuardInDanger(state, false);
 
         if(state.redToMove){
-            //If red can move and the enemy guard can be taken --> win
             if(redGuardInDanger && blueGuardInDanger) return 10000 + depth;
-            //If red can move and only red is in danger --> potential lose, so avoid this position
             if(redGuardInDanger && !blueGuardInDanger) return -10000 - depth;
         }else{
-            if(blueGuardInDanger && redGuardInDanger) return 10000 + depth;
-            if(blueGuardInDanger && !redGuardInDanger) return -10000 - depth;
+            if(blueGuardInDanger && redGuardInDanger) return -10000 - depth;
+            if(blueGuardInDanger && !redGuardInDanger) return 10000 + depth;
         }
 
-//        Bonus for red guard being close to blue castle
+        // === VERBESSERTE WÄCHTER-BEWERTUNG ===
+        // Bonus for red guard being close to blue castle
         if (state.redGuard != 0) {
             int guardIndex = Long.numberOfTrailingZeros(state.redGuard);
             int guardRank = GameState.rank(guardIndex);
@@ -146,9 +145,18 @@ public class Minimax {
             int distanceToBlueCastleFile = Math.abs(guardFile - 3);  // D-file is column 3
 
             int rankBonus = (6 - distanceToBlueCastleRank) * 500;   // moving down = good
-            int fileBonus = (3 - distanceToBlueCastleFile) * 500;    // closer to D-file = good
+            int fileBonus = (3 - distanceToBlueCastleFile) * 300;    // closer to D-file = good
 
             redScore += rankBonus + fileBonus;
+
+            // NEU: Bonus für unterstützende Türme
+            int support = countSupportingTowers(guardIndex, true, state);
+            redScore += support * 100;
+
+            // NEU: Penalty wenn Wächter blockiert ist
+            if (isGuardBlocked(guardIndex, true, state)) {
+                redScore -= 200;
+            }
         }
 
         // Bonus for blue guard being close to red castle
@@ -161,26 +169,95 @@ public class Minimax {
             int distanceToRedCastleFile = Math.abs(guardFile - 3);
 
             int rankBonus = (6 - distanceToRedCastleRank) * 500;   // moving up = good
-            int fileBonus = (3 - distanceToRedCastleFile) * 500;
+            int fileBonus = (3 - distanceToRedCastleFile) * 300;
 
             blueScore += rankBonus + fileBonus;
+
+            // NEU: Support und Blockade-Check
+            int support = countSupportingTowers(guardIndex, false, state);
+            blueScore += support * 100;
+
+            if (isGuardBlocked(guardIndex, false, state)) {
+                blueScore -= 200;
+            }
         }
+
+        // === VERBESSERTE ZENTRALE KONTROLLE ===
         for (int index : centralSquares){
             long bit = GameState.bit(index);
-            if ((state.redTowers & bit) != 0) redScore += 300;
-            if ((state.blueTowers & bit) !=0) blueScore += 300;
+
+            // Türme im Zentrum mit Höhenbonus
+            if ((state.redTowers & bit) != 0) {
+                redScore += 300 + (state.redStackHeights[index] * 50);
+            }
+            if ((state.blueTowers & bit) != 0) {
+                blueScore += 300 + (state.blueStackHeights[index] * 50);
+            }
 
             if((state.redGuard & bit) != 0) redScore += 200;
             if(((state.blueGuard & bit) != 0)) blueScore += 200;
         }
 
-
-
-        //Count Material Diff
+        // === VERBESSERTE MATERIAL-BEWERTUNG ===
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-            redScore += state.redStackHeights[i];
-            blueScore += state.blueStackHeights[i];
+            if (state.redStackHeights[i] > 0) {
+                int height = state.redStackHeights[i];
+                redScore += height * 100; // Basis-Materialwert
+
+                // NEU: Mobilitätsbonus
+                int mobility = calculateActualMobility(i, height, state);
+                redScore += mobility * 20;
+
+                // NEU: Penalty für große immobile Stapel
+                if (height >= 4 && mobility == 0) {
+                    redScore -= 150;
+                }
+
+                // NEU: Bonus für Stapel nahe gegnerischem Wächter
+                if (state.blueGuard != 0) {
+                    int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
+                    int distance = manhattanDistance(i, blueGuardPos);
+                    if (distance <= height) {
+                        redScore += 80; // Bedrohungspotential
+                    }
+                }
+            }
+
+            if (state.blueStackHeights[i] > 0) {
+                int height = state.blueStackHeights[i];
+                blueScore += height * 100;
+
+                int mobility = calculateActualMobility(i, height, state);
+                blueScore += mobility * 20;
+
+                if (height >= 4 && mobility == 0) {
+                    blueScore -= 150;
+                }
+
+                if (state.redGuard != 0) {
+                    int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
+                    int distance = manhattanDistance(i, redGuardPos);
+                    if (distance <= height) {
+                        blueScore += 80;
+                    }
+                }
+            }
         }
+
+        // === ENDSPIEL-ANPASSUNGEN ===
+        int totalTowers = Long.bitCount(state.redTowers | state.blueTowers);
+        if (totalTowers <= 6) {
+            // Im Endspiel ist Wächter-Fortschritt wichtiger
+            if (state.redGuard != 0) {
+                int gRank = GameState.rank(Long.numberOfTrailingZeros(state.redGuard));
+                redScore += gRank * 200; // Extra Bonus
+            }
+            if (state.blueGuard != 0) {
+                int gRank = GameState.rank(Long.numberOfTrailingZeros(state.blueGuard));
+                blueScore += (6 - gRank) * 200;
+            }
+        }
+
         return redScore - blueScore;
     }
 
@@ -200,6 +277,132 @@ public class Minimax {
         return false;
     }
 
+    // === NEUE HILFSMETHODEN ===
+
+    private static int countSupportingTowers(int guardPos, boolean isRed, GameState state) {
+        long ownTowers = isRed ? state.redTowers : state.blueTowers;
+        int count = 0;
+
+        // Prüfe 2-Feld Radius
+        for (int rank = -2; rank <= 2; rank++) {
+            for (int file = -2; file <= 2; file++) {
+                if (rank == 0 && file == 0) continue;
+
+                int checkRank = GameState.rank(guardPos) + rank;
+                int checkFile = GameState.file(guardPos) + file;
+
+                if (checkRank >= 0 && checkRank < 7 && checkFile >= 0 && checkFile < 7) {
+                    int index = GameState.getIndex(checkRank, checkFile);
+                    if ((ownTowers & GameState.bit(index)) != 0) {
+                        count++;
+                    }
+                }
+            }
+        }
+
+        return count;
+    }
+
+    private static boolean isGuardBlocked(int guardPos, boolean isRed, GameState state) {
+        // Sicherheitscheck
+        if (!GameState.isOnBoard(guardPos)) return false;
+
+        int[] directions = {-1, 1, -GameState.BOARD_SIZE, GameState.BOARD_SIZE};
+        int blockedCount = 0;
+        int validDirections = 0;
+
+        for (int dir : directions) {
+            int target = guardPos + dir;
+            validDirections++;
+
+            // Rand des Bretts
+            if (!GameState.isOnBoard(target)) {
+                blockedCount++;
+                continue;
+            }
+
+            // Kantenwechsel prüfen bei horizontaler Bewegung
+            if (Math.abs(dir) == 1 && GameState.rank(guardPos) != GameState.rank(target)) {
+                blockedCount++;
+                continue;
+            }
+
+            // Prüfe ob Feld besetzt
+            if (((state.redTowers | state.blueTowers | state.redGuard | state.blueGuard)
+                    & GameState.bit(target)) != 0) {
+                blockedCount++;
+            }
+        }
+
+        // Wächter ist blockiert wenn mindestens 3 von 4 Richtungen blockiert sind
+        return validDirections > 0 && blockedCount >= 3;
+    }
+
+    private static int calculateActualMobility(int index, int height, GameState state) {
+        // Sicherheitscheck
+        if (height <= 0 || height > 7) return 0;
+        if (!GameState.isOnBoard(index)) return 0;
+
+        int mobility = 0;
+        int[] directions = {-1, 1, -GameState.BOARD_SIZE, GameState.BOARD_SIZE};
+
+        for (int dir : directions) {
+            for (int dist = 1; dist <= height && dist <= 7; dist++) { // Extra Check für dist
+                int target = index + dir * dist;
+
+                if (!GameState.isOnBoard(target)) break;
+
+                // Kantenwechsel prüfen bei horizontalen Zügen
+                if (Math.abs(dir) == 1) { // Horizontale Bewegung
+                    // Prüfe alle Zwischenschritte auf Kantenwechsel
+                    boolean edgeWrap = false;
+                    for (int step = 1; step <= dist; step++) {
+                        int intermediate = index + dir * step;
+                        if (GameState.rank(index) != GameState.rank(intermediate)) {
+                            edgeWrap = true;
+                            break;
+                        }
+                    }
+                    if (edgeWrap) break;
+                }
+
+                // Prüfe ob Zug möglich wäre
+                long allPieces = state.redTowers | state.blueTowers | state.redGuard | state.blueGuard;
+
+                // Blockiert durch andere Figur auf dem Weg?
+                boolean blocked = false;
+                for (int i = 1; i < dist; i++) {
+                    int between = index + dir * i;
+                    if ((allPieces & GameState.bit(between)) != 0) {
+                        blocked = true;
+                        break;
+                    }
+                }
+
+                if (!blocked) {
+                    mobility++;
+
+                    // Bonus wenn Zielfeld leer ist
+                    if ((allPieces & GameState.bit(target)) == 0) {
+                        mobility++;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+
+        return mobility;
+    }
+
+    private static int manhattanDistance(int index1, int index2) {
+        int rank1 = GameState.rank(index1);
+        int file1 = GameState.file(index1);
+        int rank2 = GameState.rank(index2);
+        int file2 = GameState.file(index2);
+
+        return Math.abs(rank1 - rank2) + Math.abs(file1 - file2);
+    }
 
     public static int scoreMove(GameState state, Move move) {
         int to = move.to;
@@ -264,4 +467,3 @@ public class Minimax {
 
 
 }
-
