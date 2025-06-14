@@ -9,11 +9,10 @@ import java.util.List;
 
 import static GaT.Objects.GameState.getIndex;
 
-
 public class Minimax {
     public static final int RED_CASTLE_INDEX = getIndex(6, 3); // D7
     public static final int BLUE_CASTLE_INDEX = getIndex(0, 3); // D1
-    static int counter= 0;
+    static int counter = 0;
 
     private static final HashMap<Long, TTEntry> transpositionTable = new HashMap<>();
 
@@ -23,12 +22,15 @@ public class Minimax {
             GameState.getIndex(4, 3)  // D5
     };
 
-
+    // === KILLER MOVES & PRINCIPAL VARIATION ===
+    private static Move[][] killerMoves = new Move[20][2]; // [depth][primary/secondary]
+    private static int killerAge = 0; // Für periodisches Reset
+    private static Move[] pvLine = new Move[20]; // Hauptvariation speichern
 
     public static Move findBestMove(GameState state, int depth) {
         List<Move> moves = MoveGenerator.generateAllMoves(state);
 
-        //Sorting the moves using the scoreMove heuristic to find potentially better moves first
+        // Sorting the moves using the scoreMove heuristic to find potentially better moves first
         moves.sort((a, b) -> Integer.compare(
                 scoreMove(state, b),
                 scoreMove(state, a)
@@ -43,27 +45,33 @@ public class Minimax {
             copy.applyMove(move);
             counter++;
 
-            //Start algorithm with !isRed to simulate the next move from the enemy
+            // Start algorithm with !isRed to simulate the next move from the enemy
             int score = minimax(copy, depth - 1, Integer.MIN_VALUE, Integer.MAX_VALUE, copy.redToMove);
-            System.out.println(move + " -> Score: " + score);       //Debug line
+            System.out.println(move + " -> Score: " + score);       // Debug line
 
-            //Update the best move depending on if we are the max- or minimizer
+            // Update the best move depending on if we are the max- or minimizer
             if ((isRed && score > bestScore) || (!isRed && score < bestScore) || bestMove == null) {
                 bestScore = score;
                 bestMove = move;
             }
         }
-        System.out.println("Zustände: "+counter);
+        System.out.println("Zustände: " + counter);
         return bestMove;
     }
 
-
     private static int minimax(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer) {
-        //Check for existing Entry in the Transposition Table
-        long hash= state.hash();
+        // Check for existing Entry in the Transposition Table
+        long hash = state.hash();
         TTEntry entry = transpositionTable.get(hash);
-        if(entry !=null && entry.depth >= depth){
-            return entry.score;
+        if (entry != null && entry.depth >= depth) {
+            // KORRIGIERT: Verbesserte TT Logik
+            if (entry.flag == TTEntry.EXACT) {
+                return entry.score;
+            } else if (entry.flag == TTEntry.LOWER_BOUND && entry.score >= beta) {
+                return entry.score;
+            } else if (entry.flag == TTEntry.UPPER_BOUND && entry.score <= alpha) {
+                return entry.score;
+            }
         }
 
         if (depth == 0 || isGameOver(state)) {
@@ -72,6 +80,12 @@ public class Minimax {
 
         List<Move> moves = MoveGenerator.generateAllMoves(state);
 
+        // NEU: Erweiterte Move Ordering mit Killer Moves
+        orderMovesAdvanced(moves, state, depth, entry);
+
+        Move bestMove = null; // Tracke besten Zug
+        int originalAlpha = alpha; // Für TT Flag Bestimmung
+
         if (maximizingPlayer) {
             int maxEval = Integer.MIN_VALUE;
             for (Move move : moves) {
@@ -79,11 +93,35 @@ public class Minimax {
                 copy.applyMove(move);
                 counter++;
                 int eval = minimax(copy, depth - 1, alpha, beta, false);
-                maxEval = Math.max(maxEval, eval);
+
+                if (eval > maxEval) {
+                    maxEval = eval;
+                    bestMove = move; // Update besten Zug
+                    // NEU: Speichere in Principal Variation
+                    storePVMove(move, depth);
+                }
+
                 alpha = Math.max(alpha, eval);
-                if (beta <= alpha) break;   //prune
+                if (beta <= alpha) {
+                    // NEU: Killer Move speichern bei Beta-Cutoff
+                    if (!isCapture(move, state)) { // Nur Non-Captures als Killer
+                        storeKillerMove(move, depth);
+                    }
+                    break;   // prune
+                }
             }
-            transpositionTable.put(hash, new TTEntry(maxEval, depth, alpha, beta));
+
+            // KORRIGIERT: Korrekte TT Flag Logik
+            int flag;
+            if (maxEval <= originalAlpha) {
+                flag = TTEntry.UPPER_BOUND; // Fail-low: Score ist höchstens maxEval
+            } else if (maxEval >= beta) {
+                flag = TTEntry.LOWER_BOUND; // Fail-high: Score ist mindestens maxEval
+            } else {
+                flag = TTEntry.EXACT; // Exakter Wert zwischen alpha und beta
+            }
+            transpositionTable.put(hash, new TTEntry(maxEval, depth, flag, bestMove));
+
             return maxEval;
         } else {
             int minEval = Integer.MAX_VALUE;
@@ -92,23 +130,105 @@ public class Minimax {
                 copy.applyMove(move);
                 counter++;
                 int eval = minimax(copy, depth - 1, alpha, beta, true);
-                minEval = Math.min(minEval, eval);
+
+                if (eval < minEval) {
+                    minEval = eval;
+                    bestMove = move; // Update besten Zug
+                    // NEU: Speichere in Principal Variation
+                    storePVMove(move, depth);
+                }
+
                 beta = Math.min(beta, eval);
-                if (beta <= alpha) break;   //prune
+                if (beta <= alpha) {
+                    // NEU: Killer Move speichern bei Beta-Cutoff
+                    if (!isCapture(move, state)) {
+                        storeKillerMove(move, depth);
+                    }
+                    break;   // prune
+                }
             }
-            transpositionTable.put(hash, new TTEntry(minEval, depth, alpha, beta));
+
+            // KORRIGIERT: Korrekte TT Flag Logik für minimizing player
+            int flag;
+            if (minEval <= originalAlpha) {
+                flag = TTEntry.UPPER_BOUND; // Fail-low
+            } else if (minEval >= beta) {
+                flag = TTEntry.LOWER_BOUND; // Fail-high
+            } else {
+                flag = TTEntry.EXACT; // Exakter Wert
+            }
+            transpositionTable.put(hash, new TTEntry(minEval, depth, flag, bestMove));
+
             return minEval;
         }
     }
 
+    /**
+     * Erweiterte Move Ordering: TT Move > Killer Moves > PV Move > Score
+     */
+    private static void orderMovesWithTT(List<Move> moves, TTEntry entry) {
+        orderMovesAdvanced(moves, null, 0, entry);
+    }
+
+    /**
+     * Verbesserte Move Ordering mit allen Heuristiken
+     */
+    public static void orderMovesAdvanced(List<Move> moves, GameState state, int depth, TTEntry entry) {
+        // TT Move an erste Stelle (höchste Priorität)
+        if (entry != null && entry.bestMove != null) {
+            for (int i = 0; i < moves.size(); i++) {
+                if (moves.get(i).equals(entry.bestMove)) {
+                    Move ttMove = moves.remove(i);
+                    moves.add(0, ttMove);
+                    break;
+                }
+            }
+        }
+
+        // Sortiere den Rest mit erweiterten Heuristiken
+        if (moves.size() > 1) {
+            int startIndex = (entry != null && entry.bestMove != null) ? 1 : 0;
+            List<Move> restMoves = moves.subList(startIndex, moves.size());
+
+            restMoves.sort((a, b) -> {
+                int scoreA = scoreMoveAdvanced(state, a, depth);
+                int scoreB = scoreMoveAdvanced(state, b, depth);
+                return Integer.compare(scoreB, scoreA);
+            });
+        }
+    }
+
+    /**
+     * Erweiterte Move-Bewertung mit Killer Moves und PV
+     */
+    public static int scoreMoveAdvanced(GameState state, Move move, int depth) {
+        int score = scoreMove(state, move); // Basis-Score
+
+        // PV Move gets second highest priority
+        if (depth < pvLine.length && move.equals(pvLine[depth])) {
+            score += 15000;
+        }
+
+        // Killer Move Bonus
+        if (depth < killerMoves.length) {
+            if (move.equals(killerMoves[depth][0])) {
+                score += 9000; // Primary killer
+            } else if (move.equals(killerMoves[depth][1])) {
+                score += 8000; // Secondary killer
+            }
+        }
+
+        return score;
+    }
+
     public static boolean isGameOver(GameState state) {
-        boolean blueGuardOnD7= (state.blueGuard & GameState.bit(getIndex(6,3))) !=0;
-        boolean redGuardOnD1 = (state.redGuard & GameState.bit(getIndex(0,3))) !=0;
+        boolean blueGuardOnD7 = (state.blueGuard & GameState.bit(getIndex(6, 3))) != 0;
+        boolean redGuardOnD1 = (state.redGuard & GameState.bit(getIndex(0, 3))) != 0;
         return state.redGuard == 0 || state.blueGuard == 0 || blueGuardOnD7 || redGuardOnD1;
     }
 
     /**
-     * @apiNote this function is bases of reds POV --> positive values are good for red | negative values are good for blue
+     * @apiNote this function is based on red's POV --> positive values are good for red | negative values are good for blue
      */
     public static int evaluate(GameState state, int depth) {
         boolean redWinsByCastle = state.redGuard == GameState.bit(BLUE_CASTLE_INDEX);
@@ -117,21 +237,23 @@ public class Minimax {
         int redScore = 0;
         int blueScore = 0;
 
-        //If the done move took the guard or "rushed the castle" give it a huge favor
-        //Include the depth to reward early wins and penalize early losses
+        // If the done move took the guard or "rushed the castle" give it a huge favor
+        // Include the depth to reward early wins and penalize early losses
         if (state.redGuard == 0 || blueWinsByCastle) return -10000 - depth;
         if (state.blueGuard == 0 || redWinsByCastle) return 10000 + depth;
-
 
         boolean redGuardInDanger = isGuardInDanger(state, true);
         boolean blueGuardInDanger = isGuardInDanger(state, false);
 
-        if(state.redToMove){
-            if(redGuardInDanger && blueGuardInDanger) return 10000 + depth;
-            if(redGuardInDanger && !blueGuardInDanger) return -10000 - depth;
-        }else{
-            if(blueGuardInDanger && redGuardInDanger) return -10000 - depth;
-            if(blueGuardInDanger && !redGuardInDanger) return 10000 + depth;
+        // KORRIGIERT: Evaluation Bug Fix
+        if (state.redToMove) {
+            // Red ist am Zug
+            if (redGuardInDanger && blueGuardInDanger) return 10000 + depth; // Red kann Blue's Guard nehmen
+            if (redGuardInDanger && !blueGuardInDanger) return -10000 - depth; // Red verliert Guard
+        } else {
+            // Blue ist am Zug - HIER WAR DER FEHLER
+            if (blueGuardInDanger && redGuardInDanger) return -10000 - depth; // Blue verliert Guard
+            if (blueGuardInDanger && !redGuardInDanger) return 10000 + depth; // Blue kann Red's Guard nehmen
         }
 
         // === VERBESSERTE WÄCHTER-BEWERTUNG ===
@@ -149,11 +271,11 @@ public class Minimax {
 
             redScore += rankBonus + fileBonus;
 
-            // NEU: Bonus für unterstützende Türme
+            // Bonus für unterstützende Türme
             int support = countSupportingTowers(guardIndex, true, state);
             redScore += support * 100;
 
-            // NEU: Penalty wenn Wächter blockiert ist
+            // Penalty wenn Wächter blockiert ist
             if (isGuardBlocked(guardIndex, true, state)) {
                 redScore -= 200;
             }
@@ -173,7 +295,7 @@ public class Minimax {
 
             blueScore += rankBonus + fileBonus;
 
-            // NEU: Support und Blockade-Check
+            // Support und Blockade-Check
             int support = countSupportingTowers(guardIndex, false, state);
             blueScore += support * 100;
 
@@ -183,7 +305,7 @@ public class Minimax {
         }
 
         // === VERBESSERTE ZENTRALE KONTROLLE ===
-        for (int index : centralSquares){
+        for (int index : centralSquares) {
             long bit = GameState.bit(index);
 
             // Türme im Zentrum mit Höhenbonus
@@ -194,8 +316,8 @@ public class Minimax {
                 blueScore += 300 + (state.blueStackHeights[index] * 50);
             }
 
-            if((state.redGuard & bit) != 0) redScore += 200;
-            if(((state.blueGuard & bit) != 0)) blueScore += 200;
+            if ((state.redGuard & bit) != 0) redScore += 200;
+            if ((state.blueGuard & bit) != 0) blueScore += 200;
         }
 
         // === VERBESSERTE MATERIAL-BEWERTUNG ===
@@ -204,16 +326,16 @@ public class Minimax {
                 int height = state.redStackHeights[i];
                 redScore += height * 100; // Basis-Materialwert
 
-                // NEU: Mobilitätsbonus
+                // Mobilitätsbonus
                 int mobility = calculateActualMobility(i, height, state);
                 redScore += mobility * 20;
 
-                // NEU: Penalty für große immobile Stapel
+                // Penalty für große immobile Stapel
                 if (height >= 4 && mobility == 0) {
                     redScore -= 150;
                 }
 
-                // NEU: Bonus für Stapel nahe gegnerischem Wächter
+                // Bonus für Stapel nahe gegnerischem Wächter
                 if (state.blueGuard != 0) {
                     int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
                     int distance = manhattanDistance(i, blueGuardPos);
@@ -268,7 +390,7 @@ public class Minimax {
      */
     private static boolean isGuardInDanger(GameState state, boolean checkRed) {
         GameState copy = state.copy();
-        copy.redToMove = !checkRed;     //Invert to make the enemy move next
+        copy.redToMove = !checkRed;     // Invert to make the enemy move next
         long targetGuard = checkRed ? state.redGuard : state.blueGuard;
 
         for (Move m : MoveGenerator.generateAllMoves(copy)) {
@@ -277,7 +399,7 @@ public class Minimax {
         return false;
     }
 
-    // === NEUE HILFSMETHODEN ===
+    // === HILFSMETHODEN ===
 
     private static int countSupportingTowers(int guardPos, boolean isRed, GameState state) {
         long ownTowers = isRed ? state.redTowers : state.blueTowers;
@@ -405,6 +527,9 @@ public class Minimax {
     }
 
     public static int scoreMove(GameState state, Move move) {
+        if (state == null) {
+            return move.amountMoved; // Einfache Bewertung ohne Kontext
+        }
         int to = move.to;
         long toBit = GameState.bit(to);
         boolean isRed = state.redToMove;
@@ -427,7 +552,6 @@ public class Minimax {
 
         boolean entersCastle = (isRed && move.to == BLUE_CASTLE_INDEX) ||
                 (!isRed && move.to == RED_CASTLE_INDEX);
-
 
         int score = 0;
         if (entersCastle && isGuardMove) score += 10000;
@@ -465,5 +589,178 @@ public class Minimax {
         return false;
     }
 
+    // === PHASE 2: KILLER MOVES & PRINCIPAL VARIATION METHODS ===
 
+    /**
+     * Speichere Killer Move
+     */
+    private static void storeKillerMove(Move move, int depth) {
+        if (depth >= killerMoves.length) return;
+
+        // Prüfe ob bereits Primary Killer
+        if (move.equals(killerMoves[depth][0])) return;
+
+        // Schiebe Primary zu Secondary, neuer Move wird Primary
+        killerMoves[depth][1] = killerMoves[depth][0];
+        killerMoves[depth][0] = move;
+    }
+
+    /**
+     * Prüfe ob Move ein Capture ist
+     */
+    private static boolean isCapture(Move move, GameState state) {
+        if (state == null) return false;
+
+        long toBit = GameState.bit(move.to);
+        boolean isRed = state.redToMove;
+
+        // Capture Guard oder Tower
+        boolean capturesGuard = isRed
+                ? (state.blueGuard & toBit) != 0
+                : (state.redGuard & toBit) != 0;
+
+        boolean capturesTower = isRed
+                ? (state.blueTowers & toBit) != 0
+                : (state.redTowers & toBit) != 0;
+
+        return capturesGuard || capturesTower;
+    }
+
+    /**
+     * Speichere Principal Variation
+     */
+    private static void storePVMove(Move move, int depth) {
+        if (depth < pvLine.length) {
+            pvLine[depth] = move;
+        }
+    }
+
+    /**
+     * Reset Killer Moves periodisch für Frische
+     */
+    public static void resetKillerMoves() {
+        killerAge++;
+        if (killerAge > 1000) { // Reset alle 1000 Aufrufe
+            killerMoves = new Move[20][2];
+            killerAge = 0;
+        }
+    }
+
+    // === ÖFFENTLICHE SCHNITTSTELLEN ===
+
+    /**
+     * Öffentliche Schnittstelle für TimedMinimax um auf TT zuzugreifen
+     */
+    public static TTEntry getTranspositionEntry(long hash) {
+        return transpositionTable.get(hash);
+    }
+
+    /**
+     * Minimax mit Timeout-Check für TimedMinimax
+     */
+    public static int minimaxWithTimeout(GameState state, int depth, int alpha, int beta,
+                                         boolean maximizingPlayer, java.util.function.BooleanSupplier timeoutCheck) {
+        if (timeoutCheck.getAsBoolean()) {
+            throw new RuntimeException("Timeout"); // Wird von TimedMinimax gefangen
+        }
+
+        // Rest wie normale minimax, aber mit Timeout-Checks
+        long hash = state.hash();
+        TTEntry entry = transpositionTable.get(hash);
+        if (entry != null && entry.depth >= depth) {
+            if (entry.flag == TTEntry.EXACT) {
+                return entry.score;
+            } else if (entry.flag == TTEntry.LOWER_BOUND && entry.score >= beta) {
+                return entry.score;
+            } else if (entry.flag == TTEntry.UPPER_BOUND && entry.score <= alpha) {
+                return entry.score;
+            }
+        }
+
+        if (depth == 0 || isGameOver(state)) {
+            return evaluate(state, depth);
+        }
+
+        List<Move> moves = MoveGenerator.generateAllMoves(state);
+        orderMovesAdvanced(moves, state, depth, entry);
+
+        Move bestMove = null;
+        int originalAlpha = alpha;
+
+        if (maximizingPlayer) {
+            int maxEval = Integer.MIN_VALUE;
+            for (Move move : moves) {
+                if (timeoutCheck.getAsBoolean()) throw new RuntimeException("Timeout");
+
+                GameState copy = state.copy();
+                copy.applyMove(move);
+                counter++;
+                int eval = minimaxWithTimeout(copy, depth - 1, alpha, beta, false, timeoutCheck);
+
+                if (eval > maxEval) {
+                    maxEval = eval;
+                    bestMove = move;
+                    storePVMove(move, depth);
+                }
+
+                alpha = Math.max(alpha, eval);
+                if (beta <= alpha) {
+                    if (!isCapture(move, state)) {
+                        storeKillerMove(move, depth);
+                    }
+                    break;
+                }
+            }
+
+            // Konsistente TT Flag Logik
+            int flag;
+            if (maxEval <= originalAlpha) {
+                flag = TTEntry.UPPER_BOUND;
+            } else if (maxEval >= beta) {
+                flag = TTEntry.LOWER_BOUND;
+            } else {
+                flag = TTEntry.EXACT;
+            }
+            transpositionTable.put(hash, new TTEntry(maxEval, depth, flag, bestMove));
+
+            return maxEval;
+        } else {
+            int minEval = Integer.MAX_VALUE;
+            for (Move move : moves) {
+                if (timeoutCheck.getAsBoolean()) throw new RuntimeException("Timeout");
+
+                GameState copy = state.copy();
+                copy.applyMove(move);
+                counter++;
+                int eval = minimaxWithTimeout(copy, depth - 1, alpha, beta, true, timeoutCheck);
+
+                if (eval < minEval) {
+                    minEval = eval;
+                    bestMove = move;
+                    storePVMove(move, depth);
+                }
+
+                beta = Math.min(beta, eval);
+                if (beta <= alpha) {
+                    if (!isCapture(move, state)) {
+                        storeKillerMove(move, depth);
+                    }
+                    break;
+                }
+            }
+
+            // Konsistente TT Flag Logik für minimizing player
+            int flag;
+            if (minEval <= originalAlpha) {
+                flag = TTEntry.UPPER_BOUND;
+            } else if (minEval >= beta) {
+                flag = TTEntry.LOWER_BOUND;
+            } else {
+                flag = TTEntry.EXACT;
+            }
+            transpositionTable.put(hash, new TTEntry(minEval, depth, flag, bestMove));
+
+            return minEval;
+        }
+    }
 }
