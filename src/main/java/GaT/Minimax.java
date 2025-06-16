@@ -763,4 +763,147 @@ public class Minimax {
             return minEval;
         }
     }
+
+
+
+
+    // Add these methods to your existing Minimax.java class
+
+    /**
+     * Enhanced findBestMove that uses QuiescenceSearch
+     * Add this as a new method to your Minimax class
+     */
+    public static Move findBestMoveWithQuiescence(GameState state, int depth) {
+        System.out.println("=== Starting search with Quiescence (Depth " + depth + ") ===");
+
+        // Reset statistics
+        counter = 0;
+        QuiescenceSearch.resetQuiescenceStats();
+
+        List<Move> moves = MoveGenerator.generateAllMoves(state);
+        orderMovesAdvanced(moves, state, depth, getTranspositionEntry(state.hash()));
+
+        Move bestMove = null;
+        boolean isRed = state.redToMove;
+        int bestScore = isRed ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+
+        for (Move move : moves) {
+            GameState copy = state.copy();
+            copy.applyMove(move);
+
+            // Use the enhanced minimax with quiescence
+            int score = minimaxWithQuiescence(copy, depth - 1, Integer.MIN_VALUE,
+                    Integer.MAX_VALUE, !isRed);
+
+            System.out.println(move + " -> Score: " + score);
+
+            if ((isRed && score > bestScore) || (!isRed && score < bestScore) || bestMove == null) {
+                bestScore = score;
+                bestMove = move;
+            }
+        }
+
+        System.out.println("Regular nodes: " + counter);
+        QuiescenceSearch.printQuiescenceStats();
+        System.out.println("Best move: " + bestMove + " (Score: " + bestScore + ")");
+
+        return bestMove;
+    }
+
+    /**
+     * Enhanced minimax that integrates with your QuiescenceSearch
+     * This replaces the depth == 0 case with quiescence search
+     */
+    private static int minimaxWithQuiescence(GameState state, int depth, int alpha, int beta,
+                                             boolean maximizingPlayer) {
+        // Check transposition table first
+        long hash = state.hash();
+        TTEntry entry = getTranspositionEntry(hash);
+        if (entry != null && entry.depth >= depth) {
+            if (entry.flag == TTEntry.EXACT) {
+                return entry.score;
+            } else if (entry.flag == TTEntry.LOWER_BOUND && entry.score >= beta) {
+                return entry.score;
+            } else if (entry.flag == TTEntry.UPPER_BOUND && entry.score <= alpha) {
+                return entry.score;
+            }
+        }
+
+        // Terminal conditions
+        if (isGameOver(state)) {
+            return evaluate(state, depth);
+        }
+
+        // NEW: Use quiescence search when depth <= 0
+        if (depth <= 0) {
+            return QuiescenceSearch.quiesce(state, alpha, beta, maximizingPlayer, 0);
+        }
+
+        // Regular alpha-beta search
+        List<Move> moves = MoveGenerator.generateAllMoves(state);
+        orderMovesAdvanced(moves, state, depth, entry);
+
+        Move bestMove = null;
+        int originalAlpha = alpha;
+
+        if (maximizingPlayer) {
+            int maxEval = Integer.MIN_VALUE;
+            for (Move move : moves) {
+                GameState copy = state.copy();
+                copy.applyMove(move);
+                counter++;
+
+                int eval = minimaxWithQuiescence(copy, depth - 1, alpha, beta, false);
+
+                if (eval > maxEval) {
+                    maxEval = eval;
+                    bestMove = move;
+                    storePVMove(move, depth);
+                }
+
+                alpha = Math.max(alpha, eval);
+                if (beta <= alpha) {
+                    if (!isCapture(move, state)) {
+                        storeKillerMove(move, depth);
+                    }
+                    break;
+                }
+            }
+
+            int flag = maxEval <= originalAlpha ? TTEntry.UPPER_BOUND :
+                    maxEval >= beta ? TTEntry.LOWER_BOUND : TTEntry.EXACT;
+            transpositionTable.put(hash, new TTEntry(maxEval, depth, flag, bestMove));
+
+            return maxEval;
+        } else {
+            int minEval = Integer.MAX_VALUE;
+            for (Move move : moves) {
+                GameState copy = state.copy();
+                copy.applyMove(move);
+                counter++;
+
+                int eval = minimaxWithQuiescence(copy, depth - 1, alpha, beta, true);
+
+                if (eval < minEval) {
+                    minEval = eval;
+                    bestMove = move;
+                    storePVMove(move, depth);
+                }
+
+                beta = Math.min(beta, eval);
+                if (beta <= alpha) {
+                    if (!isCapture(move, state)) {
+                        storeKillerMove(move, depth);
+                    }
+                    break;
+                }
+            }
+
+            int flag = minEval <= originalAlpha ? TTEntry.UPPER_BOUND :
+                    minEval >= beta ? TTEntry.LOWER_BOUND : TTEntry.EXACT;
+            transpositionTable.put(hash, new TTEntry(minEval, depth, flag, bestMove));
+
+            return minEval;
+        }
+    }
 }

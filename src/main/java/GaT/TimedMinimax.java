@@ -10,11 +10,13 @@ public class TimedMinimax {
     private static long timeLimitMillis;
     private static long startTime;
 
+    /**
+     * Original method - uses regular minimax
+     */
     public static Move findBestMoveWithTime(GameState state, int maxDepth, long timeMillis) {
         TimedMinimax.timeLimitMillis = timeMillis;
         TimedMinimax.startTime = System.currentTimeMillis();
 
-        // NEU: Reset Killer Moves gelegentlich für Frische
         Minimax.resetKillerMoves();
 
         Move bestMove = null;
@@ -31,7 +33,6 @@ public class TimedMinimax {
             long depthStartTime = System.currentTimeMillis();
 
             try {
-                // Verwende die verbesserte Minimax-Suche
                 Move candidate = searchDepthWithBetterTT(state, depth);
 
                 if (candidate != null) {
@@ -41,7 +42,6 @@ public class TimedMinimax {
                     long depthTime = System.currentTimeMillis() - depthStartTime;
                     System.out.println("✓ Depth " + depth + " completed in " + depthTime + "ms. Best: " + candidate);
 
-                    // Prüfe ob wir eine Winning-Position gefunden haben
                     GameState testState = state.copy();
                     testState.applyMove(candidate);
                     if (Minimax.isGameOver(testState)) {
@@ -55,7 +55,6 @@ public class TimedMinimax {
                 break;
             }
 
-            // Adaptive time management: Wenn wir weniger als 20% Zeit haben, stoppe
             long elapsed = System.currentTimeMillis() - startTime;
             long remaining = timeMillis - elapsed;
             if (remaining < timeMillis * 0.2) {
@@ -69,7 +68,75 @@ public class TimedMinimax {
     }
 
     /**
-     * Einzelne Tiefe mit verbesserter TT Integration - verwendet Minimax.minimaxWithTimeout()
+     * NEW: Enhanced method with quiescence search
+     */
+    public static Move findBestMoveWithTimeAndQuiescence(GameState state, int maxDepth, long timeMillis) {
+        TimedMinimax.timeLimitMillis = timeMillis;
+        TimedMinimax.startTime = System.currentTimeMillis();
+
+        Minimax.resetKillerMoves();
+        QuiescenceSearch.resetQuiescenceStats();
+
+        Move bestMove = null;
+        Move lastCompleteMove = null;
+
+        System.out.println("=== Starting Iterative Deepening with Quiescence ===");
+
+        for (int depth = 1; depth <= maxDepth; depth++) {
+            if (timedOut()) {
+                System.out.println("⏱ Time limit reached before depth " + depth);
+                break;
+            }
+
+            long depthStartTime = System.currentTimeMillis();
+
+            try {
+                // Use quiescence search
+                Move candidate = searchDepthWithQuiescence(state, depth);
+
+                if (candidate != null) {
+                    lastCompleteMove = candidate;
+                    bestMove = candidate;
+
+                    long depthTime = System.currentTimeMillis() - depthStartTime;
+                    System.out.println("✓ Depth " + depth + " completed in " + depthTime + "ms. Best: " + candidate);
+
+                    GameState testState = state.copy();
+                    testState.applyMove(candidate);
+                    if (Minimax.isGameOver(testState)) {
+                        System.out.println("🎯 Winning move found at depth " + depth);
+                        break;
+                    }
+                }
+
+            } catch (TimeoutException e) {
+                System.out.println("⏱ Timeout at depth " + depth);
+                break;
+            }
+
+            long elapsed = System.currentTimeMillis() - startTime;
+            long remaining = timeMillis - elapsed;
+            if (remaining < timeMillis * 0.2) {
+                System.out.println("⚡ Stopping early to save time. Remaining: " + remaining + "ms");
+                break;
+            }
+        }
+
+        // Print quiescence statistics
+        if (QuiescenceSearch.qNodes > 0) {
+            System.out.println("Q-nodes used: " + QuiescenceSearch.qNodes);
+            if (QuiescenceSearch.qNodes > 0) {
+                double standPatRate = (100.0 * QuiescenceSearch.standPatCutoffs) / QuiescenceSearch.qNodes;
+                System.out.println("Stand-pat rate: " + String.format("%.1f%%", standPatRate));
+            }
+        }
+
+        System.out.println("=== Search with Quiescence completed. Best move: " + bestMove + " ===");
+        return bestMove != null ? bestMove : lastCompleteMove;
+    }
+
+    /**
+     * Original search method - uses regular minimax
      */
     private static Move searchDepthWithBetterTT(GameState state, int depth) throws TimeoutException {
         List<Move> moves = MoveGenerator.generateAllMoves(state);
@@ -77,7 +144,6 @@ public class TimedMinimax {
         long hash = state.hash();
         TTEntry entry = Minimax.getTranspositionEntry(hash);
 
-        // NEU: Verwende erweiterte Move Ordering mit Killer Moves
         orderMovesWithAdvancedHeuristics(moves, state, depth, entry);
 
         Move bestMove = null;
@@ -102,7 +168,7 @@ public class TimedMinimax {
                 if (e.getMessage().equals("Timeout")) {
                     throw new TimeoutException();
                 }
-                throw e; // Re-throw andere Exceptions
+                throw e;
             }
         }
 
@@ -110,47 +176,156 @@ public class TimedMinimax {
     }
 
     /**
-     * NEU: Erweiterte Move ordering - delegiert an Minimax für konsistente Logik
+     * NEW: Search method with quiescence
      */
-    private static void orderMovesWithAdvancedHeuristics(List<Move> moves, GameState state, int depth, TTEntry entry) {
-        // Verwende die bereits implementierte Methode aus Minimax für konsistente Ordering
-        Minimax.orderMovesAdvanced(moves, state, depth, entry);
-    }
+    private static Move searchDepthWithQuiescence(GameState state, int depth) throws TimeoutException {
+        List<Move> moves = MoveGenerator.generateAllMoves(state);
 
-    /**
-     * Fallback: Einfache TT-basierte Move ordering (für Kompatibilität)
-     */
-    private static void orderMovesWithTT(List<Move> moves, TTEntry entry) {
-        // TT Move an erste Stelle setzen
-        if (entry != null && entry.bestMove != null) {
-            for (int i = 0; i < moves.size(); i++) {
-                if (moves.get(i).equals(entry.bestMove)) {
-                    Move ttMove = moves.remove(i);
-                    moves.add(0, ttMove);
-                    break;
+        long hash = state.hash();
+        TTEntry entry = Minimax.getTranspositionEntry(hash);
+
+        orderMovesWithAdvancedHeuristics(moves, state, depth, entry);
+
+        Move bestMove = null;
+        boolean isRed = state.redToMove;
+        int bestScore = isRed ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+
+        for (Move move : moves) {
+            if (timedOut()) throw new TimeoutException();
+
+            GameState copy = state.copy();
+            copy.applyMove(move);
+
+            try {
+                // Use minimax with quiescence instead of regular minimax
+                int score = minimaxWithQuiescenceAndTimeout(copy, depth - 1, Integer.MIN_VALUE,
+                        Integer.MAX_VALUE, !isRed);
+
+                if ((isRed && score > bestScore) || (!isRed && score < bestScore) || bestMove == null) {
+                    bestScore = score;
+                    bestMove = move;
                 }
+            } catch (RuntimeException e) {
+                if (e.getMessage().equals("Timeout")) {
+                    throw new TimeoutException();
+                }
+                throw e;
             }
         }
 
-        // Rest sortieren mit erweiterten Heuristiken falls verfügbar
-        if (moves.size() > 1) {
-            int startIndex = (entry != null && entry.bestMove != null) ? 1 : 0;
-            List<Move> restMoves = moves.subList(startIndex, moves.size());
+        return bestMove;
+    }
 
-            restMoves.sort((a, b) -> {
-                // Versuche erweiterte Bewertung, falls nicht verfügbar verwende einfache
-                try {
-                    int scoreA = Minimax.scoreMoveAdvanced(null, a, 0);
-                    int scoreB = Minimax.scoreMoveAdvanced(null, b, 0);
-                    return Integer.compare(scoreB, scoreA);
-                } catch (Exception e) {
-                    // Fallback zu einfacher Bewertung
-                    int scoreA = Minimax.scoreMove(null, a);
-                    int scoreB = Minimax.scoreMove(null, b);
-                    return Integer.compare(scoreB, scoreA);
-                }
-            });
+    /**
+     * NEW: Minimax with quiescence and timeout support
+     */
+    private static int minimaxWithQuiescenceAndTimeout(GameState state, int depth, int alpha, int beta,
+                                                       boolean maximizingPlayer) {
+        if (timedOut()) {
+            throw new RuntimeException("Timeout");
         }
+
+        // Check transposition table first
+        long hash = state.hash();
+        TTEntry entry = Minimax.getTranspositionEntry(hash);
+        if (entry != null && entry.depth >= depth) {
+            if (entry.flag == TTEntry.EXACT) {
+                return entry.score;
+            } else if (entry.flag == TTEntry.LOWER_BOUND && entry.score >= beta) {
+                return entry.score;
+            } else if (entry.flag == TTEntry.UPPER_BOUND && entry.score <= alpha) {
+                return entry.score;
+            }
+        }
+
+        // Terminal conditions
+        if (Minimax.isGameOver(state)) {
+            return Minimax.evaluate(state, depth);
+        }
+
+        // Use quiescence search when depth <= 0
+        if (depth <= 0) {
+            return QuiescenceSearch.quiesce(state, alpha, beta, maximizingPlayer, 0);
+        }
+
+        // Regular alpha-beta search
+        List<Move> moves = MoveGenerator.generateAllMoves(state);
+        Minimax.orderMovesAdvanced(moves, state, depth, entry);
+
+        Move bestMove = null;
+        int originalAlpha = alpha;
+
+        if (maximizingPlayer) {
+            int maxEval = Integer.MIN_VALUE;
+            for (Move move : moves) {
+                if (timedOut()) throw new RuntimeException("Timeout");
+
+                GameState copy = state.copy();
+                copy.applyMove(move);
+
+                int eval = minimaxWithQuiescenceAndTimeout(copy, depth - 1, alpha, beta, false);
+
+                if (eval > maxEval) {
+                    maxEval = eval;
+                    bestMove = move;
+                }
+
+                alpha = Math.max(alpha, eval);
+                if (beta <= alpha) {
+                    break;
+                }
+            }
+
+            // Store in transposition table
+            int flag = maxEval <= originalAlpha ? TTEntry.UPPER_BOUND :
+                    maxEval >= beta ? TTEntry.LOWER_BOUND : TTEntry.EXACT;
+            storeInTranspositionTable(hash, maxEval, depth, flag, bestMove);
+
+            return maxEval;
+        } else {
+            int minEval = Integer.MAX_VALUE;
+            for (Move move : moves) {
+                if (timedOut()) throw new RuntimeException("Timeout");
+
+                GameState copy = state.copy();
+                copy.applyMove(move);
+
+                int eval = minimaxWithQuiescenceAndTimeout(copy, depth - 1, alpha, beta, true);
+
+                if (eval < minEval) {
+                    minEval = eval;
+                    bestMove = move;
+                }
+
+                beta = Math.min(beta, eval);
+                if (beta <= alpha) {
+                    break;
+                }
+            }
+
+            // Store in transposition table
+            int flag = minEval <= originalAlpha ? TTEntry.UPPER_BOUND :
+                    minEval >= beta ? TTEntry.LOWER_BOUND : TTEntry.EXACT;
+            storeInTranspositionTable(hash, minEval, depth, flag, bestMove);
+
+            return minEval;
+        }
+    }
+
+    /**
+     * Helper method to store in transposition table
+     */
+    private static void storeInTranspositionTable(long hash, int score, int depth, int flag, Move bestMove) {
+        // This would need to access Minimax's transposition table
+        // For now, we'll skip storing to avoid complex access issues
+        // The search will still work, just without some TT benefits in the quiescence version
+    }
+
+    /**
+     * Move ordering with advanced heuristics
+     */
+    private static void orderMovesWithAdvancedHeuristics(List<Move> moves, GameState state, int depth, TTEntry entry) {
+        Minimax.orderMovesAdvanced(moves, state, depth, entry);
     }
 
     private static boolean timedOut() {
