@@ -9,7 +9,7 @@ import java.awt.*;
 import java.awt.event.*;
 
 public class BoardPanel extends JPanel {
-    private final GameState state;
+    private GameState state; // Remove final to allow updates
     private final int squareSize = 80;
     private final int labelSize = 30;  // Space for drawing labels
     private final MoveConsumer moveConsumer;
@@ -29,22 +29,67 @@ public class BoardPanel extends JPanel {
                 if (file >= 0 && file < 7 && rank >= 0 && rank < 7) {
                     int index = GameState.getIndex(rank, file);
 
+                    System.out.println("Selected square: " + index + " (rank=" + rank + ", file=" + file + ")");
+
                     if (selectedIndex == -1) {
                         selectedIndex = index;
+                        System.out.println("Selected from square: " + selectedIndex);
+                        repaint(); // Show selection
                     } else {
-                        // Try move
-                        for (Move move : MoveGenerator.generateAllMoves(state)) {
+                        System.out.println("Trying move from " + selectedIndex + " to " + index);
+
+                        // Generate all legal moves and check if this move exists
+                        java.util.List<Move> legalMoves = MoveGenerator.generateAllMoves(BoardPanel.this.state);
+                        Move foundMove = null;
+
+                        for (Move move : legalMoves) {
                             if (move.from == selectedIndex && move.to == index) {
-                                moveConsumer.onMove(move);
+                                foundMove = move;
                                 break;
                             }
                         }
+
+                        if (foundMove != null) {
+                            System.out.println("Legal move found: " + foundMove);
+                            moveConsumer.onMove(foundMove);
+                        } else {
+                            System.out.println("No legal move found from " + selectedIndex + " to " + index);
+                            System.out.println("Current turn: " + (BoardPanel.this.state.redToMove ? "Red" : "Blue"));
+
+                            // Debug: Check what's at the from square
+                            long fromBit = GameState.bit(selectedIndex);
+                            boolean hasRedPiece = (BoardPanel.this.state.redGuard & fromBit) != 0 || (BoardPanel.this.state.redTowers & fromBit) != 0;
+                            boolean hasBluePiece = (BoardPanel.this.state.blueGuard & fromBit) != 0 || (BoardPanel.this.state.blueTowers & fromBit) != 0;
+                            System.out.println("From square " + selectedIndex + ": Red=" + hasRedPiece + ", Blue=" + hasBluePiece);
+
+                            // Debug: Show available moves from this square
+                            System.out.print("Available moves from " + selectedIndex + ": ");
+                            boolean foundAny = false;
+                            for (Move move : legalMoves) {
+                                if (move.from == selectedIndex) {
+                                    System.out.print(move + " ");
+                                    foundAny = true;
+                                }
+                            }
+                            if (!foundAny) {
+                                System.out.print("NONE");
+                            }
+                            System.out.println();
+                        }
+
                         selectedIndex = -1;
+                        repaint(); // Clear selection
                     }
-                    repaint();
                 }
             }
         });
+    }
+
+    // ADD THIS METHOD - This is what's missing!
+    public void updateState(GameState newState) {
+        this.state = newState;
+        this.selectedIndex = -1; // Clear selection when state updates
+        System.out.println("BoardPanel state updated - Red to move: " + state.redToMove);
     }
 
     public void paintComponent(Graphics g) {
