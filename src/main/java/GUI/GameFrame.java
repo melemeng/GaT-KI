@@ -31,7 +31,7 @@ public class GameFrame extends JFrame {
     private JLabel statusLabel;
 
     public GameFrame() {
-        super("Guard & Towers - Thread Safe Edition");
+        super("Guard & Towers - With Quiescence Search");
 
         // Initialize thread pool for AI
         aiExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -72,7 +72,7 @@ public class GameFrame extends JFrame {
         add(controlPanel, BorderLayout.SOUTH);
 
         // Create status bar
-        statusLabel = new JLabel("Ready - Your move (Red)");
+        statusLabel = new JLabel("Ready - Your move (Red) - AI uses Quiescence Search");
         statusLabel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
         add(statusLabel, BorderLayout.NORTH);
 
@@ -89,7 +89,7 @@ public class GameFrame extends JFrame {
         JPanel panel = new JPanel(new FlowLayout());
 
         // AI vs AI button
-        aiVsAiButton = new JButton("AI vs AI");
+        aiVsAiButton = new JButton("AI vs AI (Quiescence)");
         aiVsAiButton.addActionListener(e -> {
             if (!aiThinking) {
                 runAiMatch();
@@ -168,7 +168,7 @@ public class GameFrame extends JFrame {
                 if (state.redToMove) {
                     updateStatus("Your move (Red)");
                 } else {
-                    updateStatus("Your move (Blue) - or AI will think if enabled");
+                    updateStatus("AI thinking with Quiescence Search...");
                     // Only start AI if it's Blue's turn (assuming human plays Red)
                     // You can modify this logic based on your game setup
                     startAIThinking();
@@ -191,7 +191,7 @@ public class GameFrame extends JFrame {
 
         aiThinking = true;
         updateButtonStates();
-        updateStatus("AI is thinking...");
+        updateStatus("AI is thinking with Quiescence Search...");
 
         // Create immutable snapshot for AI thread
         final GameState aiState = getStateCopy();
@@ -201,7 +201,8 @@ public class GameFrame extends JFrame {
         currentAITask = aiExecutor.submit(() -> {
             try {
                 long startTime = System.currentTimeMillis();
-                Move aiMove = TimedMinimax.findBestMoveWithTime(aiState, 99, 2000);
+                // CHANGED: Use quiescence search instead of regular minimax
+                Move aiMove = TimedMinimax.findBestMoveWithTimeAndQuiescence(aiState, 99, 2000);
                 long thinkTime = System.currentTimeMillis() - startTime;
 
                 // Apply AI move on EDT
@@ -296,7 +297,7 @@ public class GameFrame extends JFrame {
 
         aiThinking = true;
         updateButtonStates();
-        updateStatus("AI vs AI in progress...");
+        updateStatus("AI vs AI with Quiescence Search in progress...");
 
         currentAITask = aiExecutor.submit(() -> {
             try {
@@ -311,7 +312,8 @@ public class GameFrame extends JFrame {
                     if (Minimax.isGameOver(currentState)) break;
 
                     long startTime = System.currentTimeMillis();
-                    Move move = TimedMinimax.findBestMoveWithTime(currentState, 99, 1000);
+                    // CHANGED: Use quiescence search instead of regular minimax
+                    Move move = TimedMinimax.findBestMoveWithTimeAndQuiescence(currentState, 99, 1000);
                     long moveTime = System.currentTimeMillis() - startTime;
 
                     // Apply move
@@ -326,7 +328,7 @@ public class GameFrame extends JFrame {
                     final int currentMoveCount = moveCount[0];
                     SwingUtilities.invokeLater(() -> {
                         updateUI();
-                        updateStatus("AI vs AI - " + player + " played: " + move + " (" + moveTime + "ms) [Move " + currentMoveCount + "]");
+                        updateStatus("AI vs AI (Q) - " + player + " played: " + move + " (" + moveTime + "ms) [Move " + currentMoveCount + "]");
                     });
 
                     System.out.println("AI " + player + ": " + move + " (" + moveTime + "ms) [Move " + moveCount[0] + "]");
@@ -383,7 +385,8 @@ public class GameFrame extends JFrame {
                             "Position Evaluation: %+d\n\n" +
                                     "Positive = Good for Red\n" +
                                     "Negative = Good for Blue\n\n" +
-                                    "Current turn: %s",
+                                    "Current turn: %s\n" +
+                                    "AI uses Quiescence Search for better tactical analysis",
                             eval,
                             currentState.redToMove ? "Red" : "Blue"
                     );
