@@ -9,8 +9,8 @@ public class Main {
 
 
     public static void main(String[] args) {
-//        GameState state = GameState.fromFen("7/7/7/BG6/3b33/3RG3/7 r");
-        GameState state = new GameState();
+        GameState state = GameState.fromFen("3RG3/7/7/1b25/7/6r3/5BG1 r");
+//        GameState state = new GameState();
 
 //        state.printBoard();
 //        GameState copy = state.copy();
