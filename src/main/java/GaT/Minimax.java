@@ -1315,6 +1315,290 @@ public class Minimax {
     }
 
 
+    // === ENDGAME KNOWLEDGE ===
+// Add these methods to your Minimax.java class
+
+    /**
+     * Determine if we're in endgame phase
+     */
+    private static boolean isEndgame(GameState state) {
+        int totalTowers = Long.bitCount(state.redTowers | state.blueTowers);
+
+        // Endgame conditions:
+        // 1. Very few towers left
+        if (totalTowers <= 4) return true;
+
+        // 2. Guards are very advanced (near enemy castles)
+        if (areGuardsVeryAdvanced(state)) return true;
+
+        // 3. Material is very imbalanced (one side is winning)
+        int materialDiff = getMaterialBalance(state);
+        if (Math.abs(materialDiff) > 600) return true; // Large material advantage
+
+        return false;
+    }
+
+    /**
+     * Check if guards have advanced far into enemy territory
+     */
+    private static boolean areGuardsVeryAdvanced(GameState state) {
+        // Red guard very close to blue castle (rank 0-2)
+        if (state.redGuard != 0) {
+            int redRank = GameState.rank(Long.numberOfTrailingZeros(state.redGuard));
+            if (redRank <= 2) return true;
+        }
+
+        // Blue guard very close to red castle (rank 4-6)
+        if (state.blueGuard != 0) {
+            int blueRank = GameState.rank(Long.numberOfTrailingZeros(state.blueGuard));
+            if (blueRank >= 4) return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Get material balance from current perspective
+     */
+    private static int getMaterialBalance(GameState state) {
+        int redMaterial = 0;
+        int blueMaterial = 0;
+
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            redMaterial += state.redStackHeights[i] * 130; // Use same weight as evaluation
+            blueMaterial += state.blueStackHeights[i] * 130;
+        }
+
+        return redMaterial - blueMaterial;
+    }
+
+    /**
+     * Comprehensive endgame evaluation
+     */
+    private static int evaluateEndgame(GameState state) {
+        int endgameScore = 0;
+
+        // 1. GUARD ACTIVITY (most important in endgame)
+        endgameScore += evaluateGuardActivity(state);
+
+        // 2. OPPOSITION (guards facing each other)
+        endgameScore += evaluateOpposition(state);
+
+        // 3. GUARD RACE (who reaches enemy castle first)
+        endgameScore += evaluateGuardRace(state);
+
+        // 4. PIECE COORDINATION
+        endgameScore += evaluatePieceCoordination(state);
+
+        // 5. KING SAFETY (keep guard away from enemy pieces)
+        endgameScore += evaluateGuardSafetyInEndgame(state);
+
+        return endgameScore;
+    }
+
+    /**
+     * Evaluate guard activity and centralization in endgame
+     */
+    private static int evaluateGuardActivity(GameState state) {
+        int activityScore = 0;
+
+        // Red guard activity
+        if (state.redGuard != 0) {
+            int guardPos = Long.numberOfTrailingZeros(state.redGuard);
+            int rank = GameState.rank(guardPos);
+            int file = GameState.file(guardPos);
+
+            // Bonus for active guard positions in endgame
+            // Guards should be centralized and advanced
+            int centralityBonus = (3 - Math.abs(file - 3)) * 50; // Closer to center = better
+            int advancementBonus = (6 - rank) * 100; // Closer to enemy castle = better
+
+            activityScore += centralityBonus + advancementBonus;
+
+            // Bonus for guard having good mobility in endgame
+            int guardMobility = countGuardEscapeSquares(state, true);
+            activityScore += guardMobility * 30;
+        }
+
+        // Blue guard activity (negative from red's perspective)
+        if (state.blueGuard != 0) {
+            int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
+            int rank = GameState.rank(guardPos);
+            int file = GameState.file(guardPos);
+
+            int centralityBonus = (3 - Math.abs(file - 3)) * 50;
+            int advancementBonus = rank * 100; // Higher rank = closer to red castle
+
+            activityScore -= (centralityBonus + advancementBonus);
+
+            int guardMobility = countGuardEscapeSquares(state, false);
+            activityScore -= guardMobility * 30;
+        }
+
+        return activityScore;
+    }
+
+    /**
+     * Evaluate opposition between guards (facing each other)
+     */
+    private static int evaluateOpposition(GameState state) {
+        if (state.redGuard == 0 || state.blueGuard == 0) return 0;
+
+        int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
+        int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
+
+        int redRank = GameState.rank(redGuardPos);
+        int redFile = GameState.file(redGuardPos);
+        int blueRank = GameState.rank(blueGuardPos);
+        int blueFile = GameState.file(blueGuardPos);
+
+        // Opposition: guards on same file or rank, facing each other
+        boolean onSameFile = (redFile == blueFile);
+        boolean onSameRank = (redRank == blueRank);
+
+        if (onSameFile || onSameRank) {
+            int distance = manhattanDistance(redGuardPos, blueGuardPos);
+
+            // Having the move when in opposition is advantageous
+            if (state.redToMove) {
+                return 100 - (distance * 10); // Closer opposition = better for side to move
+            } else {
+                return -(100 - (distance * 10)); // Bad for us if enemy has the move
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Evaluate guard race (who reaches enemy castle first)
+     */
+    private static int evaluateGuardRace(GameState state) {
+        int raceScore = 0;
+
+        if (state.redGuard != 0 && state.blueGuard != 0) {
+            int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
+            int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
+
+            // Calculate distance to enemy castles
+            int redDistanceToBlueCastle = manhattanDistance(redGuardPos, BLUE_CASTLE_INDEX);
+            int blueDistanceToRedCastle = manhattanDistance(blueGuardPos, RED_CASTLE_INDEX);
+
+            // Race evaluation: who gets there first?
+            int raceDifference = blueDistanceToRedCastle - redDistanceToBlueCastle;
+
+            // If we're closer to their castle than they are to ours = good
+            raceScore += raceDifference * 150;
+
+            // Tempo consideration: who has the move?
+            if (state.redToMove && raceDifference >= 0) {
+                raceScore += 100; // Extra bonus for having the move when winning the race
+            } else if (!state.redToMove && raceDifference <= 0) {
+                raceScore -= 100; // Penalty for enemy having the move when they're winning the race
+            }
+        }
+
+        return raceScore;
+    }
+
+    /**
+     * Evaluate piece coordination in endgame
+     */
+    private static int evaluatePieceCoordination(GameState state) {
+        int coordinationScore = 0;
+
+        // Towers should support the guard advance
+        if (state.redGuard != 0) {
+            int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
+
+            // Count towers that can support guard advance
+            int supportingTowers = 0;
+            for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+                if (state.redStackHeights[i] > 0) {
+                    int distance = manhattanDistance(i, redGuardPos);
+                    int height = state.redStackHeights[i];
+
+                    // Tower can support if it can reach near the guard
+                    if (distance <= height + 2) { // Can get close to guard
+                        supportingTowers++;
+                    }
+                }
+            }
+            coordinationScore += supportingTowers * 80;
+        }
+
+        // Penalty for blue coordination
+        if (state.blueGuard != 0) {
+            int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
+
+            int supportingTowers = 0;
+            for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+                if (state.blueStackHeights[i] > 0) {
+                    int distance = manhattanDistance(i, blueGuardPos);
+                    int height = state.blueStackHeights[i];
+
+                    if (distance <= height + 2) {
+                        supportingTowers++;
+                    }
+                }
+            }
+            coordinationScore -= supportingTowers * 80;
+        }
+
+        return coordinationScore;
+    }
+
+    /**
+     * Evaluate guard safety specifically in endgame
+     */
+    private static int evaluateGuardSafetyInEndgame(GameState state) {
+        int safetyScore = 0;
+
+        // In endgame, guards should stay away from enemy pieces
+        // but still be active
+
+        if (state.redGuard != 0) {
+            int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
+
+            // Find closest enemy piece
+            int closestEnemyDistance = Integer.MAX_VALUE;
+            for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+                if (state.blueStackHeights[i] > 0 || (state.blueGuard & GameState.bit(i)) != 0) {
+                    int distance = manhattanDistance(redGuardPos, i);
+                    closestEnemyDistance = Math.min(closestEnemyDistance, distance);
+                }
+            }
+
+            // Prefer to keep some distance from enemy pieces
+            if (closestEnemyDistance >= 3) {
+                safetyScore += 50; // Safe distance
+            } else if (closestEnemyDistance <= 1) {
+                safetyScore -= 100; // Too close = dangerous
+            }
+        }
+
+        // Similar evaluation for blue guard (penalty)
+        if (state.blueGuard != 0) {
+            int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
+
+            int closestEnemyDistance = Integer.MAX_VALUE;
+            for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+                if (state.redStackHeights[i] > 0 || (state.redGuard & GameState.bit(i)) != 0) {
+                    int distance = manhattanDistance(blueGuardPos, i);
+                    closestEnemyDistance = Math.min(closestEnemyDistance, distance);
+                }
+            }
+
+            if (closestEnemyDistance >= 3) {
+                safetyScore -= 50; // Enemy guard is safe = bad for us
+            } else if (closestEnemyDistance <= 1) {
+                safetyScore += 100; // Enemy guard in danger = good for us
+            }
+        }
+
+        return safetyScore;
+    }
+
 
 
 }
