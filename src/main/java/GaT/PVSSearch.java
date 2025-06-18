@@ -7,30 +7,33 @@ import GaT.Objects.TTEntry;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
-
 public class PVSSearch {
 
     private static BooleanSupplier timeoutChecker = null;
 
-
+    /**
+     * Standard PVS ohne Quiescence
+     */
     public static int search(GameState state, int depth, int alpha, int beta,
                              boolean maximizingPlayer, boolean isPVNode) {
 
-        // Timeout check
         if (timeoutChecker != null && timeoutChecker.getAsBoolean()) {
             throw new RuntimeException("Timeout");
         }
 
-        // Check transposition table
+        // TT-Lookup nur bei Non-PV Knoten oder mit Vorsicht
         long hash = state.hash();
         TTEntry entry = Minimax.getTranspositionEntry(hash);
-        if (entry != null && entry.depth >= depth && !isPVNode) {
-            if (entry.flag == TTEntry.EXACT) {
+        if (entry != null && entry.depth >= depth) {
+            // In PV-Knoten nur EXACT Scores verwenden
+            if (entry.flag == TTEntry.EXACT && (!isPVNode || depth <= 0)) {
                 return entry.score;
-            } else if (entry.flag == TTEntry.LOWER_BOUND && entry.score >= beta) {
-                return entry.score;
-            } else if (entry.flag == TTEntry.UPPER_BOUND && entry.score <= alpha) {
-                return entry.score;
+            } else if (!isPVNode) { // Nur in Non-PV normale TT-Cutoffs
+                if (entry.flag == TTEntry.LOWER_BOUND && entry.score >= beta) {
+                    return entry.score;
+                } else if (entry.flag == TTEntry.UPPER_BOUND && entry.score <= alpha) {
+                    return entry.score;
+                }
             }
         }
 
@@ -40,7 +43,13 @@ public class PVSSearch {
         }
 
         List<Move> moves = MoveGenerator.generateAllMoves(state);
-        Minimax.orderMovesAdvanced(moves, state, depth, entry);
+
+        // Verschiedene Move Ordering für PV vs Non-PV
+        if (isPVNode) {
+            orderMovesForPV(moves, state, depth, entry);
+        } else {
+            Minimax.orderMovesAdvanced(moves, state, depth, entry);
+        }
 
         Move bestMove = null;
         int originalAlpha = alpha;
@@ -56,16 +65,17 @@ public class PVSSearch {
 
                 int eval;
 
-                if (isFirstMove) {
-                    // First move: search with full window (this is the Principal Variation)
-                    eval = search(copy, depth - 1, alpha, beta, false, true);
+                if (isFirstMove || isPVNode) {
+                    // Erste Züge UND PV-Knoten bekommen volle Suche
+                    eval = search(copy, depth - 1, alpha, beta, false, isPVNode);
                     isFirstMove = false;
                 } else {
-                    // Other moves: try null window first
-                    eval = search(copy, depth - 1, alpha, alpha + 1, false, false);
+                    // Weniger aggressive Null-Window für bessere Differenzierung
+                    int nullWindow = isPVNode ? alpha + 10 : alpha + 1;
+                    eval = search(copy, depth - 1, alpha, nullWindow, false, false);
 
-                    // If null window fails high, re-search with full window
                     if (eval > alpha && eval < beta) {
+                        // Re-search mit vollem Fenster
                         eval = search(copy, depth - 1, eval, beta, false, true);
                     }
                 }
@@ -77,15 +87,13 @@ public class PVSSearch {
 
                 alpha = Math.max(alpha, eval);
                 if (beta <= alpha) {
-                    // Beta cutoff - store killer move
                     if (!isCapture(move, state)) {
-                        Minimax.storeKillerMove(move, depth);
+                        storeKillerMove(move, depth);
                     }
                     break;
                 }
             }
 
-            // Store in TT
             storeTTEntry(hash, maxEval, depth, originalAlpha, beta, bestMove);
             return maxEval;
 
@@ -99,15 +107,13 @@ public class PVSSearch {
 
                 int eval;
 
-                if (isFirstMove) {
-                    // First move: search with full window
-                    eval = search(copy, depth - 1, alpha, beta, true, true);
+                if (isFirstMove || isPVNode) {
+                    eval = search(copy, depth - 1, alpha, beta, true, isPVNode);
                     isFirstMove = false;
                 } else {
-                    // Other moves: try null window first
-                    eval = search(copy, depth - 1, beta - 1, beta, true, false);
+                    int nullWindow = isPVNode ? beta - 10 : beta - 1;
+                    eval = search(copy, depth - 1, nullWindow, beta, true, false);
 
-                    // If null window fails low, re-search with full window
                     if (eval < beta && eval > alpha) {
                         eval = search(copy, depth - 1, alpha, eval, true, true);
                     }
@@ -120,41 +126,41 @@ public class PVSSearch {
 
                 beta = Math.min(beta, eval);
                 if (beta <= alpha) {
-                    // Alpha cutoff - store killer move
                     if (!isCapture(move, state)) {
-                        Minimax.storeKillerMove(move, depth);
+                        storeKillerMove(move, depth);
                     }
                     break;
                 }
             }
 
-            // Store in TT
             storeTTEntry(hash, minEval, depth, originalAlpha, beta, bestMove);
             return minEval;
         }
     }
 
     /**
-     * PVS with YOUR existing QuiescenceSearch
+     * PVS mit Quiescence Search Integration
      */
     public static int searchWithQuiescence(GameState state, int depth, int alpha, int beta,
                                            boolean maximizingPlayer, boolean isPVNode) {
 
-        // Timeout check
         if (timeoutChecker != null && timeoutChecker.getAsBoolean()) {
             throw new RuntimeException("Timeout");
         }
 
-        // Check transposition table
+        // TT-Lookup nur bei Non-PV Knoten oder mit Vorsicht
         long hash = state.hash();
         TTEntry entry = Minimax.getTranspositionEntry(hash);
-        if (entry != null && entry.depth >= depth && !isPVNode) {
-            if (entry.flag == TTEntry.EXACT) {
+        if (entry != null && entry.depth >= depth) {
+            // In PV-Knoten nur EXACT Scores verwenden
+            if (entry.flag == TTEntry.EXACT && (!isPVNode || depth <= 0)) {
                 return entry.score;
-            } else if (entry.flag == TTEntry.LOWER_BOUND && entry.score >= beta) {
-                return entry.score;
-            } else if (entry.flag == TTEntry.UPPER_BOUND && entry.score <= alpha) {
-                return entry.score;
+            } else if (!isPVNode) { // Nur in Non-PV normale TT-Cutoffs
+                if (entry.flag == TTEntry.LOWER_BOUND && entry.score >= beta) {
+                    return entry.score;
+                } else if (entry.flag == TTEntry.UPPER_BOUND && entry.score <= alpha) {
+                    return entry.score;
+                }
             }
         }
 
@@ -163,13 +169,19 @@ public class PVSSearch {
             return Minimax.evaluate(state, depth);
         }
 
-        // LEVERAGE YOUR EXISTING QuiescenceSearch when depth runs out
+        // Quiescence Search wenn Tiefe erschöpft
         if (depth <= 0) {
             return QuiescenceSearch.quiesce(state, alpha, beta, maximizingPlayer, 0);
         }
 
         List<Move> moves = MoveGenerator.generateAllMoves(state);
-        Minimax.orderMovesAdvanced(moves, state, depth, entry);
+
+        // Verschiedene Move Ordering für PV vs Non-PV
+        if (isPVNode) {
+            orderMovesForPV(moves, state, depth, entry);
+        } else {
+            Minimax.orderMovesAdvanced(moves, state, depth, entry);
+        }
 
         Move bestMove = null;
         int originalAlpha = alpha;
@@ -185,15 +197,17 @@ public class PVSSearch {
 
                 int eval;
 
-                if (isFirstMove) {
-                    // First move: PVS with full window + YOUR QuiescenceSearch
-                    eval = searchWithQuiescence(copy, depth - 1, alpha, beta, false, true);
+                if (isFirstMove || isPVNode) {
+                    // Erste Züge UND PV-Knoten bekommen volle Suche
+                    eval = searchWithQuiescence(copy, depth - 1, alpha, beta, false, isPVNode);
                     isFirstMove = false;
                 } else {
-                    // Other moves: PVS null window + YOUR QuiescenceSearch
-                    eval = searchWithQuiescence(copy, depth - 1, alpha, alpha + 1, false, false);
+                    // Weniger aggressive Null-Window für bessere Differenzierung
+                    int nullWindow = isPVNode ? alpha + 10 : alpha + 1;
+                    eval = searchWithQuiescence(copy, depth - 1, alpha, nullWindow, false, false);
+
                     if (eval > alpha && eval < beta) {
-                        // Re-search with full window + YOUR QuiescenceSearch
+                        // Re-search mit vollem Fenster
                         eval = searchWithQuiescence(copy, depth - 1, eval, beta, false, true);
                     }
                 }
@@ -206,7 +220,7 @@ public class PVSSearch {
                 alpha = Math.max(alpha, eval);
                 if (beta <= alpha) {
                     if (!isCapture(move, state)) {
-                        Minimax.storeKillerMove(move, depth);
+                        storeKillerMove(move, depth);
                     }
                     break;
                 }
@@ -225,15 +239,14 @@ public class PVSSearch {
 
                 int eval;
 
-                if (isFirstMove) {
-                    // First move: PVS with full window + YOUR QuiescenceSearch
-                    eval = searchWithQuiescence(copy, depth - 1, alpha, beta, true, true);
+                if (isFirstMove || isPVNode) {
+                    eval = searchWithQuiescence(copy, depth - 1, alpha, beta, true, isPVNode);
                     isFirstMove = false;
                 } else {
-                    // Other moves: PVS null window + YOUR QuiescenceSearch
-                    eval = searchWithQuiescence(copy, depth - 1, beta - 1, beta, true, false);
+                    int nullWindow = isPVNode ? beta - 10 : beta - 1;
+                    eval = searchWithQuiescence(copy, depth - 1, nullWindow, beta, true, false);
+
                     if (eval < beta && eval > alpha) {
-                        // Re-search with full window + YOUR QuiescenceSearch
                         eval = searchWithQuiescence(copy, depth - 1, alpha, eval, true, true);
                     }
                 }
@@ -246,7 +259,7 @@ public class PVSSearch {
                 beta = Math.min(beta, eval);
                 if (beta <= alpha) {
                     if (!isCapture(move, state)) {
-                        Minimax.storeKillerMove(move, depth);
+                        storeKillerMove(move, depth);
                     }
                     break;
                 }
@@ -257,7 +270,63 @@ public class PVSSearch {
         }
     }
 
-    // === HELPER METHODS ===
+    /**
+     * Spezielle Move Ordering für PV-Knoten
+     */
+    private static void orderMovesForPV(List<Move> moves, GameState state, int depth, TTEntry entry) {
+        // TT Move hat weiterhin höchste Priorität
+        if (entry != null && entry.bestMove != null) {
+            for (int i = 0; i < moves.size(); i++) {
+                if (moves.get(i).equals(entry.bestMove)) {
+                    Move ttMove = moves.remove(i);
+                    moves.add(0, ttMove);
+                    break;
+                }
+            }
+        }
+
+        // In PV-Knoten mehr Züge mit hoher Priorität bewerten
+        if (moves.size() > 1) {
+            int startIndex = (entry != null && entry.bestMove != null) ? 1 : 0;
+            List<Move> restMoves = moves.subList(startIndex, moves.size());
+
+            restMoves.sort((a, b) -> {
+                int scoreA = scoreMoveForPV(state, a, depth);
+                int scoreB = scoreMoveForPV(state, b, depth);
+                return Integer.compare(scoreB, scoreA);
+            });
+        }
+    }
+
+    /**
+     * Erweiterte Move-Bewertung für PV-Knoten
+     */
+    private static int scoreMoveForPV(GameState state, Move move, int depth) {
+        int score = Minimax.scoreMove(state, move);
+
+        // In PV-Knoten auch ruhige Züge höher bewerten
+        if (!isCapture(move, state)) {
+            // Bonus für verschiedene Zielfelder (Anti-Repetition)
+            score += move.to * 2; // Einfache Variation basierend auf Zielfeld
+
+            // Bonus für verschiedene Anzahl bewegter Stücke
+            score += move.amountMoved * 5;
+
+            // Bonus für zentrale Züge
+            int targetFile = GameState.file(move.to);
+            int targetRank = GameState.rank(move.to);
+            int centrality = Math.abs(targetFile - 3) + Math.abs(targetRank - 3);
+            score += (6 - centrality) * 3;
+
+            // Anti-Repetition: Bonus für Züge zu neuen Feldern
+            long hash = state.hash();
+            score += (int)(hash % 20) - 10; // Pseudo-random variation basierend auf Position
+        }
+
+        return score;
+    }
+
+// === HELPER METHODS ===
 
     /**
      * Store entry in transposition table
@@ -294,6 +363,18 @@ public class PVSSearch {
                 (state.redTowers & toBit) != 0;
 
         return capturesGuard || capturesTower;
+    }
+
+    /**
+     * Store killer move helper
+     */
+    private static void storeKillerMove(Move move, int depth) {
+        try {
+            Minimax.storeKillerMove(move, depth);
+        } catch (Exception e) {
+            // Fallback falls Minimax.storeKillerMove nicht verfügbar
+            System.err.println("Could not store killer move: " + e.getMessage());
+        }
     }
 
     /**
