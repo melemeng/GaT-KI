@@ -78,7 +78,7 @@ public class GameClient {
         timeManager.updateRemainingTime(timeLeft);
         long timeForMove = timeManager.calculateTimeForMove(state);
         System.out.println("Time Limit for this search: "+ timeForMove + " ms");
-        Move bestMove = TimedMinimax.findBestMoveWithTimeAndQuiescence(state,99, timeForMove);
+        Move bestMove = TimedMinimax.findBestMoveUltimate(state,99, timeForMove);
         return bestMove.toString();
     }
 }
