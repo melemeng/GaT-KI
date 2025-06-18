@@ -30,8 +30,11 @@ public class GameFrame extends JFrame {
     private JButton stopAIButton;
     private JLabel statusLabel;
 
+    static String boardString = "7/2RG4/1b11r1b32/1b15/7/6r3/5BG1 r";
+
     public GameFrame() {
         super("Guard & Towers - ULTIMATE AI (PVS + Quiescence)");
+
 
         // Initialize thread pool for AI
         aiExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -48,7 +51,7 @@ public class GameFrame extends JFrame {
         synchronized (stateLock) {
             try {
                 // Try to load the specified position, fallback to default if it fails
-                state = GameState.fromFen("7/7/7/BG6/3b33/3RG3/7 r");
+                state = GameState.fromFen(boardString);
                 System.out.println("Game initialized - Red to move: " + state.redToMove);
             } catch (Exception e) {
                 System.err.println("Failed to load custom position, using default: " + e.getMessage());
@@ -284,7 +287,7 @@ public class GameFrame extends JFrame {
         synchronized (stateLock) {
             try {
                 // Reset to the same starting position
-                state = GameState.fromFen("7/7/7/BG6/3b33/3RG3/7 r");
+                state = GameState.fromFen(boardString);
             } catch (Exception e) {
                 state = new GameState(); // Fallback
             }

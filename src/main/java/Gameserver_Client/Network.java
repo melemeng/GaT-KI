@@ -13,8 +13,8 @@ public class Network {
     private String playerNumber;
 
     public Network() {
-        this.server = "localhost";
-        this.port = 5555;
+        this.server = "game.guard-and-towers.com";
+        this.port = 35000;
         this.playerNumber = connect();
     }
 
