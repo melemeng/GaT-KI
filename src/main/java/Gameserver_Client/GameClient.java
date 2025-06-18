@@ -4,6 +4,7 @@ import java.util.Scanner;
 
 import GaT.Objects.GameState;
 import GaT.Objects.Move;
+import GaT.TimeManager;
 import GaT.TimedMinimax;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -34,7 +35,7 @@ public class GameClient {
                 if (game.get("bothConnected").getAsBoolean()) {
                     String turn = game.get("turn").getAsString();
                     String board = game.get("board").getAsString();
-                    int time = game.get("time").getAsInt();
+                    long time = game.get("time").getAsLong();
 
                     // Only act when it's our turn
                     if ((player == 0 && turn.equals("r")) || (player == 1 && turn.equals("b"))) {
@@ -46,6 +47,7 @@ public class GameClient {
                         // Send move to server
                         network.send(gson.toJson(move));
                         System.out.println("Sent move: "+ move);
+                        timeManager.decrementEstimatedMovesLeft();
                     }
                 }
 
@@ -68,10 +70,15 @@ public class GameClient {
 
     }
 
+    static TimeManager timeManager = new TimeManager(180, 60);
+
     // Method to integrate with your AI
-    private static String getAIMove(String board, int player, int timeLeft) {
+    private static String getAIMove(String board, int player, long timeLeft) {
         GameState state = GameState.fromFen(board);
-        Move bestMove = TimedMinimax.findBestMoveWithTime(state,99, 2000);
+        timeManager.updateRemainingTime(timeLeft);
+        long timeForMove = timeManager.calculateTimeForMove(state);
+        System.out.println("Time Limit for this search: "+ timeForMove + " ms");
+        Move bestMove = TimedMinimax.findBestMoveWithTimeAndQuiescence(state,99, timeForMove);
         return bestMove.toString();
     }
 }

@@ -163,7 +163,7 @@ public class QuiescenceSearch {
     /**
      * Generate only tactical moves for quiescence search
      */
-    private static List<Move> generateTacticalMoves(GameState state) {
+    public static List<Move> generateTacticalMoves(GameState state) {
         List<Move> allMoves = MoveGenerator.generateAllMoves(state);
         List<Move> tacticalMoves = new ArrayList<>();
 

@@ -48,7 +48,7 @@ public class GameFrame extends JFrame {
         synchronized (stateLock) {
             try {
                 // Try to load the specified position, fallback to default if it fails
-                state = GameState.fromFen("7/7/7/BG6/3b33/3RG3/7 r");
+                state = GameState.fromFen("");
                 System.out.println("Game initialized - Red to move: " + state.redToMove);
             } catch (Exception e) {
                 System.err.println("Failed to load custom position, using default: " + e.getMessage());
