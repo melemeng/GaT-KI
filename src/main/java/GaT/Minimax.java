@@ -23,6 +23,16 @@ public class Minimax {
             GameState.getIndex(4, 3)  // D5
     };
 
+    // === IMPROVED EVALUATION CONSTANTS (BALANCED) ===
+    private static final int GUARD_CAPTURE_SCORE = 3000;      // Instead of 10000
+    private static final int MATE_NET_SCORE = 5000;           // Instead of 20000
+    private static final int GUARD_DANGER_PENALTY = 800;      // Graduated response
+    private static final int CASTLE_REACH_SCORE = 4000;       // Winning but not extreme
+    private static final int MATERIAL_VALUE = 130;
+    private static final int MOBILITY_BONUS = 15;
+    private static final int CENTRAL_CONTROL_BONUS = 25;
+    private static final int GUARD_ADVANCEMENT_BONUS = 40;
+
     // === KILLER MOVES & PRINCIPAL VARIATION ===
     private static Move[][] killerMoves = new Move[20][2]; // [depth][primary/secondary]
     private static int killerAge = 0;
@@ -430,7 +440,7 @@ public class Minimax {
         boolean isRed = state.redToMove;
         boolean isGuardMove = (move.amountMoved == 1) &&
                 (((isRed && (state.redGuard & GameState.bit(move.from)) != 0)) ||
-                        (!isRed && (state.blueGuard & GameState.bit(move.from)) != 0));
+                        ((!isRed) && (state.blueGuard & GameState.bit(move.from)) != 0));
 
         if (isGuardMove) {
             int targetRank = GameState.rank(move.to);
@@ -498,211 +508,710 @@ public class Minimax {
         return state.redGuard == 0 || state.blueGuard == 0 || blueGuardOnD7 || redGuardOnD1;
     }
 
-    // === FIXED COMPLETE EVALUATION FUNCTION ===
+    // === IMPROVED EVALUATION FUNCTION ===
 
     /**
-     * COMPLETE FIXED EVALUATION FUNCTION
+     * IMPROVED EVALUATION FUNCTION with balanced scores and better tactical awareness
      * @apiNote this function is based on red's POV --> positive values are good for red | negative values are good for blue
      */
     public static int evaluate(GameState state, int depth) {
+        // Quick terminal checks
         boolean redWinsByCastle = state.redGuard == GameState.bit(BLUE_CASTLE_INDEX);
         boolean blueWinsByCastle = state.blueGuard == GameState.bit(RED_CASTLE_INDEX);
 
-        int redScore = 0;
-        int blueScore = 0;
+        // Terminal positions (actual wins)
+        if (state.redGuard == 0 || blueWinsByCastle) return -CASTLE_REACH_SCORE - depth;
+        if (state.blueGuard == 0 || redWinsByCastle) return CASTLE_REACH_SCORE + depth;
 
-        // If the done move took the guard or "rushed the castle" give it a huge favor
-        // Include the depth to reward early wins and penalize early losses
-        if (state.redGuard == 0 || blueWinsByCastle) return -10000 - depth;
-        if (state.blueGuard == 0 || redWinsByCastle) return 10000 + depth;
+        int evaluation = 0;
 
-        // === ENHANCED GUARD SAFETY EVALUATION ===
-// Replace the existing guard danger section with this:
+        // === IMPROVED GUARD SAFETY EVALUATION ===
+        evaluation += evaluateGuardSafetyImproved(state, depth);
 
-        boolean redGuardInDanger = isGuardInDanger(state, true);
-        boolean blueGuardInDanger = isGuardInDanger(state, false);
-        boolean redGuardInMateNet = isGuardInMateNet(state, true);
-        boolean blueGuardInMateNet = isGuardInMateNet(state, false);
+        // === MATERIAL EVALUATION ===
+        evaluation += evaluateMaterial(state);
 
-// Check for immediate mate nets (highest priority)
-        if (redGuardInMateNet) return -20000 - depth; // Red guard trapped = instant loss
-        if (blueGuardInMateNet) return 20000 + depth; // Blue guard trapped = instant win
+        // === POSITIONAL EVALUATION ===
+        evaluation += evaluatePositional(state);
 
-// Check for guard captures when both players can move
+        // === TACTICAL EVALUATION ===
+        evaluation += evaluateTacticalThreats(state);
+
+        // === ENDGAME EVALUATION ===
+        if (isEndgame(state)) {
+            evaluation += evaluateEndgame(state);
+        }
+
+        return evaluation;
+    }
+
+    /**
+     * IMPROVED guard safety with graduated penalties instead of extremes
+     */
+    private static int evaluateGuardSafetyImproved(GameState state, int depth) {
+        int safetyScore = 0;
+
+        boolean redInDanger = isGuardInDangerImproved(state, true);
+        boolean blueInDanger = isGuardInDangerImproved(state, false);
+        boolean redInMateNet = isGuardInMateNetImproved(state, true);
+        boolean blueInMateNet = isGuardInMateNetImproved(state, false);
+
+        // Mate net detection (serious but not extreme)
+        if (redInMateNet) {
+            safetyScore -= MATE_NET_SCORE + depth;
+        }
+        if (blueInMateNet) {
+            safetyScore += MATE_NET_SCORE + depth;
+        }
+
+        // If not in mate net, handle regular danger
+        if (!redInMateNet && !blueInMateNet) {
+            // Use graduated danger assessment
+            safetyScore += evaluateGuardDangerLevel(state, redInDanger, blueInDanger);
+        }
+
+        return safetyScore;
+    }
+
+    /**
+     * IMPROVED GUARD DANGER DETECTION with comprehensive threat analysis
+     */
+    private static boolean isGuardInDangerImproved(GameState state, boolean checkRed) {
+        long guardBit = checkRed ? state.redGuard : state.blueGuard;
+        if (guardBit == 0) return false;
+
+        int guardPos = Long.numberOfTrailingZeros(guardBit);
+
+        // Create enemy move state
+        GameState enemyState = state.copy();
+        enemyState.redToMove = !checkRed;
+
+        // Generate ALL enemy moves (not just captures)
+        List<Move> enemyMoves = MoveGenerator.generateAllMoves(enemyState);
+
+        // Check each enemy move for guard attacks
+        for (Move move : enemyMoves) {
+            if (moveAttacksGuard(move, guardPos, enemyState)) {
+                // Verify the attack is actually legal
+                if (isAttackLegal(move, guardPos, enemyState)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if a move attacks the guard position
+     */
+    private static boolean moveAttacksGuard(Move move, int guardPos, GameState state) {
+        // Direct capture of guard
+        if (move.to == guardPos) {
+            return true;
+        }
+
+        // Check for discovery attacks
+        if (hasDiscoveryAttackOnGuard(move, guardPos, state)) {
+            return true;
+        }
+
+        // Check for tower range attacks after move
+        if (hasTowerRangeAttackOnGuard(move, guardPos, state)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Verify that an attack is actually legal (no blocking pieces)
+     */
+    private static boolean isAttackLegal(Move move, int guardPos, GameState state) {
+        // Apply the move temporarily
+        GameState tempState = state.copy();
+        tempState.applyMove(move);
+
+        // Check if the attacking piece can actually reach the guard
+        if (move.to == guardPos) {
+            return true; // Direct capture is always legal if move is legal
+        }
+
+        // For tower range attacks, check path is clear
+        return isPathClearToGuard(move.to, guardPos, tempState, move.amountMoved);
+    }
+
+    /**
+     * Check for discovery attacks (moving piece reveals attack from behind)
+     */
+    private static boolean hasDiscoveryAttackOnGuard(Move move, int guardPos, GameState state) {
+        // Check if moving piece was blocking an attack line
+        int fromPos = move.from;
+
+        // Look for towers behind the moving piece that could attack guard
+        boolean isRed = state.redToMove;
+        long enemyTowers = isRed ? state.redTowers : state.blueTowers;
+
+        // Iterate through all enemy towers
+        long tempTowers = enemyTowers;
+        while (tempTowers != 0) {
+            int towerPos = Long.numberOfTrailingZeros(tempTowers);
+            tempTowers &= tempTowers - 1; // Clear the lowest bit
+
+            if (towerPos == fromPos) continue; // Skip the moving piece
+
+            // Check if this tower could attack guard if the moving piece wasn't there
+            if (isOnAttackLine(towerPos, guardPos, fromPos)) {
+                int towerHeight = isRed ? state.redStackHeights[towerPos] : state.blueStackHeights[towerPos];
+                int distance = manhattanDistance(towerPos, guardPos);
+
+                if (towerHeight >= distance) {
+                    return true; // Discovery attack found
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check for tower range attacks after the move
+     */
+    private static boolean hasTowerRangeAttackOnGuard(Move move, int guardPos, GameState state) {
+        // Check if the moving piece (if it's a tower) can attack guard from new position
+        boolean isRed = state.redToMove;
+        long movingPieceBit = GameState.bit(move.from);
+
+        // Check if moving piece is a tower
+        long ownTowers = isRed ? state.redTowers : state.blueTowers;
+        boolean isMovingTower = (ownTowers & movingPieceBit) != 0;
+        if (!isMovingTower) return false;
+
+        int towerHeight = (isRed ? state.redStackHeights[move.from] : state.blueStackHeights[move.from]) + move.amountMoved;
+        int distance = manhattanDistance(move.to, guardPos);
+
+        if (towerHeight >= distance) {
+            // Apply move and check if path is clear
+            GameState tempState = state.copy();
+            tempState.applyMove(move);
+            return isPathClearToGuard(move.to, guardPos, tempState, towerHeight);
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if three points are on the same attack line
+     */
+    private static boolean isOnAttackLine(int attackerPos, int targetPos, int blockingPos) {
+        // Check if blocking piece is between attacker and target on same line
+        int attackerFile = GameState.file(attackerPos);
+        int attackerRank = GameState.rank(attackerPos);
+        int targetFile = GameState.file(targetPos);
+        int targetRank = GameState.rank(targetPos);
+        int blockingFile = GameState.file(blockingPos);
+        int blockingRank = GameState.rank(blockingPos);
+
+        // Must be on same rank, file, or diagonal
+        if (attackerRank == targetRank && attackerRank == blockingRank) {
+            // Same rank - check if blocking piece is between
+            return isBetween(blockingFile, attackerFile, targetFile);
+        } else if (attackerFile == targetFile && attackerFile == blockingFile) {
+            // Same file - check if blocking piece is between
+            return isBetween(blockingRank, attackerRank, targetRank);
+        } else if (Math.abs(attackerFile - targetFile) == Math.abs(attackerRank - targetRank)) {
+            // Diagonal - check if blocking piece is on diagonal and between
+            if (Math.abs(attackerFile - blockingFile) == Math.abs(attackerRank - blockingRank) &&
+                    Math.abs(blockingFile - targetFile) == Math.abs(blockingRank - targetRank)) {
+                return isBetween(blockingFile, attackerFile, targetFile) &&
+                        isBetween(blockingRank, attackerRank, targetRank);
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if middle value is between min and max
+     */
+    private static boolean isBetween(int middle, int a, int b) {
+        int min = Math.min(a, b);
+        int max = Math.max(a, b);
+        return middle > min && middle < max;
+    }
+
+    /**
+     * Check if path from tower to guard is clear
+     */
+    private static boolean isPathClearToGuard(int towerPos, int guardPos, GameState state, int towerHeight) {
+        int distance = manhattanDistance(towerPos, guardPos);
+        if (towerHeight < distance) return false;
+
+        // Check if path is clear (no blocking pieces)
+        int deltaFile = Integer.signum(GameState.file(guardPos) - GameState.file(towerPos));
+        int deltaRank = Integer.signum(GameState.rank(guardPos) - GameState.rank(towerPos));
+
+        int currentFile = GameState.file(towerPos);
+        int currentRank = GameState.rank(towerPos);
+
+        // Walk along the path
+        for (int step = 1; step < distance; step++) {
+            currentFile += deltaFile;
+            currentRank += deltaRank;
+            int currentPos = GameState.getIndex(currentRank, currentFile);
+
+            // Check if any piece blocks the path
+            long allPieces = state.redGuard | state.blueGuard | state.redTowers | state.blueTowers;
+            if ((allPieces & GameState.bit(currentPos)) != 0) {
+                return false; // Path blocked
+            }
+        }
+
+        return true; // Path is clear
+    }
+
+    /**
+     * Enhanced mate net detection (guard has no escape squares)
+     */
+    private static boolean isGuardInMateNetImproved(GameState state, boolean checkRed) {
+        // First check if guard is in danger
+        if (!isGuardInDangerImproved(state, checkRed)) {
+            return false; // Not in danger, can't be in mate net
+        }
+
+        long guardBit = checkRed ? state.redGuard : state.blueGuard;
+        if (guardBit == 0) return false;
+
+        int guardPos = Long.numberOfTrailingZeros(guardBit);
+        int[] directions = {-1, 1, -GameState.BOARD_SIZE, GameState.BOARD_SIZE};
+
+        // Check each possible escape square
+        for (int dir : directions) {
+            int newPos = guardPos + dir;
+            if (!GameState.isOnBoard(newPos)) continue;
+
+            // Check for edge wrapping
+            if (Math.abs(dir) == 1 && GameState.rank(guardPos) != GameState.rank(newPos)) {
+                continue;
+            }
+
+            // Check if square is accessible
+            long allOwnPieces = checkRed ?
+                    (state.redGuard | state.redTowers) :
+                    (state.blueGuard | state.blueTowers);
+
+            if ((allOwnPieces & GameState.bit(newPos)) != 0) {
+                continue; // Blocked by own piece
+            }
+
+            // Simulate guard moving to this square
+            GameState testState = state.copy();
+
+            // Remove guard from old position
+            if (checkRed) {
+                testState.redGuard &= ~GameState.bit(guardPos);
+            } else {
+                testState.blueGuard &= ~GameState.bit(guardPos);
+            }
+
+            // Clear any enemy piece at destination (capture)
+            if (checkRed) {
+                testState.blueGuard &= ~GameState.bit(newPos);
+                testState.blueTowers &= ~GameState.bit(newPos);
+                testState.blueStackHeights[newPos] = 0;
+            } else {
+                testState.redGuard &= ~GameState.bit(newPos);
+                testState.redTowers &= ~GameState.bit(newPos);
+                testState.redStackHeights[newPos] = 0;
+            }
+
+            // Place guard at new position
+            if (checkRed) {
+                testState.redGuard |= GameState.bit(newPos);
+            } else {
+                testState.blueGuard |= GameState.bit(newPos);
+            }
+
+            // Check if guard is still in danger after moving
+            if (!isGuardInDangerImproved(testState, checkRed)) {
+                return false; // Found escape square
+            }
+        }
+
+        return true; // No escape squares found - mate net!
+    }
+
+    /**
+     * Graduated danger assessment instead of all-or-nothing
+     */
+    private static int evaluateGuardDangerLevel(GameState state, boolean redInDanger, boolean blueInDanger) {
+        int dangerScore = 0;
+
         if (state.redToMove) {
-            // Red is moving
-            if (redGuardInDanger && blueGuardInDanger) return 10000 + depth; // Red can take Blue's Guard
-            if (redGuardInDanger && !blueGuardInDanger) return -10000 - depth; // Red loses Guard
+            // Red to move
+            if (redInDanger && !blueInDanger) {
+                // Red guard in danger, blue safe - bad for red
+                dangerScore -= GUARD_DANGER_PENALTY;
+                dangerScore -= evaluateAttackSeverity(state, true); // Additional penalty based on attack strength
+            } else if (!redInDanger && blueInDanger) {
+                // Blue guard in danger, red safe - good for red
+                dangerScore += GUARD_DANGER_PENALTY;
+                dangerScore += evaluateAttackSeverity(state, false);
+            } else if (redInDanger && blueInDanger) {
+                // Both in danger - red moves first so slight advantage
+                dangerScore += 200; // Small advantage for moving first
+            }
         } else {
-            // Blue is moving
-            if (blueGuardInDanger && redGuardInDanger) return -10000 - depth; // Blue loses Guard
-            if (blueGuardInDanger && !redGuardInDanger) return 10000 + depth; // Blue can take Red's Guard
-        }
-
-// Add comprehensive guard safety evaluation
-        int guardSafetyScore = evaluateGuardSafety(state);
-        redScore += guardSafetyScore; // This handles both positive and negative adjustments
-
-        // === ENHANCED GUARD EVALUATION ===
-        // Bonus for red guard being close to blue castle
-        if (state.redGuard != 0) {
-            int guardIndex = Long.numberOfTrailingZeros(state.redGuard);
-            int guardRank = GameState.rank(guardIndex);
-            int guardFile = GameState.file(guardIndex);
-
-            int distanceToBlueCastleRank = Math.abs(guardRank - 0);  // red wants to reach rank 0
-            int distanceToBlueCastleFile = Math.abs(guardFile - 3);  // D-file is column 3
-
-            // FIXED: Reduced from 500 to 120
-            int rankBonus = (6 - distanceToBlueCastleRank) * 120;   // moving down = good
-            // FIXED: Reduced from 300 to 80
-            int fileBonus = (3 - distanceToBlueCastleFile) * 80;    // closer to D-file = good
-
-            redScore += rankBonus + fileBonus;
-
-            // Bonus for supporting towers
-            int support = countSupportingTowers(guardIndex, true, state);
-            redScore += support * 100;
-
-            // Penalty when guard is blocked
-            if (isGuardBlocked(guardIndex, true, state)) {
-                redScore -= 200;
+            // Blue to move
+            if (blueInDanger && !redInDanger) {
+                // Blue guard in danger, red safe - good for red
+                dangerScore += GUARD_DANGER_PENALTY;
+                dangerScore += evaluateAttackSeverity(state, false);
+            } else if (!blueInDanger && redInDanger) {
+                // Red guard in danger, blue safe - bad for red
+                dangerScore -= GUARD_DANGER_PENALTY;
+                dangerScore -= evaluateAttackSeverity(state, true);
+            } else if (redInDanger && blueInDanger) {
+                // Both in danger - blue moves first so slight advantage for blue
+                dangerScore -= 200;
             }
         }
 
-        // Bonus for blue guard being close to red castle
-        if (state.blueGuard != 0) {
-            int guardIndex = Long.numberOfTrailingZeros(state.blueGuard);
-            int guardRank = GameState.rank(guardIndex);
-            int guardFile = GameState.file(guardIndex);
+        return dangerScore;
+    }
 
-            int distanceToRedCastleRank = Math.abs(guardRank - 6);  // blue wants to reach rank 6 (row 7)
-            int distanceToRedCastleFile = Math.abs(guardFile - 3);
+    /**
+     * Evaluate how severe an attack on the guard is
+     */
+    private static int evaluateAttackSeverity(GameState state, boolean guardIsRed) {
+        long guardBit = guardIsRed ? state.redGuard : state.blueGuard;
+        if (guardBit == 0) return 0;
 
-            // FIXED: Reduced from 500 to 120
-            int rankBonus = (6 - distanceToRedCastleRank) * 120;   // moving up = good
-            // FIXED: Reduced from 300 to 80
-            int fileBonus = (3 - distanceToRedCastleFile) * 80;
+        int guardPos = Long.numberOfTrailingZeros(guardBit);
+        int attackerCount = 0;
+        int defenderCount = 0;
 
-            blueScore += rankBonus + fileBonus;
+        // Count attackers
+        GameState enemyMoveState = state.copy();
+        enemyMoveState.redToMove = !guardIsRed;
+        List<Move> enemyMoves = MoveGenerator.generateAllMoves(enemyMoveState);
 
-            // Support and blockade check
-            int support = countSupportingTowers(guardIndex, false, state);
-            blueScore += support * 100;
-
-            if (isGuardBlocked(guardIndex, false, state)) {
-                blueScore -= 200;
+        for (Move move : enemyMoves) {
+            if (move.to == guardPos) {
+                attackerCount++;
             }
         }
 
-        // === ENHANCED CENTRAL CONTROL ===
-        for (int index : centralSquares) {
-            long bit = GameState.bit(index);
-
-            // Towers in center with height bonus
-            if ((state.redTowers & bit) != 0) {
-                redScore += 300 + (state.redStackHeights[index] * 50);
+        // Count defenders (pieces that can recapture)
+        List<Move> ownMoves = MoveGenerator.generateAllMoves(state);
+        for (Move move : ownMoves) {
+            if (move.to == guardPos) {
+                defenderCount++;
             }
-            if ((state.blueTowers & bit) != 0) {
-                blueScore += 300 + (state.blueStackHeights[index] * 50);
-            }
-
-            if ((state.redGuard & bit) != 0) redScore += 200;
-            if ((state.blueGuard & bit) != 0) blueScore += 200;
         }
 
-        // === ENHANCED MATERIAL EVALUATION ===
+        // Calculate severity based on attacker/defender balance
+        int severity = (attackerCount - defenderCount) * 150;
+
+        // Bonus penalty if multiple attackers
+        if (attackerCount > 1) {
+            severity += 100;
+        }
+
+        return Math.max(0, severity);
+    }
+
+    /**
+     * Material evaluation with context
+     */
+    private static int evaluateMaterial(GameState state) {
+        int materialScore = 0;
+
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-            if (state.redStackHeights[i] > 0) {
-                int height = state.redStackHeights[i];
-                // FIXED: Increased from 100 to 130
-                redScore += height * 130; // Base material value
+            int redHeight = state.redStackHeights[i];
+            int blueHeight = state.blueStackHeights[i];
 
-                // Mobility bonus
-                int mobility = calculateActualMobility(i, height, state);
-                redScore += mobility * 20;
+            // Basic material value
+            materialScore += (redHeight - blueHeight) * MATERIAL_VALUE;
 
-                // Penalty for large immobile stacks
-                if (height >= 4 && mobility == 0) {
-                    redScore -= 150;
-                }
-
-                // Bonus for stacks near enemy guard
-                if (state.blueGuard != 0) {
-                    int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
-                    int distance = manhattanDistance(i, blueGuardPos);
-                    if (distance <= height) {
-                        redScore += 80; // Threat potential
-                    }
-                }
+            // Mobility bonus for tall towers
+            if (redHeight > 0) {
+                materialScore += calculateMobilityBonus(state, i, true, redHeight);
             }
+            if (blueHeight > 0) {
+                materialScore -= calculateMobilityBonus(state, i, false, blueHeight);
+            }
+        }
 
-            if (state.blueStackHeights[i] > 0) {
-                int height = state.blueStackHeights[i];
-                // FIXED: Increased from 100 to 130
-                blueScore += height * 130;
+        return materialScore;
+    }
 
-                int mobility = calculateActualMobility(i, height, state);
-                blueScore += mobility * 20;
+    /**
+     * Calculate mobility bonus for a tower
+     */
+    private static int calculateMobilityBonus(GameState state, int pos, boolean isRed, int height) {
+        if (height == 0) return 0;
 
-                if (height >= 4 && mobility == 0) {
-                    blueScore -= 150;
-                }
+        int mobilityScore = 0;
+        int possibleMoves = 0;
 
-                if (state.redGuard != 0) {
-                    int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
-                    int distance = manhattanDistance(i, redGuardPos);
-                    if (distance <= height) {
-                        blueScore += 80;
+        // Count legal moves from this position
+        for (int amount = 1; amount <= height; amount++) {
+            for (int dir : new int[]{-1, 1, -GameState.BOARD_SIZE, GameState.BOARD_SIZE}) {
+                int newPos = pos + dir * amount;
+
+                if (GameState.isOnBoard(newPos) && isMoveLegal(pos, newPos, state, isRed)) {
+                    possibleMoves++;
+
+                    // Bonus for reaching central squares
+                    if (isCentralSquare(newPos)) {
+                        mobilityScore += 5;
+                    }
+
+                    // Bonus for attacking enemy pieces
+                    if (threatsEnemyPiece(newPos, state, isRed)) {
+                        mobilityScore += 10;
                     }
                 }
             }
         }
 
-        // === ENDGAME ADJUSTMENTS ===
-        int totalTowers = Long.bitCount(state.redTowers | state.blueTowers);
-        if (totalTowers <= 6) {
-            // In endgame guard progress is more important
-            if (state.redGuard != 0) {
-                int gRank = GameState.rank(Long.numberOfTrailingZeros(state.redGuard));
-                redScore += gRank * 200; // Extra bonus
+        // Base mobility bonus
+        mobilityScore += possibleMoves * MOBILITY_BONUS;
+
+        // Penalty for immobile towers
+        if (possibleMoves == 0 && height > 2) {
+            mobilityScore -= height * 50; // Penalty for large immobile stacks
+        }
+
+        return mobilityScore;
+    }
+
+    /**
+     * Positional evaluation
+     */
+    private static int evaluatePositional(GameState state) {
+        int positionalScore = 0;
+
+        // Guard advancement
+        positionalScore += evaluateGuardAdvancement(state);
+
+        // Central control
+        positionalScore += evaluateCentralControl(state);
+
+        // Piece coordination
+        positionalScore += evaluatePieceCoordination(state);
+
+        return positionalScore;
+    }
+
+    /**
+     * Evaluate guard advancement towards enemy castle
+     */
+    private static int evaluateGuardAdvancement(GameState state) {
+        int advancementScore = 0;
+
+        // Red guard advancement towards blue castle (rank 0)
+        if (state.redGuard != 0) {
+            int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
+            int redRank = GameState.rank(redGuardPos);
+            int distanceToTarget = redRank; // Distance to rank 0
+
+            // Bonus for being closer to enemy castle
+            advancementScore += (6 - distanceToTarget) * GUARD_ADVANCEMENT_BONUS;
+
+            // Bonus for being on target file (D-file)
+            int redFile = GameState.file(redGuardPos);
+            int fileDistance = Math.abs(redFile - 3); // Distance from D-file
+            advancementScore += (3 - fileDistance) * 20;
+        }
+
+        // Blue guard advancement towards red castle (rank 6)
+        if (state.blueGuard != 0) {
+            int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
+            int blueRank = GameState.rank(blueGuardPos);
+            int distanceToTarget = 6 - blueRank; // Distance to rank 6
+
+            // Penalty for blue being closer to red castle
+            advancementScore -= (6 - distanceToTarget) * GUARD_ADVANCEMENT_BONUS;
+
+            // File bonus/penalty
+            int blueFile = GameState.file(blueGuardPos);
+            int fileDistance = Math.abs(blueFile - 3);
+            advancementScore -= (3 - fileDistance) * 20;
+        }
+
+        return advancementScore;
+    }
+
+    /**
+     * Evaluate central control
+     */
+    private static int evaluateCentralControl(GameState state) {
+        int centralScore = 0;
+
+        for (int square : centralSquares) {
+            long redBit = state.redTowers | state.redGuard;
+            long blueBit = state.blueTowers | state.blueGuard;
+
+            if ((redBit & GameState.bit(square)) != 0) {
+                centralScore += CENTRAL_CONTROL_BONUS;
+
+                // Extra bonus for tall towers in center
+                int height = state.redStackHeights[square];
+                centralScore += height * 10;
             }
-            if (state.blueGuard != 0) {
-                int gRank = GameState.rank(Long.numberOfTrailingZeros(state.blueGuard));
-                blueScore += (6 - gRank) * 200;
+
+            if ((blueBit & GameState.bit(square)) != 0) {
+                centralScore -= CENTRAL_CONTROL_BONUS;
+
+                int height = state.blueStackHeights[square];
+                centralScore -= height * 10;
             }
         }
 
-        // === TACTICAL PATTERN BONUSES ===
-        int redTacticalBonus = detectForks(state, true) + detectPins(state, true) + detectDiscoveredAttacks(state, true);
-        int blueTacticalBonus = detectForks(state, false) + detectPins(state, false) + detectDiscoveredAttacks(state, false);
+        return centralScore;
+    }
 
-        redScore += redTacticalBonus;
-        blueScore += blueTacticalBonus;
+    /**
+     * Evaluate tactical threats (captures, forks, etc.)
+     */
+    private static int evaluateTacticalThreats(GameState state) {
+        int tacticalScore = 0;
 
-// === ENHANCED GUARD SAFETY BONUSES ===
-        int guardSafetyBonus = evaluateGuardSafety(state);
-        redScore += guardSafetyBonus; // Already calculated from red's perspective
+        // Evaluate immediate tactical threats
+        List<Move> moves = MoveGenerator.generateAllMoves(state);
 
-        return redScore - blueScore;
+        for (Move move : moves) {
+            // Capture threats
+            if (isCapture(move, state)) {
+                tacticalScore += state.redToMove ? 50 : -50;
+            }
+
+            // Fork threats (attacking multiple pieces)
+            if (createsFork(move, state)) {
+                tacticalScore += state.redToMove ? 100 : -100;
+            }
+
+            // Discovery attacks
+            if (createsDiscoveryAttack(move, state)) {
+                tacticalScore += state.redToMove ? 75 : -75;
+            }
+        }
+
+        return tacticalScore;
     }
 
     // === HELPER METHODS ===
 
+    private static int manhattanDistance(int index1, int index2) {
+        int rank1 = GameState.rank(index1);
+        int file1 = GameState.file(index1);
+        int rank2 = GameState.rank(index2);
+        int file2 = GameState.file(index2);
+
+        return Math.abs(rank1 - rank2) + Math.abs(file1 - file2);
+    }
+
+    public static int scoreMove(GameState state, Move move) {
+        if (state == null) {
+            return move.amountMoved; // Simple evaluation without context
+        }
+        int to = move.to;
+        long toBit = GameState.bit(to);
+        boolean isRed = state.redToMove;
+
+        boolean capturesGuard = isRed
+                ? (state.blueGuard & toBit) != 0
+                : (state.redGuard & toBit) != 0;
+
+        boolean capturesTower = isRed
+                ? (state.blueTowers & toBit) != 0
+                : (state.redTowers & toBit) != 0;
+
+        boolean stacksOnOwn = isRed
+                ? (state.redTowers & toBit) != 0
+                : (state.blueTowers & toBit) != 0;
+
+        boolean isGuardMove = (move.amountMoved == 1) &&
+                (((isRed && (state.redGuard & GameState.bit(move.from)) != 0)) ||
+                        (!isRed && (state.blueGuard & GameState.bit(move.from)) != 0));
+
+        boolean entersCastle = (isRed && move.to == BLUE_CASTLE_INDEX) ||
+                (!isRed && move.to == RED_CASTLE_INDEX);
+
+        int score = 0;
+        if (entersCastle && isGuardMove) score += 10000;
+        if (capturesGuard) score += GUARD_CAPTURE_SCORE; // Reduced from 10000
+        if (capturesTower) score += 500 * (isRed ? state.redStackHeights[move.to] : state.blueStackHeights[move.to]);
+        if (stacksOnOwn) score += 10;
+        score += move.amountMoved;
+
+        if (isGuardMove && isExposed(move, state)) {
+            score -= GUARD_CAPTURE_SCORE; // Reduced penalty
+        }
+
+        return score;
+    }
+
     /**
+     * @implNote basically does the same as isGuardInDanger() but applies a move before
+     */
+    private static boolean isExposed(Move move, GameState state) {
+        GameState copy = state.copy();
+        copy.applyMove(move);  // simulate the move
+
+        boolean redToMove = state.redToMove;
+        long guardPosition = redToMove ? copy.redGuard : copy.blueGuard;
+
+        // Simulate opponent's turn — generate all moves
+        copy.redToMove = !redToMove;
+        List<Move> enemyMoves = MoveGenerator.generateAllMoves(copy);
+
+        for (Move m : enemyMoves) {
+            if (GameState.bit(m.to) == guardPosition) {
+                return true; // guard can be captured
+            }
+        }
+        return false;
+    }
+
+    private static boolean isCapture(Move move, GameState state) {
+        if (state == null) return false;
+
+        long toBit = GameState.bit(move.to);
+        boolean isRed = state.redToMove;
+
+        boolean capturesGuard = isRed ?
+                (state.blueGuard & toBit) != 0 :
+                (state.redGuard & toBit) != 0;
+
+        boolean capturesTower = isRed ?
+                (state.blueTowers & toBit) != 0 :
+                (state.redTowers & toBit) != 0;
+
+        return capturesGuard || capturesTower;
+    }
+
+    // === LEGACY METHODS FOR COMPATIBILITY ===
+
+    /**
+     * Original guard danger detection method (for compatibility)
      * @param state
      * @param checkRed true if red guard position should be evaluated
      * @return if the next enemy move would take the Guard
      */
     private static boolean isGuardInDanger(GameState state, boolean checkRed) {
-        GameState copy = state.copy();
-        copy.redToMove = !checkRed;     // Invert to make the enemy move next
-        long targetGuard = checkRed ? state.redGuard : state.blueGuard;
+        // Use improved version but keep method name for compatibility
+        return isGuardInDangerImproved(state, checkRed);
+    }
 
-        for (Move m : MoveGenerator.generateAllMoves(copy)) {
-            if (GameState.bit(m.to) == targetGuard) return true;
-        }
-        return false;
+    /**
+     * Original mate net detection method (for compatibility)
+     */
+    private static boolean isGuardInMateNet(GameState state, boolean checkRed) {
+        // Use improved version but keep method name for compatibility
+        return isGuardInMateNetImproved(state, checkRed);
     }
 
     private static int countSupportingTowers(int guardPos, boolean isRed, GameState state) {
@@ -754,8 +1263,8 @@ public class Minimax {
             }
 
             // Check if square is occupied
-            if (((state.redTowers | state.blueTowers | state.redGuard | state.blueGuard)
-                    & GameState.bit(target)) != 0) {
+            long allPieces = state.redTowers | state.blueTowers | state.redGuard | state.blueGuard;
+            if ((allPieces & GameState.bit(target)) != 0) {
                 blockedCount++;
             }
         }
@@ -821,784 +1330,64 @@ public class Minimax {
         return mobility;
     }
 
-    private static int manhattanDistance(int index1, int index2) {
-        int rank1 = GameState.rank(index1);
-        int file1 = GameState.file(index1);
-        int rank2 = GameState.rank(index2);
-        int file2 = GameState.file(index2);
+    // Helper methods (implement these based on your game logic)
+    private static boolean isMoveLegal(int from, int to, GameState state, boolean isRed) {
+        // Basic implementation - you may need to enhance this
+        long ownPieces = isRed ? (state.redGuard | state.redTowers) : (state.blueGuard | state.blueTowers);
 
-        return Math.abs(rank1 - rank2) + Math.abs(file1 - file2);
+        // Can't move to square occupied by own piece
+        return (ownPieces & GameState.bit(to)) == 0;
     }
 
-    public static int scoreMove(GameState state, Move move) {
-        if (state == null) {
-            return move.amountMoved; // Simple evaluation without context
-        }
-        int to = move.to;
-        long toBit = GameState.bit(to);
-        boolean isRed = state.redToMove;
-
-        boolean capturesGuard = isRed
-                ? (state.blueGuard & toBit) != 0
-                : (state.redGuard & toBit) != 0;
-
-        boolean capturesTower = isRed
-                ? (state.blueTowers & toBit) != 0
-                : (state.redTowers & toBit) != 0;
-
-        boolean stacksOnOwn = isRed
-                ? (state.redTowers & toBit) != 0
-                : (state.blueTowers & toBit) != 0;
-
-        boolean isGuardMove = (move.amountMoved == 1) &&
-                (((isRed && (state.redGuard & GameState.bit(move.from)) != 0)) ||
-                        (!isRed && (state.blueGuard & GameState.bit(move.from)) != 0));
-
-        boolean entersCastle = (isRed && move.to == BLUE_CASTLE_INDEX) ||
-                (!isRed && move.to == RED_CASTLE_INDEX);
-
-        int score = 0;
-        if (entersCastle && isGuardMove) score += 10000;
-        if (capturesGuard) score += 10000;
-        if (capturesTower) score += 500 * (isRed ? state.redStackHeights[move.to] : state.blueStackHeights[move.to]);
-        if (stacksOnOwn) score += 10;
-        score += move.amountMoved;
-
-        if (isGuardMove && isExposed(move, state)) {
-            score -= 10000;
-        }
-
-        return score;
+    private static boolean isCentralSquare(int pos) {
+        return pos == GameState.getIndex(2, 3) ||
+                pos == GameState.getIndex(3, 3) ||
+                pos == GameState.getIndex(4, 3);
     }
 
-    /**
-     * @implNote basically does the same as isGuardInDanger() but applies a move before
-     */
-    private static boolean isExposed(Move move, GameState state) {
-        GameState copy = state.copy();
-        copy.applyMove(move);  // simulate the move
-
-        boolean redToMove = state.redToMove;
-        long guardPosition = redToMove ? copy.redGuard : copy.blueGuard;
-
-        // Simulate opponent's turn — generate all moves
-        copy.redToMove = !redToMove;
-        List<Move> enemyMoves = MoveGenerator.generateAllMoves(copy);
-
-        for (Move m : enemyMoves) {
-            if (GameState.bit(m.to) == guardPosition) {
-                return true; // guard can be captured
-            }
-        }
-        return false;
+    private static boolean threatsEnemyPiece(int pos, GameState state, boolean isRed) {
+        long enemyPieces = isRed ? (state.blueGuard | state.blueTowers) : (state.redGuard | state.redTowers);
+        return (enemyPieces & GameState.bit(pos)) != 0;
     }
 
-    private static boolean isCapture(Move move, GameState state) {
-        if (state == null) return false;
-
-        long toBit = GameState.bit(move.to);
-        boolean isRed = state.redToMove;
-
-        boolean capturesGuard = isRed ?
-                (state.blueGuard & toBit) != 0 :
-                (state.redGuard & toBit) != 0;
-
-        boolean capturesTower = isRed ?
-                (state.blueTowers & toBit) != 0 :
-                (state.redTowers & toBit) != 0;
-
-        return capturesGuard || capturesTower;
+    private static boolean createsFork(Move move, GameState state) {
+        // Simple fork detection - you can enhance this
+        return false; // Placeholder
     }
 
-    // === TACTICAL PATTERN RECOGNITION ===
-// Add these methods to your Minimax.java class
-
-    /**
-     * Detect fork patterns: one piece attacking multiple targets
-     */
-    private static int detectForks(GameState state, boolean isRed) {
-        int forkBonus = 0;
-        long ownTowers = isRed ? state.redTowers : state.blueTowers;
-        int[] ownHeights = isRed ? state.redStackHeights : state.blueStackHeights;
-
-        // Check each tower for fork potential
-        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-            if ((ownTowers & GameState.bit(i)) == 0) continue;
-
-            int height = ownHeights[i];
-            if (height == 0) continue;
-
-            int targetsAttacked = 0;
-            int[] directions = {-1, 1, -GameState.BOARD_SIZE, GameState.BOARD_SIZE};
-
-            // Check all possible moves for this tower
-            for (int dir : directions) {
-                for (int dist = 1; dist <= height; dist++) {
-                    int target = i + dir * dist;
-                    if (!GameState.isOnBoard(target)) break;
-
-                    // Check edge wrapping for horizontal moves
-                    if (Math.abs(dir) == 1 && GameState.rank(i) != GameState.rank(target)) {
-                        break;
-                    }
-
-                    // Check if path is clear
-                    boolean pathClear = true;
-                    for (int step = 1; step < dist; step++) {
-                        int intermediate = i + dir * step;
-                        if (isOccupiedByAnyPiece(intermediate, state)) {
-                            pathClear = false;
-                            break;
-                        }
-                    }
-
-                    if (!pathClear) break;
-
-                    // Check if this square contains an enemy piece we can capture
-                    if (isEnemyPieceAt(target, isRed, state)) {
-                        targetsAttacked++;
-                    }
-                }
-            }
-
-            // Bonus for attacking multiple targets (fork)
-            if (targetsAttacked >= 2) {
-                forkBonus += 250 * (targetsAttacked - 1);
-            }
-        }
-
-        return forkBonus;
+    private static boolean createsDiscoveryAttack(Move move, GameState state) {
+        // Simple discovery attack detection - you can enhance this
+        return false; // Placeholder
     }
 
-    /**
-     * Detect pieces that are pinned (cannot move without exposing more valuable piece)
-     */
-    private static int detectPins(GameState state, boolean isRed) {
-        int pinBonus = 0;
-        long enemyGuard = isRed ? state.blueGuard : state.redGuard;
-
-        // Look for pieces that could be pinning enemy pieces
-        long ownTowers = isRed ? state.redTowers : state.blueTowers;
-        int[] ownHeights = isRed ? state.redStackHeights : state.blueStackHeights;
-
-        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-            if ((ownTowers & GameState.bit(i)) == 0) continue;
-
-            int height = ownHeights[i];
-            int[] directions = {-1, 1, -GameState.BOARD_SIZE, GameState.BOARD_SIZE};
-
-            for (int dir : directions) {
-                // Look for enemy piece + valuable target in line
-                int enemyPos = -1;
-                int valuablePos = -1;
-
-                for (int dist = 1; dist <= height; dist++) {
-                    int pos = i + dir * dist;
-                    if (!GameState.isOnBoard(pos)) break;
-
-                    if (Math.abs(dir) == 1 && GameState.rank(i) != GameState.rank(pos)) {
-                        break;
-                    }
-
-                    if (isEnemyPieceAt(pos, isRed, state)) {
-                        if (enemyPos == -1) {
-                            enemyPos = pos;
-                        } else {
-                            // Check if second piece is more valuable (guard or big tower)
-                            if ((enemyGuard & GameState.bit(pos)) != 0) {
-                                valuablePos = pos; // Guard is most valuable
-                                break;
-                            }
-                            // Check for large tower
-                            int[] enemyHeights = isRed ? state.blueStackHeights : state.redStackHeights;
-                            if (enemyHeights[pos] >= 3) {
-                                valuablePos = pos;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                // If we found a pin pattern, add bonus
-                if (enemyPos != -1 && valuablePos != -1) {
-                    pinBonus += 180;
-                    if ((enemyGuard & GameState.bit(valuablePos)) != 0) {
-                        pinBonus += 220; // Extra bonus for pinning to guard
-                    }
-                }
-            }
-        }
-
-        return pinBonus;
+    private static int evaluatePieceCoordination(GameState state) {
+        // Simple coordination evaluation - you can enhance this
+        return 0; // Placeholder
     }
 
-    /**
-     * Detect discovered attacks: moving one piece reveals attack from another
-     */
-    private static int detectDiscoveredAttacks(GameState state, boolean isRed) {
-        int discoveredBonus = 0;
-        long ownTowers = isRed ? state.redTowers : state.blueTowers;
-        int[] ownHeights = isRed ? state.redStackHeights : state.blueStackHeights;
-        long enemyGuard = isRed ? state.blueGuard : state.redGuard;
-
-        // Check each of our towers
-        for (int backPiece = 0; backPiece < GameState.NUM_SQUARES; backPiece++) {
-            if ((ownTowers & GameState.bit(backPiece)) == 0) continue;
-
-            int backHeight = ownHeights[backPiece];
-            if (backHeight == 0) continue;
-
-            int[] directions = {-1, 1, -GameState.BOARD_SIZE, GameState.BOARD_SIZE};
-
-            for (int dir : directions) {
-                // Look for own piece blocking the line, then enemy piece behind it
-                int blockingPiece = -1;
-                int enemyTarget = -1;
-
-                for (int dist = 1; dist <= backHeight; dist++) {
-                    int pos = backPiece + dir * dist;
-                    if (!GameState.isOnBoard(pos)) break;
-
-                    if (Math.abs(dir) == 1 && GameState.rank(backPiece) != GameState.rank(pos)) {
-                        break;
-                    }
-
-                    if (isOwnPieceAt(pos, isRed, state)) {
-                        if (blockingPiece == -1) {
-                            blockingPiece = pos;
-                            // Continue looking beyond this piece
-                        }
-                    } else if (isEnemyPieceAt(pos, isRed, state)) {
-                        if (blockingPiece != -1) {
-                            // Found potential discovered attack
-                            enemyTarget = pos;
-                            break;
-                        }
-                    }
-                }
-
-                // If we found a discovered attack pattern
-                if (blockingPiece != -1 && enemyTarget != -1) {
-                    discoveredBonus += 150;
-                    // Extra bonus if targeting enemy guard
-                    if ((enemyGuard & GameState.bit(enemyTarget)) != 0) {
-                        discoveredBonus += 200;
-                    }
-                }
-            }
-        }
-
-        return discoveredBonus;
-    }
-
-// === HELPER METHODS ===
-
-    private static boolean isOccupiedByAnyPiece(int index, GameState state) {
-        return ((state.redTowers | state.blueTowers | state.redGuard | state.blueGuard)
-                & GameState.bit(index)) != 0;
-    }
-
-    private static boolean isEnemyPieceAt(int index, boolean isRed, GameState state) {
-        long bit = GameState.bit(index);
-        if (isRed) {
-            return (state.blueGuard & bit) != 0 || (state.blueTowers & bit) != 0;
-        } else {
-            return (state.redGuard & bit) != 0 || (state.redTowers & bit) != 0;
-        }
-    }
-
-    private static boolean isOwnPieceAt(int index, boolean isRed, GameState state) {
-        long bit = GameState.bit(index);
-        if (isRed) {
-            return (state.redGuard & bit) != 0 || (state.redTowers & bit) != 0;
-        } else {
-            return (state.blueGuard & bit) != 0 || (state.blueTowers & bit) != 0;
-        }
-    }
-
-
-
-
-
-    // === ENHANCED GUARD SAFETY ===
-// Add these methods to your Minimax.java class
-
-    /**
-     * Check if guard is in a mate net (will be captured regardless of where it moves)
-     */
-    private static boolean isGuardInMateNet(GameState state, boolean checkRed) {
-        long guardBit = checkRed ? state.redGuard : state.blueGuard;
-        if (guardBit == 0) return false; // No guard to check
-
-        int guardPos = Long.numberOfTrailingZeros(guardBit);
-        int[] directions = {-1, 1, -GameState.BOARD_SIZE, GameState.BOARD_SIZE};
-
-        // Try all possible guard moves
-        for (int dir : directions) {
-            int newPos = guardPos + dir;
-            if (!GameState.isOnBoard(newPos)) continue;
-
-            // Check edge wrapping for horizontal moves
-            if (Math.abs(dir) == 1 && GameState.rank(guardPos) != GameState.rank(newPos)) {
-                continue;
-            }
-
-            // Create test state with guard moved
-            GameState testState = state.copy();
-
-            // Clear old guard position
-            if (checkRed) {
-                testState.redGuard &= ~GameState.bit(guardPos);
-            } else {
-                testState.blueGuard &= ~GameState.bit(guardPos);
-            }
-
-            // Check if destination is occupied by own piece
-            long allOwnPieces = checkRed ?
-                    (testState.redGuard | testState.redTowers) :
-                    (testState.blueGuard | testState.blueTowers);
-
-            if ((allOwnPieces & GameState.bit(newPos)) != 0) {
-                continue; // Can't move to square occupied by own piece
-            }
-
-            // Clear any enemy piece at destination (capture)
-            if (checkRed) {
-                testState.blueGuard &= ~GameState.bit(newPos);
-                testState.blueTowers &= ~GameState.bit(newPos);
-                testState.blueStackHeights[newPos] = 0;
-            } else {
-                testState.redGuard &= ~GameState.bit(newPos);
-                testState.redTowers &= ~GameState.bit(newPos);
-                testState.redStackHeights[newPos] = 0;
-            }
-
-            // Set guard at new position
-            if (checkRed) {
-                testState.redGuard |= GameState.bit(newPos);
-            } else {
-                testState.blueGuard |= GameState.bit(newPos);
-            }
-
-            // Check if guard is still in danger after this move
-            if (!isGuardInDanger(testState, checkRed)) {
-                return false; // Found escape square
-            }
-        }
-
-        return true; // No escape = mate net
-    }
-
-    /**
-     * Enhanced guard safety evaluation with multiple threat levels
-     */
-    private static int evaluateGuardSafety(GameState state) {
-        int safetyScore = 0;
-
-        // Check red guard safety
-        if (state.redGuard != 0) {
-            if (isGuardInMateNet(state, true)) {
-                safetyScore -= 15000; // Red guard in mate net (very bad)
-            } else if (isGuardInDanger(state, true)) {
-                safetyScore -= 5000; // Red guard just in danger
-            } else {
-                // Check if guard has multiple escape squares (safety bonus)
-                int escapeSquares = countGuardEscapeSquares(state, true);
-                if (escapeSquares >= 3) {
-                    safetyScore += 100; // Bonus for having many escape options
-                }
-            }
-        }
-
-        // Check blue guard safety
-        if (state.blueGuard != 0) {
-            if (isGuardInMateNet(state, false)) {
-                safetyScore += 15000; // Blue guard in mate net (good for us)
-            } else if (isGuardInDanger(state, false)) {
-                safetyScore += 5000; // Blue guard just in danger
-            } else {
-                // Check if enemy guard has multiple escape squares
-                int escapeSquares = countGuardEscapeSquares(state, false);
-                if (escapeSquares >= 3) {
-                    safetyScore -= 100; // Penalty for enemy having many escape options
-                }
-            }
-        }
-
-        return safetyScore;
-    }
-
-    /**
-     * Count how many safe squares the guard can move to
-     */
-    private static int countGuardEscapeSquares(GameState state, boolean checkRed) {
-        long guardBit = checkRed ? state.redGuard : state.blueGuard;
-        if (guardBit == 0) return 0;
-
-        int guardPos = Long.numberOfTrailingZeros(guardBit);
-        int[] directions = {-1, 1, -GameState.BOARD_SIZE, GameState.BOARD_SIZE};
-        int escapeCount = 0;
-
-        for (int dir : directions) {
-            int newPos = guardPos + dir;
-            if (!GameState.isOnBoard(newPos)) continue;
-
-            // Check edge wrapping
-            if (Math.abs(dir) == 1 && GameState.rank(guardPos) != GameState.rank(newPos)) {
-                continue;
-            }
-
-            // Check if square is accessible
-            long allOwnPieces = checkRed ?
-                    (state.redGuard | state.redTowers) :
-                    (state.blueGuard | state.blueTowers);
-
-            if ((allOwnPieces & GameState.bit(newPos)) != 0) {
-                continue; // Blocked by own piece
-            }
-
-            // Simulate move and check if still safe
-            GameState testState = state.copy();
-
-            // Move guard to new position
-            if (checkRed) {
-                testState.redGuard &= ~GameState.bit(guardPos);
-                testState.redGuard |= GameState.bit(newPos);
-            } else {
-                testState.blueGuard &= ~GameState.bit(guardPos);
-                testState.blueGuard |= GameState.bit(newPos);
-            }
-
-            // Clear any captured piece
-            if (checkRed) {
-                testState.blueGuard &= ~GameState.bit(newPos);
-                testState.blueTowers &= ~GameState.bit(newPos);
-                testState.blueStackHeights[newPos] = 0;
-            } else {
-                testState.redGuard &= ~GameState.bit(newPos);
-                testState.redTowers &= ~GameState.bit(newPos);
-                testState.redStackHeights[newPos] = 0;
-            }
-
-            // Check if guard would be safe after moving here
-            if (!isGuardInDanger(testState, checkRed)) {
-                escapeCount++;
-            }
-        }
-
-        return escapeCount;
-    }
-
-    /**
-     * Detect if guard is under multiple threats (more dangerous than single threat)
-     */
-    private static boolean isGuardUnderMultipleThreats(GameState state, boolean checkRed) {
-        GameState copy = state.copy();
-        copy.redToMove = !checkRed; // Enemy to move
-        long targetGuard = checkRed ? state.redGuard : state.blueGuard;
-
-        if (targetGuard == 0) return false;
-
-        int threatCount = 0;
-
-        // Count how many enemy pieces can attack the guard
-        for (Move move : MoveGenerator.generateAllMoves(copy)) {
-            if (GameState.bit(move.to) == targetGuard) {
-                threatCount++;
-                if (threatCount >= 2) {
-                    return true; // Multiple threats detected
-                }
-            }
-        }
-
-        return false;
-    }
-
-
-    // === ENDGAME KNOWLEDGE ===
-// Add these methods to your Minimax.java class
-
-    /**
-     * Determine if we're in endgame phase
-     */
     private static boolean isEndgame(GameState state) {
-        int totalTowers = Long.bitCount(state.redTowers | state.blueTowers);
-
-        // Endgame conditions:
-        // 1. Very few towers left
-        if (totalTowers <= 4) return true;
-
-        // 2. Guards are very advanced (near enemy castles)
-        if (areGuardsVeryAdvanced(state)) return true;
-
-        // 3. Material is very imbalanced (one side is winning)
-        int materialDiff = getMaterialBalance(state);
-        if (Math.abs(materialDiff) > 600) return true; // Large material advantage
-
-        return false;
-    }
-
-    /**
-     * Check if guards have advanced far into enemy territory
-     */
-    private static boolean areGuardsVeryAdvanced(GameState state) {
-        // Red guard very close to blue castle (rank 0-2)
-        if (state.redGuard != 0) {
-            int redRank = GameState.rank(Long.numberOfTrailingZeros(state.redGuard));
-            if (redRank <= 2) return true;
-        }
-
-        // Blue guard very close to red castle (rank 4-6)
-        if (state.blueGuard != 0) {
-            int blueRank = GameState.rank(Long.numberOfTrailingZeros(state.blueGuard));
-            if (blueRank >= 4) return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Get material balance from current perspective
-     */
-    private static int getMaterialBalance(GameState state) {
-        int redMaterial = 0;
-        int blueMaterial = 0;
-
+        int totalPieces = 0;
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-            redMaterial += state.redStackHeights[i] * 130; // Use same weight as evaluation
-            blueMaterial += state.blueStackHeights[i] * 130;
+            totalPieces += state.redStackHeights[i] + state.blueStackHeights[i];
         }
-
-        return redMaterial - blueMaterial;
+        return totalPieces <= 8; // Simple endgame detection
     }
 
-    /**
-     * Comprehensive endgame evaluation
-     */
     private static int evaluateEndgame(GameState state) {
+        // Simple endgame evaluation - you can enhance this
         int endgameScore = 0;
 
-        // 1. GUARD ACTIVITY (most important in endgame)
-        endgameScore += evaluateGuardActivity(state);
+        // Guard advancement is more important in endgame
+        if (state.redGuard != 0) {
+            int redRank = GameState.rank(Long.numberOfTrailingZeros(state.redGuard));
+            endgameScore += (6 - redRank) * 100; // Extra bonus for advancement
+        }
 
-        // 2. OPPOSITION (guards facing each other)
-        endgameScore += evaluateOpposition(state);
-
-        // 3. GUARD RACE (who reaches enemy castle first)
-        endgameScore += evaluateGuardRace(state);
-
-        // 4. PIECE COORDINATION
-        endgameScore += evaluatePieceCoordination(state);
-
-        // 5. KING SAFETY (keep guard away from enemy pieces)
-        endgameScore += evaluateGuardSafetyInEndgame(state);
+        if (state.blueGuard != 0) {
+            int blueRank = GameState.rank(Long.numberOfTrailingZeros(state.blueGuard));
+            endgameScore -= blueRank * 100; // Penalty for enemy advancement
+        }
 
         return endgameScore;
     }
-
-    /**
-     * Evaluate guard activity and centralization in endgame
-     */
-    private static int evaluateGuardActivity(GameState state) {
-        int activityScore = 0;
-
-        // Red guard activity
-        if (state.redGuard != 0) {
-            int guardPos = Long.numberOfTrailingZeros(state.redGuard);
-            int rank = GameState.rank(guardPos);
-            int file = GameState.file(guardPos);
-
-            // Bonus for active guard positions in endgame
-            // Guards should be centralized and advanced
-            int centralityBonus = (3 - Math.abs(file - 3)) * 50; // Closer to center = better
-            int advancementBonus = (6 - rank) * 100; // Closer to enemy castle = better
-
-            activityScore += centralityBonus + advancementBonus;
-
-            // Bonus for guard having good mobility in endgame
-            int guardMobility = countGuardEscapeSquares(state, true);
-            activityScore += guardMobility * 30;
-        }
-
-        // Blue guard activity (negative from red's perspective)
-        if (state.blueGuard != 0) {
-            int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
-            int rank = GameState.rank(guardPos);
-            int file = GameState.file(guardPos);
-
-            int centralityBonus = (3 - Math.abs(file - 3)) * 50;
-            int advancementBonus = rank * 100; // Higher rank = closer to red castle
-
-            activityScore -= (centralityBonus + advancementBonus);
-
-            int guardMobility = countGuardEscapeSquares(state, false);
-            activityScore -= guardMobility * 30;
-        }
-
-        return activityScore;
-    }
-
-    /**
-     * Evaluate opposition between guards (facing each other)
-     */
-    private static int evaluateOpposition(GameState state) {
-        if (state.redGuard == 0 || state.blueGuard == 0) return 0;
-
-        int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
-        int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
-
-        int redRank = GameState.rank(redGuardPos);
-        int redFile = GameState.file(redGuardPos);
-        int blueRank = GameState.rank(blueGuardPos);
-        int blueFile = GameState.file(blueGuardPos);
-
-        // Opposition: guards on same file or rank, facing each other
-        boolean onSameFile = (redFile == blueFile);
-        boolean onSameRank = (redRank == blueRank);
-
-        if (onSameFile || onSameRank) {
-            int distance = manhattanDistance(redGuardPos, blueGuardPos);
-
-            // Having the move when in opposition is advantageous
-            if (state.redToMove) {
-                return 100 - (distance * 10); // Closer opposition = better for side to move
-            } else {
-                return -(100 - (distance * 10)); // Bad for us if enemy has the move
-            }
-        }
-
-        return 0;
-    }
-
-    /**
-     * Evaluate guard race (who reaches enemy castle first)
-     */
-    private static int evaluateGuardRace(GameState state) {
-        int raceScore = 0;
-
-        if (state.redGuard != 0 && state.blueGuard != 0) {
-            int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
-            int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
-
-            // Calculate distance to enemy castles
-            int redDistanceToBlueCastle = manhattanDistance(redGuardPos, BLUE_CASTLE_INDEX);
-            int blueDistanceToRedCastle = manhattanDistance(blueGuardPos, RED_CASTLE_INDEX);
-
-            // Race evaluation: who gets there first?
-            int raceDifference = blueDistanceToRedCastle - redDistanceToBlueCastle;
-
-            // If we're closer to their castle than they are to ours = good
-            raceScore += raceDifference * 150;
-
-            // Tempo consideration: who has the move?
-            if (state.redToMove && raceDifference >= 0) {
-                raceScore += 100; // Extra bonus for having the move when winning the race
-            } else if (!state.redToMove && raceDifference <= 0) {
-                raceScore -= 100; // Penalty for enemy having the move when they're winning the race
-            }
-        }
-
-        return raceScore;
-    }
-
-    /**
-     * Evaluate piece coordination in endgame
-     */
-    private static int evaluatePieceCoordination(GameState state) {
-        int coordinationScore = 0;
-
-        // Towers should support the guard advance
-        if (state.redGuard != 0) {
-            int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
-
-            // Count towers that can support guard advance
-            int supportingTowers = 0;
-            for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-                if (state.redStackHeights[i] > 0) {
-                    int distance = manhattanDistance(i, redGuardPos);
-                    int height = state.redStackHeights[i];
-
-                    // Tower can support if it can reach near the guard
-                    if (distance <= height + 2) { // Can get close to guard
-                        supportingTowers++;
-                    }
-                }
-            }
-            coordinationScore += supportingTowers * 80;
-        }
-
-        // Penalty for blue coordination
-        if (state.blueGuard != 0) {
-            int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
-
-            int supportingTowers = 0;
-            for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-                if (state.blueStackHeights[i] > 0) {
-                    int distance = manhattanDistance(i, blueGuardPos);
-                    int height = state.blueStackHeights[i];
-
-                    if (distance <= height + 2) {
-                        supportingTowers++;
-                    }
-                }
-            }
-            coordinationScore -= supportingTowers * 80;
-        }
-
-        return coordinationScore;
-    }
-
-    /**
-     * Evaluate guard safety specifically in endgame
-     */
-    private static int evaluateGuardSafetyInEndgame(GameState state) {
-        int safetyScore = 0;
-
-        // In endgame, guards should stay away from enemy pieces
-        // but still be active
-
-        if (state.redGuard != 0) {
-            int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
-
-            // Find closest enemy piece
-            int closestEnemyDistance = Integer.MAX_VALUE;
-            for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-                if (state.blueStackHeights[i] > 0 || (state.blueGuard & GameState.bit(i)) != 0) {
-                    int distance = manhattanDistance(redGuardPos, i);
-                    closestEnemyDistance = Math.min(closestEnemyDistance, distance);
-                }
-            }
-
-            // Prefer to keep some distance from enemy pieces
-            if (closestEnemyDistance >= 3) {
-                safetyScore += 50; // Safe distance
-            } else if (closestEnemyDistance <= 1) {
-                safetyScore -= 100; // Too close = dangerous
-            }
-        }
-
-        // Similar evaluation for blue guard (penalty)
-        if (state.blueGuard != 0) {
-            int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
-
-            int closestEnemyDistance = Integer.MAX_VALUE;
-            for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-                if (state.redStackHeights[i] > 0 || (state.redGuard & GameState.bit(i)) != 0) {
-                    int distance = manhattanDistance(blueGuardPos, i);
-                    closestEnemyDistance = Math.min(closestEnemyDistance, distance);
-                }
-            }
-
-            if (closestEnemyDistance >= 3) {
-                safetyScore -= 50; // Enemy guard is safe = bad for us
-            } else if (closestEnemyDistance <= 1) {
-                safetyScore += 100; // Enemy guard in danger = good for us
-            }
-        }
-
-        return safetyScore;
-    }
-
-
-
 }
