@@ -7,26 +7,24 @@ import GaT.Objects.GameState;
 import GaT.Objects.Move;
 import GaT.TimeManager;
 import GaT.TimedMinimax;
+import GaT.Minimax;
+import GaT.QuiescenceSearch; // CRITICAL: Import QuiescenceSearch for time integration
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
 public class GameClient {
     private static final Gson gson = new Gson();
-    private static TimeManager timeManager;
-    private static int moveNumber = 0;
 
-    // Track time usage for learning
+    // Game statistics tracking
+    private static int moveNumber = 0;
     private static long lastMoveStartTime = 0;
+    private static TimeManager timeManager = new TimeManager(180000, 50); // 3 minutes, ~50 moves
 
     public static void main(String[] args) {
         boolean running = true;
         Network network = new Network();
         int player = Integer.parseInt(network.getP());
-        System.out.println("🎮 You are player " + player);
-
-        // Initialize with conservative estimates
-        // Adjust these based on your typical game length
-        timeManager = new TimeManager(180_000, 50); // 3 minutes, ~50 moves
+        System.out.println("🎮 You are player " + player + " (" + (player == 0 ? "RED" : "BLUE") + ")");
 
         while (running) {
             try {
@@ -46,9 +44,6 @@ public class GameClient {
                     String board = game.get("board").getAsString();
                     long timeRemaining = game.get("time").getAsLong();
 
-                    // Update time manager with current remaining time
-                    timeManager.updateRemainingTime(timeRemaining);
-
                     // Only act when it's our turn
                     if ((player == 0 && turn.equals("r")) || (player == 1 && turn.equals("b"))) {
                         moveNumber++;
@@ -60,7 +55,7 @@ public class GameClient {
                         // Record move start time
                         lastMoveStartTime = System.currentTimeMillis();
 
-                        // Get AI move using advanced time management
+                        // Get AI move using enhanced time management
                         String move = getAIMove(board, player, timeRemaining);
 
                         // Calculate actual time used
@@ -71,8 +66,7 @@ public class GameClient {
                         System.out.println("📤 Sent move: " + move);
                         System.out.println("⏱️ Actual time used: " + actualTimeUsed + "ms");
 
-                        // Update time manager with feedback
-                        timeManager.reportMoveCompleted(actualTimeUsed);
+                        // Update time manager
                         timeManager.decrementEstimatedMovesLeft();
 
                         System.out.println("=".repeat(50));
@@ -87,7 +81,7 @@ public class GameClient {
                             "Game finished";
                     System.out.println("🎯 " + result);
 
-                    // FIXED: Get the final time remaining for statistics
+                    // Print final game statistics
                     long finalTimeRemaining = game.has("time") ? game.get("time").getAsLong() : 0;
                     printGameStatistics(finalTimeRemaining);
                     running = false;
@@ -106,23 +100,29 @@ public class GameClient {
     }
 
     /**
-     * Enhanced AI move calculation with advanced time management
+     * ENHANCED AI move calculation with comprehensive time management and error handling
      */
     private static String getAIMove(String board, int player, long timeLeft) {
         try {
             GameState state = GameState.fromFen(board);
+
+            // CRITICAL: Update ALL time-aware components
+            timeManager.updateRemainingTime(timeLeft);
+            Minimax.setRemainingTime(timeLeft);
+            QuiescenceSearch.setRemainingTime(timeLeft); // ESSENTIAL: Sync QuiescenceSearch too!
 
             // Get sophisticated time allocation
             long timeForMove = timeManager.calculateTimeForMove(state);
 
             System.out.println("🧠 AI Analysis:");
             System.out.println("   ⏰ Time allocated: " + timeForMove + "ms");
-            System.out.println("   🎯 Strategy: ULTIMATE (PVS + Quiescence)");
+            System.out.println("   🎯 Strategy: ULTIMATE (PVS + Quiescence + Time-Aware Evaluation)");
+            System.out.println("   🎮 Phase: " + timeManager.getCurrentPhase());
 
             // Use the ultimate AI strategy with precise time control
             long searchStartTime = System.currentTimeMillis();
 
-            Move bestMove = TimedMinimax.findBestMoveUltimate(state, 99, timeForMove);
+            Move bestMove = TimedMinimax.findBestMoveWithStrategy(state, 99, timeForMove, Minimax.SearchStrategy.PVS_Q);
 
             long searchTime = System.currentTimeMillis() - searchStartTime;
 
@@ -133,6 +133,13 @@ public class GameClient {
                         String.format("%.1f%%", 100.0 * searchTime / timeForMove) + " of allocated time)");
             } else if (searchTime > timeForMove * 0.95) {
                 System.out.println("   ⏳ Deep search (used full allocated time)");
+            }
+
+            // Validate move is legal
+            List<Move> legalMoves = MoveGenerator.generateAllMoves(state);
+            if (!legalMoves.contains(bestMove)) {
+                System.out.println("⚠️ WARNING: AI returned illegal move! Using fallback...");
+                bestMove = findSafeFallbackMove(state, legalMoves);
             }
 
             return bestMove.toString();
@@ -146,7 +153,7 @@ public class GameClient {
                 GameState state = GameState.fromFen(board);
                 List<Move> legalMoves = MoveGenerator.generateAllMoves(state);
                 if (!legalMoves.isEmpty()) {
-                    Move fallbackMove = legalMoves.get(0);
+                    Move fallbackMove = findSafeFallbackMove(state, legalMoves);
                     System.out.println("🚨 Using emergency fallback move: " + fallbackMove);
                     return fallbackMove.toString();
                 }
@@ -154,9 +161,55 @@ public class GameClient {
                 System.err.println("❌ Even fallback failed: " + fallbackError.getMessage());
             }
 
-            // Last resort
-            return "A1-A2-1"; // Hopefully this won't happen!
+            // Last resort - this should never happen
+            System.err.println("🆘 CRITICAL: No legal moves found! Using default move...");
+            return "A1-A2-1";
         }
+    }
+
+    /**
+     * Find a safe fallback move when AI fails
+     */
+    private static Move findSafeFallbackMove(GameState state, List<Move> legalMoves) {
+        if (legalMoves.isEmpty()) {
+            throw new IllegalStateException("No legal moves available!");
+        }
+
+        // Priority 1: Look for winning moves (reaching enemy castle)
+        boolean isRed = state.redToMove;
+        int enemyCastle = isRed ? Minimax.BLUE_CASTLE_INDEX : Minimax.RED_CASTLE_INDEX;
+
+        for (Move move : legalMoves) {
+            if (move.to == enemyCastle) {
+                System.out.println("🎯 Found winning move in fallback: " + move);
+                return move;
+            }
+        }
+
+        // Priority 2: Look for captures
+        for (Move move : legalMoves) {
+            if (Minimax.isCapture(move, state)) {
+                System.out.println("🎯 Found capture in fallback: " + move);
+                return move;
+            }
+        }
+
+        // Priority 3: Guard moves if guard exists
+        long guardBit = isRed ? state.redGuard : state.blueGuard;
+        if (guardBit != 0) {
+            int guardPos = Long.numberOfTrailingZeros(guardBit);
+            for (Move move : legalMoves) {
+                if (move.from == guardPos) {
+                    System.out.println("🛡️ Found guard move in fallback: " + move);
+                    return move;
+                }
+            }
+        }
+
+        // Priority 4: Any legal move
+        Move fallback = legalMoves.get(0);
+        System.out.println("🎲 Using random legal move in fallback: " + fallback);
+        return fallback;
     }
 
     /**
@@ -175,8 +228,7 @@ public class GameClient {
     }
 
     /**
-     * Print game statistics at the end
-     * FIXED: Use correct parameter name throughout
+     * Print comprehensive game statistics at the end
      */
     private static void printGameStatistics(long finalTimeRemaining) {
         System.out.println("\n📊 GAME STATISTICS:");
@@ -195,6 +247,8 @@ public class GameClient {
             }
         }
 
-        System.out.println("   🧠 AI Strategy: ULTIMATE (PVS + Quiescence + Advanced Time Management)");
+        System.out.println("   🧠 AI Strategy: ULTIMATE (PVS + Quiescence + Time-Aware Evaluation)");
+        System.out.println("   🔧 Time Manager: Advanced with Emergency Modes");
+        System.out.println("   ✅ Integration: Complete with Minimax time awareness");
     }
 }

@@ -457,7 +457,7 @@ public class TimedMinimax {
         TimedMinimax.timeLimitMillis = timeMillis;
         TimedMinimax.startTime = System.currentTimeMillis();
 
-        // Setup appropriate components
+        // Setup appropriate components based on strategy
         if (strategy == Minimax.SearchStrategy.PVS || strategy == Minimax.SearchStrategy.PVS_Q) {
             PVSSearch.setTimeoutChecker(() -> timedOut());
         }
@@ -465,6 +465,7 @@ public class TimedMinimax {
         Minimax.resetKillerMoves();
 
         if (strategy == Minimax.SearchStrategy.ALPHA_BETA_Q || strategy == Minimax.SearchStrategy.PVS_Q) {
+            QuiescenceSearch.setRemainingTime(timeMillis); // Sync time
             QuiescenceSearch.resetQuiescenceStats();
         }
 
@@ -482,7 +483,7 @@ public class TimedMinimax {
             long depthStartTime = System.currentTimeMillis();
 
             try {
-                // Use the unified strategy interface
+                // Use the unified strategy interface from Minimax
                 Move candidate = Minimax.findBestMoveWithStrategy(state, depth, strategy);
 
                 if (candidate != null) {
@@ -492,6 +493,7 @@ public class TimedMinimax {
                     long depthTime = System.currentTimeMillis() - depthStartTime;
                     System.out.println("✓ Depth " + depth + " completed in " + depthTime + "ms. Best: " + candidate);
 
+                    // Check for immediate win
                     GameState testState = state.copy();
                     testState.applyMove(candidate);
                     if (Minimax.isGameOver(testState)) {
@@ -509,7 +511,7 @@ public class TimedMinimax {
                 break;
             }
 
-            // Time management
+            // Time management: stop early if running low on time
             long elapsed = System.currentTimeMillis() - startTime;
             long remaining = timeMillis - elapsed;
             if (remaining < timeMillis * 0.2) {
@@ -518,10 +520,22 @@ public class TimedMinimax {
             }
         }
 
-        // Print final statistics
-        printFinalStats(strategy);
+        // Print final statistics for quiescence strategies
+        if (strategy == Minimax.SearchStrategy.ALPHA_BETA_Q || strategy == Minimax.SearchStrategy.PVS_Q) {
+            if (QuiescenceSearch.qNodes > 0) {
+                System.out.println("Q-nodes: " + QuiescenceSearch.qNodes);
+                double standPatRate = (100.0 * QuiescenceSearch.standPatCutoffs) / QuiescenceSearch.qNodes;
+                System.out.println("Stand-pat rate: " + String.format("%.1f%%", standPatRate));
+            }
+        }
 
+        System.out.println("=== Search completed. Best move: " + bestMove + " ===");
         return bestMove != null ? bestMove : lastCompleteMove;
+    }
+
+    // Helper method (add if not already present)
+    private static boolean timedOut() {
+        return System.currentTimeMillis() - startTime >= timeLimitMillis;
     }
 
     /**
@@ -556,9 +570,9 @@ public class TimedMinimax {
         Minimax.orderMovesAdvanced(moves, state, depth, entry);
     }
 
-    private static boolean timedOut() {
+    /*private static boolean timedOut() {
         return System.currentTimeMillis() - startTime >= timeLimitMillis;
-    }
+    }*/
 
     private static class TimeoutException extends Exception {
         private static final long serialVersionUID = 1L;
