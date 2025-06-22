@@ -122,7 +122,9 @@ public class GameClient {
             // Use the ultimate AI strategy with precise time control
             long searchStartTime = System.currentTimeMillis();
 
-            Move bestMove = TimedMinimax.findBestMoveWithStrategy(state, 99, timeForMove, Minimax.SearchStrategy.PVS_Q);
+            // FIXED: Use the correct enum reference
+            Move bestMove = TimedMinimax.findBestMoveWithStrategy(state, 99, timeForMove,
+                    Minimax.SearchStrategy.PVS_Q);
 
             long searchTime = System.currentTimeMillis() - searchStartTime;
 
@@ -166,6 +168,7 @@ public class GameClient {
             return "A1-A2-1";
         }
     }
+
 
     /**
      * Find a safe fallback move when AI fails

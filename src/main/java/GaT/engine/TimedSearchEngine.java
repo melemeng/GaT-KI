@@ -3,7 +3,7 @@ package GaT.engine;
 import GaT.model.*;
 import GaT.search.*;
 import GaT.evaluation.Evaluator;
-import GaT.time.TimeManager;
+import GaT.engine.TimeManager;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -13,11 +13,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class TimedSearchEngine {
 
+    public TimedSearchEngine(Evaluator evaluator, TimeManager timeManager) {
+        this.searchEngine = new SearchEngine(evaluator, new MoveOrdering(),
+                new TranspositionTable(SearchConfig.TT_SIZE),
+                SearchStatistics.getInstance());
+        this.evaluator = evaluator;
+        this.timeManager = timeManager;
+        this.statistics = SearchStatistics.getInstance();
+    }
     // === CORE COMPONENTS ===
     private final SearchEngine searchEngine;
     private final Evaluator evaluator;
     private final TimeManager timeManager;
     private final SearchStatistics statistics;
+    public static final int ASPIRATION_WINDOW_DELTA = 50;
+    public static final int ASPIRATION_WINDOW_MAX_FAILS = 3;
+    public static final int ASPIRATION_WINDOW_GROWTH_FACTOR = 4;
 
     // === SEARCH STATE ===
     private final AtomicBoolean searchActive = new AtomicBoolean(false);
@@ -245,7 +256,7 @@ public class TimedSearchEngine {
                                           SearchConfig.SearchStrategy strategy) {
 
         // Setup timeout checker
-        searchEngine.setTimeoutChecker(() -> shouldAbortSearch());
+        searchEngine.setTimeoutChecker(this::shouldAbortSearch);
 
         try {
             List<Move> moves = MoveGenerator.generateAllMoves(state);
@@ -261,6 +272,7 @@ public class TimedSearchEngine {
                 GameState copy = state.copy();
                 copy.applyMove(move);
 
+                // FIXED: Use SearchConfig.SearchStrategy instead of Minimax.SearchStrategy
                 int score = searchEngine.search(copy, depth - 1, alpha, beta, !isRed, strategy);
 
                 if ((isRed && score > bestScore) || (!isRed && score < bestScore) || bestMove == null) {

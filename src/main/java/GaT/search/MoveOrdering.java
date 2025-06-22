@@ -5,6 +5,7 @@ import GaT.model.Move;
 import GaT.model.TTEntry;
 import GaT.model.SearchConfig;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -504,4 +505,88 @@ public class MoveOrdering {
         return String.format("MoveOrdering: %d killers, %d history entries, age=%d",
                 killerCount, historyCount, killerAge);
     }
+
+
+
+    // Add these methods to MoveOrdering.java:
+
+    /**
+     * Enhanced move ordering with all advanced features
+     */
+    public void orderMovesEnhanced(List<Move> moves, GameState state, int depth,
+                                   TTEntry ttEntry, List<Move> pvLine, long remainingTime) {
+        if (moves.size() <= 1) return;
+
+        // For very deep searches or critical positions, use ultimate ordering
+        if (depth >= 10 || remainingTime < 5000) {
+            orderMovesUltimate(moves, state, depth, ttEntry);
+        } else {
+            orderMovesAdvanced(moves, state, depth, ttEntry);
+        }
+    }
+
+    /**
+     * Score move with enhanced features including threat analysis
+     */
+    public int scoreMoveEnhanced(Move move, GameState state, int depth,
+                                 TTEntry ttEntry, List<Move> pvLine, ThreatAnalysis threats) {
+        int score = scoreMoveAdvanced(move, state, depth);
+
+        // Add threat-based scoring if available
+        if (threats != null && threats.isThreatMove(move)) {
+            score += 3000;
+        }
+
+        return score;
+    }
+
+    /**
+     * Update history on cutoff for better move ordering
+     */
+    public void updateHistoryOnCutoff(Move move, boolean isRed, int depth) {
+        updateHistory(move, depth);
+        // Additional logic for side-specific history can be added here
+    }
+
+    /**
+     * Threat analysis helper class
+     */
+    public static class ThreatAnalysis {
+        private final GameState state;
+        private final List<Move> threats;
+
+        public ThreatAnalysis() {
+            this.state = null;
+            this.threats = new ArrayList<>();
+        }
+
+        public ThreatAnalysis(GameState state) {
+            this.state = state;
+            this.threats = analyzeThreatts(state);
+        }
+
+        public boolean isThreatMove(Move move) {
+            return threats.contains(move);
+        }
+
+        private List<Move> analyzeThreatts(GameState state) {
+            // Simple threat detection - moves that attack enemy guard
+            List<Move> allMoves = MoveGenerator.generateAllMoves(state);
+            List<Move> threatMoves = new ArrayList<>();
+
+            for (Move move : allMoves) {
+                if (Minimax.isCapture(move, state)) {
+                    long toBit = GameState.bit(move.to);
+                    boolean isRed = state.redToMove;
+                    boolean capturesGuard = ((isRed ? state.blueGuard : state.redGuard) & toBit) != 0;
+                    if (capturesGuard) {
+                        threatMoves.add(move);
+                    }
+                }
+            }
+
+            return threatMoves;
+        }
+    }
+
 }

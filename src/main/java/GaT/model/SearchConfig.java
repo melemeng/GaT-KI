@@ -12,6 +12,12 @@ public class SearchConfig {
     public static final int EMERGENCY_TIME_MS = 200;
     public static final int PANIC_TIME_MS = 50;
 
+    // Add these constants to SearchConfig.java after the existing constants:
+
+    // === ASPIRATION WINDOW PARAMETERS ===
+    public static final int ASPIRATION_WINDOW_DELTA = 50;
+    public static final int ASPIRATION_WINDOW_MAX_FAILS = 3;
+    public static final int ASPIRATION_WINDOW_GROWTH_FACTOR = 4;
     // === TRANSPOSITION TABLE ===
     public static final int TT_SIZE = 2_000_000;
     public static final int TT_EVICTION_THRESHOLD = 1_500_000;

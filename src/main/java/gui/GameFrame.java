@@ -447,6 +447,9 @@ public class GameFrame extends JFrame {
                 for (Minimax.SearchStrategy strategy : strategies) {
                     long startTime = System.currentTimeMillis();
 
+                    // FIXED: Reset counter before each search
+                    Minimax.counter = 0;
+
                     Move move = TimedMinimax.findBestMoveWithStrategy(currentState, 4, 3000, strategy);
 
                     long endTime = System.currentTimeMillis();

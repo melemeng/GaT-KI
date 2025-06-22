@@ -11,11 +11,14 @@ import java.util.function.BooleanSupplier;
 import GaT.search.MoveGenerator;
 import GaT.search.QuiescenceSearch;
 
+
+
 /**
  * MINIMAX SEARCH COORDINATOR - Refactored to use SearchEngine
  * Now acts as a facade/coordinator for all search operations
  */
 public class Minimax {
+    // Fix the counter variable access
 
     // === CORE COMPONENTS ===
     private static final Evaluator evaluator = new Evaluator();
@@ -430,4 +433,22 @@ public class Minimax {
     public static TranspositionTable getTranspositionTable() {
         return transpositionTable;
     }
+
+
+    // Add missing SearchStrategy enum
+    public enum SearchStrategy {
+        ALPHA_BETA,
+        ALPHA_BETA_Q,
+        PVS,
+        PVS_Q
+    }
+
+
+
+
+    // Add this method that's used by GameFrame
+    public static SearchStrategy[] getAllStrategies() {
+        return SearchStrategy.values();
+    }
+
 }
