@@ -12,6 +12,8 @@ public class SearchConfig {
     public static final int EMERGENCY_TIME_MS = 200;
     public static final int PANIC_TIME_MS = 50;
 
+
+
     // Add these constants to SearchConfig.java after the existing constants:
 
     // === ASPIRATION WINDOW PARAMETERS ===
