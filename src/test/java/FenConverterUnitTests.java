@@ -1,4 +1,4 @@
-import GaT.Objects.GameState;
+import GaT.model.GameState;
 import org.junit.Test;
 import static org.junit.Assert.*;
 

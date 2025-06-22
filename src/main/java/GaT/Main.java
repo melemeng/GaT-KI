@@ -1,9 +1,12 @@
 package GaT;
 
-import GaT.Objects.GameState;
-import GaT.Objects.Move;
+import GaT.model.GameState;
+import GaT.model.Move;
+import GaT.search.Minimax;
+import GaT.search.MoveGenerator;
+import GaT.search.QuiescenceSearch;
 
-import static GaT.Minimax.evaluate;
+import static GaT.search.Minimax.evaluate;
 
 public class Main {
 

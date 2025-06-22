@@ -1,11 +1,9 @@
 
-import GaT.Objects.GameState;
-import GaT.Objects.Move;
-import GaT.MoveGenerator;
+import GaT.model.GameState;
+import GaT.model.Move;
+import GaT.search.MoveGenerator;
 import org.junit.Test;
-import org.junit.Before;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;

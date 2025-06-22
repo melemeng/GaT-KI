@@ -1,11 +1,11 @@
-import GaT.Objects.GameState;
-import GaT.Objects.TTEntry;
-import GaT.Minimax;
+import GaT.model.GameState;
+import GaT.model.TTEntry;
+import GaT.search.Minimax;
 import org.junit.Test;
 import static org.junit.Assert.*;
-import GaT.MoveGenerator;
-import GaT.Objects.Move;
-import GaT.TimedMinimax;
+import GaT.search.MoveGenerator;
+import GaT.model.Move;
+import GaT.engine.TimedMinimax;
 import java.util.List;
 
 public class MinimaxUnitTests {

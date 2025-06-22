@@ -1,8 +1,8 @@
-package GUI;
+package gui;
 
-import GaT.Objects.GameState;
-import GaT.Objects.Move;
-import GaT.MoveGenerator;
+import GaT.model.GameState;
+import GaT.model.Move;
+import GaT.search.MoveGenerator;
 
 import javax.swing.*;
 import java.awt.*;

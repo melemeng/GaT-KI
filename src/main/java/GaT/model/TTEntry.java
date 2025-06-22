@@ -1,4 +1,4 @@
-package GaT.Objects;
+package GaT.model;
 
 public class TTEntry {
     public int score;

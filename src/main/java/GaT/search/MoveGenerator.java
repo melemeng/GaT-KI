@@ -1,7 +1,7 @@
-package GaT;
+package GaT.search;
 
-import GaT.Objects.GameState;
-import GaT.Objects.Move;
+import GaT.model.GameState;
+import GaT.model.Move;
 
 import java.util.*;
 

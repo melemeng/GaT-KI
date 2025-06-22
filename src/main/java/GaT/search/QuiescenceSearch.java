@@ -1,8 +1,8 @@
-package GaT;
+package GaT.search;
 
-import GaT.Objects.GameState;
-import GaT.Objects.Move;
-import GaT.Objects.TTEntry;
+import GaT.model.GameState;
+import GaT.model.Move;
+import GaT.model.TTEntry;
 
 import java.util.ArrayList;
 import java.util.HashMap;

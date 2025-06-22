@@ -1,14 +1,14 @@
-package Gameserver_Client;
+package client;
 
 import java.util.List;
 
-import GaT.MoveGenerator;
-import GaT.Objects.GameState;
-import GaT.Objects.Move;
-import GaT.TimeManager;
-import GaT.TimedMinimax;
-import GaT.Minimax;
-import GaT.QuiescenceSearch; // CRITICAL: Import QuiescenceSearch for time integration
+import GaT.search.MoveGenerator;
+import GaT.model.GameState;
+import GaT.model.Move;
+import GaT.engine.TimeManager;
+import GaT.engine.TimedMinimax;
+import GaT.search.Minimax;
+import GaT.search.QuiescenceSearch; // CRITICAL: Import QuiescenceSearch for time integration
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 

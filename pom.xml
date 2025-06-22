@@ -41,7 +41,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>Gameserver_Client.GameClient</mainClass>
+                            <mainClass>client.GameClient</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>

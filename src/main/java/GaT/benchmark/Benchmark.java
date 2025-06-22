@@ -1,7 +1,7 @@
-package GaT.Benchmark;
+package GaT.benchmark;
 
-import GaT.MoveGenerator;
-import GaT.Objects.GameState;
+import GaT.search.MoveGenerator;
+import GaT.model.GameState;
 
 import java.util.ArrayList;
 import java.util.Arrays;

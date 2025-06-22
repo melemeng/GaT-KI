@@ -1,6 +1,6 @@
-package GaT;
+package GaT.search;
 
-import GaT.Objects.TTEntry;
+import GaT.model.TTEntry;
 
 import java.util.HashMap;
 import java.util.List;

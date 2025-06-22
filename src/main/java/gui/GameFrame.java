@@ -1,8 +1,10 @@
-package GUI;
+package gui;
 
-import GaT.*;
-import GaT.Objects.GameState;
-import GaT.Objects.Move;
+import GaT.model.GameState;
+import GaT.model.Move;
+import GaT.engine.TimedMinimax;
+import GaT.search.Minimax;
+import GaT.search.MoveGenerator;
 
 import javax.swing.*;
 import java.awt.*;

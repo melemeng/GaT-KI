@@ -1,5 +1,5 @@
-import GaT.Objects.GameState;
-import GaT.Objects.Move;
+import GaT.model.GameState;
+import GaT.model.Move;
 import org.junit.Test;
 import static org.junit.Assert.*;
 

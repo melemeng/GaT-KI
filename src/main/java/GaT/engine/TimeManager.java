@@ -1,7 +1,9 @@
-package GaT;
+package GaT.engine;
 
-import GaT.Objects.GameState;
-import GaT.Objects.Move;
+import GaT.search.MoveGenerator;
+import GaT.model.GameState;
+import GaT.model.Move;
+import GaT.search.QuiescenceSearch;
 
 import java.util.Arrays;
 import java.util.List;
