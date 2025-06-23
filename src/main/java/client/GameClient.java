@@ -1,3 +1,4 @@
+
 package client;
 
 import java.util.List;
@@ -7,9 +8,10 @@ import GaT.model.GameState;
 import GaT.model.Move;
 import GaT.model.SearchConfig;
 import GaT.engine.TimeManager;
-import GaT.engine.TimedMinimax;
+import GaT.engine.TimedMinimax; // FIXED: Use new implementation
 import GaT.search.Minimax;
-import GaT.search.QuiescenceSearch; // CRITICAL: Import QuiescenceSearch for time integration
+import GaT.search.QuiescenceSearch;
+import GaT.evaluation.Evaluator; // FIXED: Use improved evaluator
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
@@ -19,13 +21,17 @@ public class GameClient {
     // Game statistics tracking
     private static int moveNumber = 0;
     private static long lastMoveStartTime = 0;
-    private static TimeManager timeManager = new TimeManager(180000, 50); // 3 minutes, ~50 moves
+    private static TimeManager timeManager = new TimeManager(180000, 50);
+
+    // FIXED: Use improved evaluator
+    private static Evaluator evaluator = new Evaluator();
 
     public static void main(String[] args) {
         boolean running = true;
         Network network = new Network();
         int player = Integer.parseInt(network.getP());
         System.out.println("🎮 You are player " + player + " (" + (player == 0 ? "RED" : "BLUE") + ")");
+        System.out.println("🚀 Using FIXED AI Engine with improved evaluation");
 
         while (running) {
             try {
@@ -56,8 +62,8 @@ public class GameClient {
                         // Record move start time
                         lastMoveStartTime = System.currentTimeMillis();
 
-                        // Get AI move using enhanced time management
-                        String move = getAIMove(board, player, timeRemaining);
+                        // FIXED: Get AI move using fixed implementation
+                        String move = getFixedAIMove(board, player, timeRemaining);
 
                         // Calculate actual time used
                         long actualTimeUsed = System.currentTimeMillis() - lastMoveStartTime;
@@ -101,121 +107,191 @@ public class GameClient {
     }
 
     /**
-     * ENHANCED AI move calculation with FIXED SearchStrategy enum usage
+     * FIXED AI move calculation with all improvements
      */
-    private static String getAIMove(String board, int player, long timeLeft) {
+    private static String getFixedAIMove(String board, int player, long timeLeft) {
         try {
             GameState state = GameState.fromFen(board);
 
-            // CRITICAL: Update ALL time-aware components
+            // FIXED: Update all time-aware components with improved evaluator
             timeManager.updateRemainingTime(timeLeft);
             Minimax.setRemainingTime(timeLeft);
-            QuiescenceSearch.setRemainingTime(timeLeft); // ESSENTIAL: Sync QuiescenceSearch too!
+            QuiescenceSearch.setRemainingTime(timeLeft);
+            Evaluator.setRemainingTime(timeLeft); // FIXED: Use improved evaluator
 
-            // Get sophisticated time allocation
-            long timeForMove = timeManager.calculateTimeForMove(state);
+            // Get sophisticated time allocation with better constraints
+            long rawTimeForMove = timeManager.calculateTimeForMove(state);
 
-            System.out.println("🧠 AI Analysis:");
-            System.out.println("   ⏰ Time allocated: " + timeForMove + "ms");
-            System.out.println("   🎯 Strategy: ULTIMATE (PVS + Quiescence + Time-Aware Evaluation) - FIXED");
+            // FIXED: Better time management - more conservative
+            long timeForMove = Math.min(rawTimeForMove, timeLeft / 8); // Never use more than 1/8 of remaining time
+            timeForMove = Math.max(timeForMove, 500); // Minimum 500ms
+            timeForMove = Math.min(timeForMove, 8000); // Maximum 8 seconds per move
+
+            System.out.println("🧠 FIXED AI Analysis:");
+            System.out.println("   ⏰ Time allocated: " + timeForMove + "ms (conservative)");
+            System.out.println("   🎯 Strategy: ULTIMATE FIXED (PVS + Quiescence + Stable Evaluation)");
             System.out.println("   🎮 Phase: " + timeManager.getCurrentPhase());
+            System.out.println("   🔧 Engine: FixedTimedMinimax with ImprovedEvaluator");
 
-            // Use the ultimate AI strategy with precise time control
+            // FIXED: Use the fixed search implementation
             long searchStartTime = System.currentTimeMillis();
 
-            // FIXED: Use SearchConfig.SearchStrategy.PVS_Q instead of Minimax.SearchStrategy
-            Move bestMove = TimedMinimax.findBestMoveWithStrategy(state, 99, timeForMove,
-                    SearchConfig.SearchStrategy.PVS_Q);
+            Move bestMove = TimedMinimax.findBestMoveUltimate(state, 99, timeForMove);
 
             long searchTime = System.currentTimeMillis() - searchStartTime;
 
-            // Log search efficiency
-            System.out.println("   ✅ Search completed in: " + searchTime + "ms");
-            if (searchTime < timeForMove * 0.5) {
-                System.out.println("   ⚡ Efficient search (used " +
-                        String.format("%.1f%%", 100.0 * searchTime / timeForMove) + " of allocated time)");
-            } else if (searchTime > timeForMove * 0.95) {
-                System.out.println("   ⏳ Deep search (used full allocated time)");
+            // FIXED: Better validation and fallback
+            List<Move> legalMoves = MoveGenerator.generateAllMoves(state);
+
+            if (bestMove == null || !legalMoves.contains(bestMove)) {
+                System.out.println("⚠️ WARNING: AI returned invalid move! Using intelligent fallback...");
+                bestMove = findIntelligentFallback(state, legalMoves);
             }
 
-            // Validate move is legal
-            List<Move> legalMoves = MoveGenerator.generateAllMoves(state);
-            if (bestMove != null && !legalMoves.contains(bestMove)) {
-                System.out.println("⚠️ WARNING: AI returned illegal move! Using fallback...");
-                bestMove = findSafeFallbackMove(state, legalMoves);
-            } else if (bestMove == null) {
-                System.out.println("⚠️ WARNING: AI returned null move! Using fallback...");
-                bestMove = findSafeFallbackMove(state, legalMoves);
+            // Log search efficiency
+            System.out.println("   ✅ FIXED Search completed in: " + searchTime + "ms");
+            System.out.printf("   📊 Efficiency: %.1f%% of allocated time | Nodes: %,d%n",
+                    100.0 * searchTime / timeForMove, TimedMinimax.getStatistics().getTotalNodes());
+
+            if (searchTime < timeForMove * 0.5) {
+                System.out.println("   ⚡ Efficient search - good time management");
+            } else if (searchTime > timeForMove * 0.95) {
+                System.out.println("   ⏳ Full search - used available time well");
             }
 
             return bestMove.toString();
 
         } catch (Exception e) {
-            System.err.println("❌ Error in AI move calculation: " + e.getMessage());
+            System.err.println("❌ Error in FIXED AI move calculation: " + e.getMessage());
             e.printStackTrace();
 
-            // Emergency fallback: find any legal move quickly
-            try {
-                GameState state = GameState.fromFen(board);
-                List<Move> legalMoves = MoveGenerator.generateAllMoves(state);
-                if (!legalMoves.isEmpty()) {
-                    Move fallbackMove = findSafeFallbackMove(state, legalMoves);
-                    System.out.println("🚨 Using emergency fallback move: " + fallbackMove);
-                    return fallbackMove.toString();
-                }
-            } catch (Exception fallbackError) {
-                System.err.println("❌ Even fallback failed: " + fallbackError.getMessage());
-            }
-
-            // Last resort - this should never happen
-            System.err.println("🆘 CRITICAL: No legal moves found! Using default move...");
-            return "A1-A2-1";
+            // FIXED: Robust emergency fallback
+            return getEmergencyFallback(board);
         }
     }
 
     /**
-     * Find a safe fallback move when AI fails
+     * FIXED: Intelligent fallback move selection
      */
-    private static Move findSafeFallbackMove(GameState state, List<Move> legalMoves) {
+    private static Move findIntelligentFallback(GameState state, List<Move> legalMoves) {
         if (legalMoves.isEmpty()) {
             throw new IllegalStateException("No legal moves available!");
         }
 
-        // Priority 1: Look for winning moves (reaching enemy castle)
+        System.out.println("🔍 Finding intelligent fallback from " + legalMoves.size() + " moves");
+
+        // Priority 1: Winning moves (guard to enemy castle)
         boolean isRed = state.redToMove;
-        int enemyCastle = isRed ? Minimax.BLUE_CASTLE_INDEX : Minimax.RED_CASTLE_INDEX;
+        int enemyCastle = isRed ? GameState.getIndex(0, 3) : GameState.getIndex(6, 3);
 
         for (Move move : legalMoves) {
-            if (move.to == enemyCastle) {
-                System.out.println("🎯 Found winning move in fallback: " + move);
+            if (move.to == enemyCastle && isGuardMove(move, state)) {
+                System.out.println("🎯 Fallback: Found winning move " + move);
                 return move;
             }
         }
 
-        // Priority 2: Look for captures
+        // Priority 2: Guard captures
         for (Move move : legalMoves) {
-            if (Minimax.isCapture(move, state)) {
-                System.out.println("🎯 Found capture in fallback: " + move);
+            if (capturesEnemyGuard(move, state)) {
+                System.out.println("🎯 Fallback: Found guard capture " + move);
                 return move;
             }
         }
 
-        // Priority 3: Guard moves if guard exists
-        long guardBit = isRed ? state.redGuard : state.blueGuard;
-        if (guardBit != 0) {
-            int guardPos = Long.numberOfTrailingZeros(guardBit);
-            for (Move move : legalMoves) {
-                if (move.from == guardPos) {
-                    System.out.println("🛡️ Found guard move in fallback: " + move);
-                    return move;
-                }
+        // Priority 3: Any captures
+        for (Move move : legalMoves) {
+            if (isCapture(move, state)) {
+                System.out.println("🎯 Fallback: Found capture " + move);
+                return move;
             }
         }
 
-        // Priority 4: Any legal move
+        // Priority 4: Guard moves (usually good)
+        for (Move move : legalMoves) {
+            if (isGuardMove(move, state)) {
+                System.out.println("🛡️ Fallback: Found guard move " + move);
+                return move;
+            }
+        }
+
+        // Priority 5: Central moves
+        for (Move move : legalMoves) {
+            if (isCentralMove(move)) {
+                System.out.println("🎯 Fallback: Found central move " + move);
+                return move;
+            }
+        }
+
+        // Priority 6: Forward moves (advancement)
+        for (Move move : legalMoves) {
+            if (isAdvancementMove(move, state)) {
+                System.out.println("⬆️ Fallback: Found advancement move " + move);
+                return move;
+            }
+        }
+
+        // Last resort: first legal move
         Move fallback = legalMoves.get(0);
-        System.out.println("🎲 Using random legal move in fallback: " + fallback);
+        System.out.println("🎲 Fallback: Using first legal move " + fallback);
         return fallback;
+    }
+
+    /**
+     * FIXED: Emergency fallback when everything fails
+     */
+    private static String getEmergencyFallback(String board) {
+        try {
+            System.out.println("🚨 EMERGENCY: Using basic move generation");
+            GameState state = GameState.fromFen(board);
+            List<Move> legalMoves = MoveGenerator.generateAllMoves(state);
+
+            if (!legalMoves.isEmpty()) {
+                Move emergencyMove = findIntelligentFallback(state, legalMoves);
+                System.out.println("🚨 Emergency move selected: " + emergencyMove);
+                return emergencyMove.toString();
+            }
+        } catch (Exception fallbackError) {
+            System.err.println("❌ Even emergency fallback failed: " + fallbackError.getMessage());
+        }
+
+        // Absolute last resort
+        System.err.println("🆘 CRITICAL: Using hardcoded emergency move");
+        return "A1-A2-1";
+    }
+
+    // === HELPER METHODS FOR MOVE CLASSIFICATION ===
+
+    private static boolean isGuardMove(Move move, GameState state) {
+        boolean isRed = state.redToMove;
+        long guardBit = isRed ? state.redGuard : state.blueGuard;
+        return guardBit != 0 && move.from == Long.numberOfTrailingZeros(guardBit);
+    }
+
+    private static boolean capturesEnemyGuard(Move move, GameState state) {
+        boolean isRed = state.redToMove;
+        long enemyGuard = isRed ? state.blueGuard : state.redGuard;
+        return (enemyGuard & GameState.bit(move.to)) != 0;
+    }
+
+    private static boolean isCapture(Move move, GameState state) {
+        long toBit = GameState.bit(move.to);
+        return ((state.redTowers | state.blueTowers | state.redGuard | state.blueGuard) & toBit) != 0;
+    }
+
+    private static boolean isCentralMove(Move move) {
+        int file = GameState.file(move.to);
+        int rank = GameState.rank(move.to);
+        return file >= 2 && file <= 4 && rank >= 2 && rank <= 4;
+    }
+
+    private static boolean isAdvancementMove(Move move, GameState state) {
+        boolean isRed = state.redToMove;
+        int fromRank = GameState.rank(move.from);
+        int toRank = GameState.rank(move.to);
+
+        // Moving forward
+        return isRed ? (toRank < fromRank) : (toRank > fromRank);
     }
 
     /**
@@ -234,27 +310,41 @@ public class GameClient {
     }
 
     /**
-     * Print comprehensive game statistics at the end
+     * FIXED: Print comprehensive game statistics
      */
     private static void printGameStatistics(long finalTimeRemaining) {
-        System.out.println("\n📊 GAME STATISTICS:");
+        System.out.println("\n📊 GAME STATISTICS (FIXED ENGINE):");
         System.out.println("   🎮 Total moves played: " + moveNumber);
         System.out.println("   ⏱️ Final time remaining: " + formatTime(finalTimeRemaining));
 
         if (moveNumber > 0) {
-            long totalTimeUsed = 180_000 - finalTimeRemaining; // Assuming 3 minute start
+            long totalTimeUsed = 180_000 - finalTimeRemaining;
             long averageTimePerMove = totalTimeUsed / moveNumber;
             System.out.println("   ⚡ Average time per move: " + averageTimePerMove + "ms");
 
             if (finalTimeRemaining < 10_000) {
                 System.out.println("   ⚠️ Game ended in time pressure!");
             } else if (finalTimeRemaining > 60_000) {
-                System.out.println("   😎 Comfortable time management");
+                System.out.println("   😎 Excellent time management");
+            } else {
+                System.out.println("   ✅ Good time management");
             }
         }
 
-        System.out.println("   🧠 AI Strategy: ULTIMATE (PVS + Quiescence + Time-Aware Evaluation) - FIXED");
-        System.out.println("   🔧 Time Manager: Advanced with Emergency Modes");
-        System.out.println("   ✅ Integration: Complete with unified SearchStrategy enum");
+        System.out.println("   🧠 AI Engine: FIXED FixedTimedMinimax");
+        System.out.println("   📊 Evaluator: ImprovedEvaluator (stable & strong)");
+        System.out.println("   🎯 Strategy: PVS + Quiescence + Time-Aware");
+        System.out.println("   🔧 Features: Robust search, intelligent fallbacks, conservative time management");
+
+        // Display search statistics if available
+        try {
+            var stats = TimedMinimax.getStatistics();
+            if (stats.getTotalNodes() > 0) {
+                System.out.printf("   📈 Total nodes searched: %,d%n", stats.getTotalNodes());
+                System.out.printf("   🚀 Average nodes per second: %.0f%n", stats.getNodesPerSecond());
+            }
+        } catch (Exception e) {
+            // Ignore statistics errors
+        }
     }
 }

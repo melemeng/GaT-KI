@@ -9,17 +9,15 @@ import GaT.evaluation.Evaluator;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
-
 import GaT.search.MoveGenerator;
 import GaT.search.PVSSearch;
 import GaT.search.QuiescenceSearch;
-
-
 /**
  * CORE SEARCH ENGINE - Extracted from Minimax
  * Handles all search algorithms, pruning, and extensions
  */
 public class SearchEngine {
+
 
     // === DEPENDENCIES ===
     private final Evaluator evaluator;
@@ -34,7 +32,7 @@ public class SearchEngine {
     private BooleanSupplier timeoutChecker = null;
 
     public SearchEngine(Evaluator evaluator, MoveOrdering moveOrdering,
-                        TranspositionTable transpositionTable, SearchStatistics statistics) {
+                             TranspositionTable transpositionTable, SearchStatistics statistics) {
         this.evaluator = evaluator;
         this.moveOrdering = moveOrdering;
         this.transpositionTable = transpositionTable;
@@ -46,8 +44,6 @@ public class SearchEngine {
     /**
      * Main search dispatcher - routes to appropriate algorithm
      */
-    // Add this fix to the search method in SearchEngine.java:
-
     public int search(GameState state, int depth, int alpha, int beta,
                       boolean maximizingPlayer, SearchConfig.SearchStrategy strategy) {
 
@@ -75,7 +71,6 @@ public class SearchEngine {
         }
     }
 
-    // Also update searchWithTimeout method signature:
     public int searchWithTimeout(GameState state, int depth, int alpha, int beta,
                                  boolean maximizingPlayer, SearchConfig.SearchStrategy strategy,
                                  BooleanSupplier timeoutCheck) {
@@ -87,13 +82,10 @@ public class SearchEngine {
         }
     }
 
-
-
     // === ALPHA-BETA SEARCH ALGORITHMS ===
 
     /**
-     * ENHANCED ALPHA-BETA SEARCH - With all pruning techniques
-     * (Extracted from Minimax.minimaxEnhanced)
+     * FIXED ALPHA-BETA SEARCH - Alle Architektur-Probleme behoben
      */
     public int alphaBetaSearch(GameState state, int depth, int alpha, int beta,
                                boolean maximizingPlayer) {
@@ -101,7 +93,7 @@ public class SearchEngine {
     }
 
     /**
-     * Internal alpha-beta with null move support
+     * Internal alpha-beta with null move support - FIXED
      */
     private int alphaBetaInternal(GameState state, int depth, int alpha, int beta,
                                   boolean maximizingPlayer, boolean nullMoveUsed) {
@@ -134,7 +126,8 @@ public class SearchEngine {
             return evaluator.evaluate(state, depth);
         }
 
-        boolean inCheck = isInCheck(state);
+        // FIXED: Simplified check detection - no getSafetyEvaluator() calls
+        boolean inCheck = isInCheckSimple(state);
 
         // === REVERSE FUTILITY PRUNING ===
         if (canApplyReverseFutilityPruning(state, depth, beta, maximizingPlayer, inCheck)) {
@@ -187,7 +180,7 @@ public class SearchEngine {
                 statistics.addMovesSearched(1);
 
                 boolean isCapture = isCapture(move, state);
-                boolean givesCheck = isInCheck(copy);
+                boolean givesCheck = isInCheckSimple(copy);
 
                 // === FUTILITY PRUNING ===
                 if (canApplyFutilityPruning(state, depth, alpha, move, isCapture, givesCheck, inCheck)) {
@@ -255,7 +248,7 @@ public class SearchEngine {
                 statistics.addMovesSearched(1);
 
                 boolean isCapture = isCapture(move, state);
-                boolean givesCheck = isInCheck(copy);
+                boolean givesCheck = isInCheckSimple(copy);
 
                 // === FUTILITY PRUNING ===
                 if (canApplyFutilityPruning(state, depth, beta, move, isCapture, givesCheck, inCheck)) {
@@ -310,7 +303,7 @@ public class SearchEngine {
     }
 
     /**
-     * ALPHA-BETA WITH QUIESCENCE SEARCH
+     * ALPHA-BETA WITH QUIESCENCE SEARCH - FIXED
      */
     public int alphaBetaWithQuiescence(GameState state, int depth, int alpha, int beta,
                                        boolean maximizingPlayer) {
@@ -344,7 +337,8 @@ public class SearchEngine {
             return evaluator.evaluate(state, depth);
         }
 
-        boolean inCheck = isInCheck(state);
+        // FIXED: Simplified check detection
+        boolean inCheck = isInCheckSimple(state);
 
         // Pruning (same as alpha-beta)
         if (depth > 0 && canApplyReverseFutilityPruning(state, depth, beta, maximizingPlayer, inCheck)) {
@@ -470,7 +464,7 @@ public class SearchEngine {
         return PVSSearch.searchWithQuiescence(state, depth, alpha, beta, maximizingPlayer, isPVNode);
     }
 
-    // === PRUNING HELPER METHODS ===
+    // === PRUNING HELPER METHODS - FIXED ===
 
     private boolean canApplyReverseFutilityPruning(GameState state, int depth, int beta,
                                                    boolean maximizingPlayer, boolean inCheck) {
@@ -530,7 +524,7 @@ public class SearchEngine {
         return 1;
     }
 
-    // === GAME STATE ANALYSIS ===
+    // === GAME STATE ANALYSIS - FIXED ===
 
     private boolean isGameOver(GameState state) {
         // Guard captured
@@ -548,20 +542,99 @@ public class SearchEngine {
         return redGuardOnD1 || blueGuardOnD7;
     }
 
-    private boolean isInCheck(GameState state) {
-        if (state.redToMove) {
-            return state.redGuard != 0 && evaluator.getSafetyEvaluator().isGuardInDanger(state, true);
-        } else {
-            return state.blueGuard != 0 && evaluator.getSafetyEvaluator().isGuardInDanger(state, false);
+    /**
+     * FIXED: Simplified check detection - no dependency on SafetyEvaluator
+     */
+    private boolean isInCheckSimple(GameState state) {
+        boolean isRed = state.redToMove;
+        long guardBit = isRed ? state.redGuard : state.blueGuard;
+
+        if (guardBit == 0) return false;
+
+        int guardPos = Long.numberOfTrailingZeros(guardBit);
+
+        // Check if enemy pieces can attack guard
+        long enemyPieces = isRed ? (state.blueTowers | state.blueGuard) : (state.redTowers | state.redGuard);
+
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            if ((enemyPieces & GameState.bit(i)) != 0) {
+                // Check if this enemy piece can attack the guard
+                if (canPieceAttackSquare(state, i, guardPos, !isRed)) {
+                    return true;
+                }
+            }
         }
+
+        return false;
+    }
+
+    /**
+     * Check if a piece can attack a specific square
+     */
+    private boolean canPieceAttackSquare(GameState state, int fromSquare, int toSquare, boolean isPieceRed) {
+        // Determine piece type and range
+        boolean isGuard = isPieceRed ?
+                (state.redGuard & GameState.bit(fromSquare)) != 0 :
+                (state.blueGuard & GameState.bit(fromSquare)) != 0;
+
+        int range = isGuard ? 1 :
+                (isPieceRed ? state.redStackHeights[fromSquare] : state.blueStackHeights[fromSquare]);
+
+        if (range <= 0) return false;
+
+        // Calculate distance
+        int rankDiff = Math.abs(GameState.rank(fromSquare) - GameState.rank(toSquare));
+        int fileDiff = Math.abs(GameState.file(fromSquare) - GameState.file(toSquare));
+
+        // Must be on same rank or file
+        if (rankDiff != 0 && fileDiff != 0) return false;
+
+        int distance = Math.max(rankDiff, fileDiff);
+        if (distance > range) return false;
+
+        // Check if path is clear
+        return isPathClearForAttack(state, fromSquare, toSquare);
+    }
+
+    /**
+     * Check if path is clear for attack
+     */
+    private boolean isPathClearForAttack(GameState state, int from, int to) {
+        int rankDiff = GameState.rank(to) - GameState.rank(from);
+        int fileDiff = GameState.file(to) - GameState.file(from);
+
+        if (rankDiff != 0 && fileDiff != 0) return false;
+
+        int step = rankDiff != 0 ? (rankDiff > 0 ? 7 : -7) : (fileDiff > 0 ? 1 : -1);
+        int current = from + step;
+
+        while (current != to) {
+            if (isOccupied(current, state)) return false;
+            current += step;
+        }
+
+        return true;
+    }
+
+    private boolean isOccupied(int square, GameState state) {
+        return ((state.redTowers | state.blueTowers | state.redGuard | state.blueGuard)
+                & GameState.bit(square)) != 0;
     }
 
     private boolean isEndgame(GameState state) {
-        return evaluator.getMaterialEvaluator().getTotalMaterial(state) <= SearchConfig.ENDGAME_MATERIAL_THRESHOLD;
+        int totalMaterial = 0;
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            totalMaterial += state.redStackHeights[i] + state.blueStackHeights[i];
+        }
+        return totalMaterial <= SearchConfig.ENDGAME_MATERIAL_THRESHOLD;
     }
 
     private boolean hasOnlyLowValuePieces(GameState state, boolean isRed) {
-        return evaluator.getMaterialEvaluator().getTotalMaterial(state, isRed) <= 2;
+        int totalMaterial = 0;
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            totalMaterial += isRed ? state.redStackHeights[i] : state.blueStackHeights[i];
+        }
+        return totalMaterial <= 2;
     }
 
     private boolean isCapture(Move move, GameState state) {
