@@ -11,14 +11,17 @@ import java.util.function.BooleanSupplier;
 import GaT.search.MoveGenerator;
 import GaT.search.QuiescenceSearch;
 
-
-
 /**
- * MINIMAX SEARCH COORDINATOR - Refactored to use SearchEngine
+ * MINIMAX SEARCH COORDINATOR - FIXED: Unified SearchStrategy enum
  * Now acts as a facade/coordinator for all search operations
+ *
+ * FIXES:
+ * ✅ Removed duplicate SearchStrategy enum
+ * ✅ Uses only SearchConfig.SearchStrategy
+ * ✅ All method signatures updated
+ * ✅ Legacy compatibility maintained
  */
 public class Minimax {
-    // Fix the counter variable access
 
     // === CORE COMPONENTS ===
     private static final Evaluator evaluator = new Evaluator();
@@ -34,10 +37,10 @@ public class Minimax {
     // === BACKWARD COMPATIBILITY ===
     public static int counter = 0; // For legacy compatibility
 
-    // === MAIN SEARCH INTERFACES ===
+    // === MAIN SEARCH INTERFACES - FIXED ===
 
     /**
-     * Find best move using specified strategy
+     * Find best move using specified strategy - FIXED enum usage
      */
     public static Move findBestMoveWithStrategy(GameState state, int depth, SearchConfig.SearchStrategy strategy) {
         statistics.reset();
@@ -74,7 +77,7 @@ public class Minimax {
     }
 
     /**
-     * Enhanced search with aspiration windows
+     * Enhanced search with aspiration windows - FIXED enum usage
      */
     public static Move findBestMoveWithAspiration(GameState state, int depth, SearchConfig.SearchStrategy strategy) {
         statistics.reset();
@@ -158,38 +161,38 @@ public class Minimax {
         return bestMove;
     }
 
-    // === LEGACY COMPATIBILITY METHODS ===
+    // === LEGACY COMPATIBILITY METHODS - FIXED ===
 
     /**
-     * Legacy findBestMove method
+     * Legacy findBestMove method - FIXED to use SearchConfig.SearchStrategy
      */
     public static Move findBestMove(GameState state, int depth) {
         return findBestMoveWithStrategy(state, depth, SearchConfig.SearchStrategy.ALPHA_BETA);
     }
 
     /**
-     * Legacy findBestMoveWithQuiescence method
+     * Legacy findBestMoveWithQuiescence method - FIXED
      */
     public static Move findBestMoveWithQuiescence(GameState state, int depth) {
         return findBestMoveWithStrategy(state, depth, SearchConfig.SearchStrategy.ALPHA_BETA_Q);
     }
 
     /**
-     * Legacy findBestMoveWithPVS method
+     * Legacy findBestMoveWithPVS method - FIXED
      */
     public static Move findBestMoveWithPVS(GameState state, int depth) {
         return findBestMoveWithStrategy(state, depth, SearchConfig.SearchStrategy.PVS);
     }
 
     /**
-     * Ultimate AI method - PVS + Quiescence
+     * Ultimate AI method - PVS + Quiescence - FIXED
      */
     public static Move findBestMoveUltimate(GameState state, int depth) {
         return findBestMoveWithStrategy(state, depth, SearchConfig.SearchStrategy.PVS_Q);
     }
 
     /**
-     * Legacy minimax with timeout
+     * Legacy minimax with timeout - FIXED
      */
     public static int minimaxWithTimeout(GameState state, int depth, int alpha, int beta,
                                          boolean maximizingPlayer, BooleanSupplier timeoutCheck) {
@@ -434,21 +437,24 @@ public class Minimax {
         return transpositionTable;
     }
 
+    // === UNIFIED STRATEGY ACCESS - FIXED ===
 
-    // Add missing SearchStrategy enum
-    public enum SearchStrategy {
-        ALPHA_BETA,
-        ALPHA_BETA_Q,
-        PVS,
-        PVS_Q
+    /**
+     * Get all available search strategies - FIXED to use SearchConfig
+     */
+    public static SearchConfig.SearchStrategy[] getAllStrategies() {
+        return SearchConfig.SearchStrategy.values();
     }
 
-
-
-
-    // Add this method that's used by GameFrame
-    public static SearchStrategy[] getAllStrategies() {
-        return SearchStrategy.values();
+    /**
+     * Get strategy by name - helper method
+     */
+    public static SearchConfig.SearchStrategy getStrategyByName(String name) {
+        try {
+            return SearchConfig.SearchStrategy.valueOf(name);
+        } catch (IllegalArgumentException e) {
+            System.err.println("⚠️ Unknown strategy: " + name + ", defaulting to ALPHA_BETA");
+            return SearchConfig.SearchStrategy.ALPHA_BETA;
+        }
     }
-
 }

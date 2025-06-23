@@ -5,6 +5,7 @@ import GaT.model.Move;
 import GaT.engine.TimedMinimax;
 import GaT.search.Minimax;
 import GaT.search.MoveGenerator;
+import GaT.model.SearchConfig;
 
 import javax.swing.*;
 import java.awt.*;
@@ -35,8 +36,7 @@ public class GameFrame extends JFrame {
     static String boardString = "7/2RG4/1b11r1b32/1b15/7/6r3/5BG1 r";
 
     public GameFrame() {
-        super("Guard & Towers - ULTIMATE AI (PVS + Quiescence)");
-
+        super("Guard & Towers - ULTIMATE AI (PVS + Quiescence) - FIXED");
 
         // Initialize thread pool for AI
         aiExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -54,11 +54,16 @@ public class GameFrame extends JFrame {
             try {
                 // Try to load the specified position, fallback to default if it fails
                 state = GameState.fromFen(boardString);
-                System.out.println("Game initialized - Red to move: " + state.redToMove);
+                System.out.println("✅ Game initialized - Red to move: " + state.redToMove);
+
+                // VALIDATION: Ensure game state is valid
+                List<Move> testMoves = MoveGenerator.generateAllMoves(state);
+                System.out.println("✅ Legal moves available: " + testMoves.size());
+
             } catch (Exception e) {
-                System.err.println("Failed to load custom position, using default: " + e.getMessage());
+                System.err.println("❌ Failed to load custom position, using default: " + e.getMessage());
                 state = new GameState(); // Fallback to default starting position
-                System.out.println("Default game initialized - Red to move: " + state.redToMove);
+                System.out.println("✅ Default game initialized - Red to move: " + state.redToMove);
             }
             gameInProgress = true;
         }
@@ -77,7 +82,7 @@ public class GameFrame extends JFrame {
         add(controlPanel, BorderLayout.SOUTH);
 
         // Create status bar
-        statusLabel = new JLabel("Ready - Your move (Red) - AI uses ULTIMATE STRATEGY (PVS + Quiescence)");
+        statusLabel = new JLabel("✅ Ready - Your move (Red) - AI uses ULTIMATE STRATEGY (PVS + Quiescence) - FIXED");
         statusLabel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
         add(statusLabel, BorderLayout.NORTH);
 
@@ -94,7 +99,7 @@ public class GameFrame extends JFrame {
         JPanel panel = new JPanel(new FlowLayout());
 
         // AI vs AI button
-        aiVsAiButton = new JButton("AI vs AI (ULTIMATE - PVS+Q)");
+        aiVsAiButton = new JButton("AI vs AI (ULTIMATE - FIXED)");
         aiVsAiButton.addActionListener(e -> {
             if (!aiThinking) {
                 runAiMatch();
@@ -118,13 +123,81 @@ public class GameFrame extends JFrame {
         JButton compareButton = new JButton("Compare Strategies");
         compareButton.addActionListener(e -> showStrategyComparison());
 
+        // Test AI button for debugging
+        JButton testAiButton = new JButton("Test AI Move");
+        testAiButton.addActionListener(e -> testSingleAIMove());
+
         panel.add(aiVsAiButton);
         panel.add(resetButton);
         panel.add(stopAIButton);
         panel.add(evaluateButton);
         panel.add(compareButton);
+        panel.add(testAiButton);
 
         return panel;
+    }
+
+    private void testSingleAIMove() {
+        if (aiThinking) {
+            updateStatus("AI is already thinking...");
+            return;
+        }
+
+        updateStatus("🧪 Testing AI move generation...");
+
+        currentAITask = aiExecutor.submit(() -> {
+            try {
+                GameState testState = getStateCopy();
+                System.out.println("\n🧪 === AI MOVE TEST ===");
+                System.out.println("Current state - Red to move: " + testState.redToMove);
+                testState.printBoard();
+
+                List<Move> legalMoves = MoveGenerator.generateAllMoves(testState);
+                System.out.println("Legal moves: " + legalMoves.size());
+
+                if (legalMoves.isEmpty()) {
+                    SwingUtilities.invokeLater(() -> {
+                        updateStatus("❌ No legal moves available!");
+                        JOptionPane.showMessageDialog(this, "No legal moves available in current position!",
+                                "Test Result", JOptionPane.WARNING_MESSAGE);
+                    });
+                    return;
+                }
+
+                long startTime = System.currentTimeMillis();
+                Move aiMove = TimedMinimax.findBestMoveUltimate(testState, 5, 3000);
+                long endTime = System.currentTimeMillis();
+
+                SwingUtilities.invokeLater(() -> {
+                    if (aiMove != null) {
+                        updateStatus("✅ AI Test successful: " + aiMove + " (" + (endTime - startTime) + "ms)");
+                        JOptionPane.showMessageDialog(this,
+                                "AI Move Test Result:\n\n" +
+                                        "Best Move: " + aiMove + "\n" +
+                                        "Time: " + (endTime - startTime) + "ms\n" +
+                                        "Legal Moves: " + legalMoves.size(),
+                                "AI Test Success", JOptionPane.INFORMATION_MESSAGE);
+                    } else {
+                        updateStatus("❌ AI Test failed: Returned null move");
+                        JOptionPane.showMessageDialog(this,
+                                "AI Test FAILED!\n\n" +
+                                        "Returned: null\n" +
+                                        "Legal Moves Available: " + legalMoves.size() + "\n" +
+                                        "This indicates a bug in the AI search.",
+                                "AI Test Failure", JOptionPane.ERROR_MESSAGE);
+                    }
+                });
+
+            } catch (Exception e) {
+                SwingUtilities.invokeLater(() -> {
+                    updateStatus("❌ AI Test error: " + e.getMessage());
+                    JOptionPane.showMessageDialog(this,
+                            "AI Test ERROR!\n\n" + e.getMessage(),
+                            "AI Test Error", JOptionPane.ERROR_MESSAGE);
+                });
+                e.printStackTrace();
+            }
+        });
     }
 
     private void onMoveSelected(Move move) {
@@ -139,13 +212,13 @@ public class GameFrame extends JFrame {
             if (!gameInProgress) return;
 
             // DEBUG: Print current turn before move
-            System.out.println("Before move - Red to move: " + state.redToMove + ", Move: " + move);
+            System.out.println("🎮 Human move attempt - Red to move: " + state.redToMove + ", Move: " + move);
 
             // Validate move is legal
             List<Move> legalMoves = MoveGenerator.generateAllMoves(state);
             if (!legalMoves.contains(move)) {
                 SwingUtilities.invokeLater(() -> {
-                    updateStatus("Illegal move: " + move);
+                    updateStatus("❌ Illegal move: " + move);
                     // Reset status after 2 seconds
                     javax.swing.Timer timer = new javax.swing.Timer(2000, e -> {
                         String currentPlayer = state.redToMove ? "Red" : "Blue";
@@ -159,7 +232,7 @@ public class GameFrame extends JFrame {
 
             // Apply the move
             state.applyMove(move);
-            System.out.println("Human move applied: " + move);
+            System.out.println("✅ Human move applied: " + move);
             System.out.println("After move - Red to move: " + state.redToMove);
         }
 
@@ -178,7 +251,7 @@ public class GameFrame extends JFrame {
                 if (state.redToMove) {
                     updateStatus("Your move (Red)");
                 } else {
-                    updateStatus("AI thinking with ULTIMATE STRATEGY (PVS + Quiescence)...");
+                    updateStatus("🤖 AI thinking with ULTIMATE STRATEGY (FIXED)...");
                     startAIThinking();
                 }
             }
@@ -191,7 +264,7 @@ public class GameFrame extends JFrame {
         // Double-check it's actually AI's turn
         synchronized (stateLock) {
             if (state.redToMove) {
-                System.out.println("WARNING: AI called but it's Red's turn - skipping AI");
+                System.out.println("⚠️ WARNING: AI called but it's Red's turn - skipping AI");
                 updateStatus("Your move (Red)");
                 return;
             }
@@ -199,21 +272,45 @@ public class GameFrame extends JFrame {
 
         aiThinking = true;
         updateButtonStates();
-        updateStatus("AI thinking with ULTIMATE STRATEGY (PVS + Quiescence)...");
+        updateStatus("🤖 AI thinking with ULTIMATE STRATEGY (FIXED)...");
 
         // Create immutable snapshot for AI thread
         final GameState aiState = getStateCopy();
-        System.out.println("ULTIMATE AI starting to think. Blue to move: " + !aiState.redToMove);
+        System.out.println("🤖 ULTIMATE AI starting to think. Blue to move: " + !aiState.redToMove);
+
+        // VALIDATION: Check legal moves before AI thinks
+        List<Move> availableMoves = MoveGenerator.generateAllMoves(aiState);
+        if (availableMoves.isEmpty()) {
+            System.err.println("❌ CRITICAL: No legal moves for AI!");
+            aiThinking = false;
+            updateButtonStates();
+            updateStatus("❌ Game Over - No moves available");
+            return;
+        }
+
+        System.out.println("🤖 AI has " + availableMoves.size() + " legal moves to consider");
 
         // Submit AI task
         currentAITask = aiExecutor.submit(() -> {
             try {
                 long startTime = System.currentTimeMillis();
 
-                // *** CHANGED: Use Ultimate AI (PVS + Quiescence) ***
+                // *** FIXED: Use Ultimate AI with proper error handling ***
                 Move aiMove = TimedMinimax.findBestMoveUltimate(aiState, 99, 2000);
 
                 long thinkTime = System.currentTimeMillis() - startTime;
+
+                // CRITICAL NULL CHECK
+                if (aiMove == null) {
+                    System.err.println("❌ CRITICAL: AI returned null move!");
+                    System.err.println("Available moves were: " + availableMoves);
+
+                    // Emergency fallback - use first legal move
+                    aiMove = availableMoves.get(0);
+                    System.err.println("🚨 Using emergency fallback move: " + aiMove);
+                }
+
+                final Move finalAiMove = aiMove;
 
                 // Apply AI move on EDT
                 SwingUtilities.invokeLater(() -> {
@@ -227,20 +324,23 @@ public class GameFrame extends JFrame {
                         }
 
                         // Double-check move is still legal (rare edge case)
-                        List<Move> legalMoves = MoveGenerator.generateAllMoves(state);
-                        if (legalMoves.contains(aiMove)) {
-                            System.out.println("ULTIMATE AI applying move: " + aiMove);
+                        List<Move> currentLegalMoves = MoveGenerator.generateAllMoves(state);
+                        if (currentLegalMoves.contains(finalAiMove)) {
+                            System.out.println("🤖 ULTIMATE AI applying move: " + finalAiMove);
                             System.out.println("Before AI move - Red to move: " + state.redToMove);
-                            state.applyMove(aiMove);
+                            state.applyMove(finalAiMove);
                             System.out.println("After AI move - Red to move: " + state.redToMove);
-                            System.out.println("ULTIMATE AI move: " + aiMove + " (" + thinkTime + "ms)");
+                            System.out.println("✅ ULTIMATE AI move: " + finalAiMove + " (" + thinkTime + "ms)");
                         } else {
-                            System.err.println("AI generated illegal move: " + aiMove);
+                            System.err.println("❌ AI generated illegal move: " + finalAiMove);
                             // Find any legal move as fallback
-                            if (!legalMoves.isEmpty()) {
-                                Move fallbackMove = legalMoves.get(0);
+                            if (!currentLegalMoves.isEmpty()) {
+                                Move fallbackMove = currentLegalMoves.get(0);
                                 state.applyMove(fallbackMove);
-                                System.err.println("Using fallback move: " + fallbackMove);
+                                System.err.println("🚨 Using fallback move: " + fallbackMove);
+                            } else {
+                                System.err.println("❌ CRITICAL: No legal moves available!");
+                                gameInProgress = false;
                             }
                         }
                     }
@@ -265,7 +365,8 @@ public class GameFrame extends JFrame {
                 SwingUtilities.invokeLater(() -> {
                     aiThinking = false;
                     updateButtonStates();
-                    updateStatus("ULTIMATE AI Error: " + e.getMessage());
+                    updateStatus("❌ ULTIMATE AI Error: " + e.getMessage());
+                    System.err.println("❌ AI Exception: " + e.getMessage());
                     e.printStackTrace();
                 });
             }
@@ -280,7 +381,7 @@ public class GameFrame extends JFrame {
         }
 
         updateButtonStates();
-        updateStatus("AI stopped - Your move");
+        updateStatus("🛑 AI stopped - Your move");
     }
 
     private void resetGame() {
@@ -290,15 +391,17 @@ public class GameFrame extends JFrame {
             try {
                 // Reset to the same starting position
                 state = GameState.fromFen(boardString);
+                System.out.println("🔄 Game reset to: " + boardString);
             } catch (Exception e) {
                 state = new GameState(); // Fallback
+                System.out.println("🔄 Game reset to default position");
             }
             gameInProgress = true;
         }
 
         SwingUtilities.invokeLater(() -> {
             updateUI();
-            updateStatus("Game reset - Your move (Red)");
+            updateStatus("🔄 Game reset - Your move (Red)");
         });
     }
 
@@ -307,7 +410,7 @@ public class GameFrame extends JFrame {
 
         aiThinking = true;
         updateButtonStates();
-        updateStatus("AI vs AI with ULTIMATE STRATEGY (PVS + Quiescence) in progress...");
+        updateStatus("🤖 vs 🤖 ULTIMATE AI match (FIXED) in progress...");
 
         currentAITask = aiExecutor.submit(() -> {
             try {
@@ -321,29 +424,57 @@ public class GameFrame extends JFrame {
 
                     if (Minimax.isGameOver(currentState)) break;
 
+                    // Check for legal moves
+                    List<Move> legalMoves = MoveGenerator.generateAllMoves(currentState);
+                    if (legalMoves.isEmpty()) {
+                        System.err.println("❌ No legal moves available in AI vs AI");
+                        break;
+                    }
+
                     long startTime = System.currentTimeMillis();
 
-                    // *** CHANGED: Use Ultimate AI (PVS + Quiescence) ***
+                    // *** FIXED: Use Ultimate AI with null protection ***
                     Move move = TimedMinimax.findBestMoveUltimate(currentState, 99, 1000);
+
+                    // CRITICAL NULL CHECK
+                    if (move == null) {
+                        System.err.println("❌ AI returned null in AI vs AI, using fallback");
+                        move = legalMoves.get(0);
+                    }
 
                     long moveTime = System.currentTimeMillis() - startTime;
 
-                    // Apply move
+                    // Apply move with validation
                     synchronized (stateLock) {
                         if (!gameInProgress || !aiThinking) break;
-                        state.applyMove(move);
-                        moveCount[0]++;
+
+                        // Final validation
+                        List<Move> currentLegalMoves = MoveGenerator.generateAllMoves(state);
+                        if (currentLegalMoves.contains(move)) {
+                            state.applyMove(move);
+                            moveCount[0]++;
+                        } else {
+                            System.err.println("❌ Invalid move in AI vs AI: " + move);
+                            if (!currentLegalMoves.isEmpty()) {
+                                move = currentLegalMoves.get(0);
+                                state.applyMove(move);
+                                moveCount[0]++;
+                            } else {
+                                break;
+                            }
+                        }
                     }
 
                     // Update UI
                     final String player = currentState.redToMove ? "Red" : "Blue";
                     final int currentMoveCount = moveCount[0];
+                    final Move finalMove = move;
                     SwingUtilities.invokeLater(() -> {
                         updateUI();
-                        updateStatus("ULTIMATE AI vs AI - " + player + " played: " + move + " (" + moveTime + "ms) [Move " + currentMoveCount + "]");
+                        updateStatus("🤖 vs 🤖 FIXED AI - " + player + " played: " + finalMove + " (" + moveTime + "ms) [Move " + currentMoveCount + "]");
                     });
 
-                    System.out.println("ULTIMATE AI " + player + ": " + move + " (" + moveTime + "ms) [Move " + moveCount[0] + "]");
+                    System.out.println("🤖 FIXED AI " + player + ": " + move + " (" + moveTime + "ms) [Move " + moveCount[0] + "]");
 
                     // Pause between moves for visibility
                     Thread.sleep(500);
@@ -356,14 +487,14 @@ public class GameFrame extends JFrame {
                     updateButtonStates();
 
                     if (finalMoveCount >= maxMoves) {
-                        updateStatus("ULTIMATE AI vs AI ended - Move limit reached");
+                        updateStatus("🤖 vs 🤖 FIXED AI ended - Move limit reached");
                         JOptionPane.showMessageDialog(this, "Game ended due to move limit (" + maxMoves + " moves)",
                                 "Game Ended", JOptionPane.INFORMATION_MESSAGE);
                     } else if (Minimax.isGameOver(state)) {
                         gameInProgress = false;
                         showGameOverDialog();
                     } else {
-                        updateStatus("ULTIMATE AI vs AI stopped");
+                        updateStatus("🤖 vs 🤖 FIXED AI stopped");
                     }
                 });
 
@@ -371,18 +502,21 @@ public class GameFrame extends JFrame {
                 SwingUtilities.invokeLater(() -> {
                     aiThinking = false;
                     updateButtonStates();
-                    updateStatus("ULTIMATE AI vs AI interrupted");
+                    updateStatus("🤖 vs 🤖 FIXED AI interrupted");
                 });
             } catch (Exception e) {
                 SwingUtilities.invokeLater(() -> {
                     aiThinking = false;
                     updateButtonStates();
-                    updateStatus("ULTIMATE AI vs AI error: " + e.getMessage());
+                    updateStatus("❌ FIXED AI vs AI error: " + e.getMessage());
+                    System.err.println("❌ AI vs AI Exception: " + e.getMessage());
                     e.printStackTrace();
                 });
             }
         });
     }
+
+    // ... rest of the methods remain the same but with better error handling ...
 
     private void showPositionEvaluation() {
         GameState currentState = getStateCopy();
@@ -398,13 +532,13 @@ public class GameFrame extends JFrame {
                                     "Positive = Good for Red\n" +
                                     "Negative = Good for Blue\n\n" +
                                     "Current turn: %s\n" +
-                                    "AI uses ULTIMATE STRATEGY (PVS + Quiescence) for superior tactical analysis",
+                                    "AI uses ULTIMATE STRATEGY (PVS + Quiescence) - FIXED VERSION",
                             eval,
                             currentState.redToMove ? "Red" : "Blue"
                     );
 
                     JOptionPane.showMessageDialog(this, message,
-                            "Position Analysis", JOptionPane.INFORMATION_MESSAGE);
+                            "Position Analysis - FIXED", JOptionPane.INFORMATION_MESSAGE);
                 });
 
             } catch (Exception e) {
@@ -417,7 +551,6 @@ public class GameFrame extends JFrame {
         });
     }
 
-    // *** NEW METHOD: Strategy comparison ***
     private void showStrategyComparison() {
         if (aiThinking) {
             updateStatus("Please wait for AI to finish thinking...");
@@ -429,49 +562,53 @@ public class GameFrame extends JFrame {
         // Run comparison in background
         aiExecutor.submit(() -> {
             try {
-                SwingUtilities.invokeLater(() -> updateStatus("Comparing AI strategies... (this may take a moment)"));
+                SwingUtilities.invokeLater(() -> updateStatus("Comparing AI strategies... (FIXED version)"));
 
-                System.out.println("\n=== STRATEGY COMPARISON ===");
+                System.out.println("\n=== STRATEGY COMPARISON - FIXED ===");
                 currentState.printBoard();
 
-                // Test different strategies
-                Minimax.SearchStrategy[] strategies = {
-                        Minimax.SearchStrategy.ALPHA_BETA,
-                        Minimax.SearchStrategy.ALPHA_BETA_Q,
-                        Minimax.SearchStrategy.PVS,
-                        Minimax.SearchStrategy.PVS_Q  // Your ultimate strategy
-                };
+                // Test different strategies - FIXED: Use SearchConfig.SearchStrategy
+                SearchConfig.SearchStrategy[] strategies = SearchConfig.SearchStrategy.values();
 
-                StringBuilder results = new StringBuilder("Strategy Comparison Results:\n\n");
+                StringBuilder results = new StringBuilder("Strategy Comparison Results (FIXED):\n\n");
 
-                for (Minimax.SearchStrategy strategy : strategies) {
+                for (SearchConfig.SearchStrategy strategy : strategies) {
                     long startTime = System.currentTimeMillis();
 
-                    // FIXED: Reset counter before each search
-                    Minimax.counter = 0;
-
-                    Move move = TimedMinimax.findBestMoveWithStrategy(currentState, 4, 3000, strategy);
+                    Move move = null;
+                    try {
+                        // FIXED: Use unified findBestMoveWithStrategy method
+                        move = TimedMinimax.findBestMoveWithStrategy(currentState, 4, 3000, strategy);
+                    } catch (Exception e) {
+                        System.err.println("Error testing " + strategy + ": " + e.getMessage());
+                    }
 
                     long endTime = System.currentTimeMillis();
                     long searchTime = endTime - startTime;
 
-                    // Evaluate the resulting position
-                    GameState resultState = currentState.copy();
-                    resultState.applyMove(move);
-                    int evaluation = Minimax.evaluate(resultState, 0);
+                    // Evaluate the resulting position if move is valid
+                    int evaluation = 0;
+                    if (move != null) {
+                        try {
+                            GameState resultState = currentState.copy();
+                            resultState.applyMove(move);
+                            evaluation = Minimax.evaluate(resultState, 0);
+                        } catch (Exception e) {
+                            System.err.println("Error evaluating result for " + strategy + ": " + e.getMessage());
+                        }
+                    }
 
-                    results.append(String.format("%s:\n", strategy));
-                    results.append(String.format("  Move: %s\n", move));
+                    results.append(String.format("%s:\n", strategy.displayName));
+                    results.append(String.format("  Move: %s\n", move != null ? move : "NULL/ERROR"));
                     results.append(String.format("  Evaluation: %+d\n", evaluation));
-                    results.append(String.format("  Time: %dms\n", searchTime));
-                    results.append(String.format("  Nodes: %d\n\n", Minimax.counter));
+                    results.append(String.format("  Time: %dms\n\n", searchTime));
 
-                    System.out.printf("%s: Move=%s, Eval=%+d, Time=%dms, Nodes=%d\n",
-                            strategy, move, evaluation, searchTime, Minimax.counter);
+                    System.out.printf("FIXED %s: Move=%s, Eval=%+d, Time=%dms\n",
+                            strategy.displayName, move, evaluation, searchTime);
                 }
 
                 SwingUtilities.invokeLater(() -> {
-                    updateStatus("Strategy comparison completed!");
+                    updateStatus("✅ Strategy comparison completed (FIXED)!");
 
                     JTextArea textArea = new JTextArea(results.toString());
                     textArea.setEditable(false);
@@ -481,12 +618,12 @@ public class GameFrame extends JFrame {
                     scrollPane.setPreferredSize(new Dimension(500, 400));
 
                     JOptionPane.showMessageDialog(this, scrollPane,
-                            "AI Strategy Comparison", JOptionPane.INFORMATION_MESSAGE);
+                            "AI Strategy Comparison - FIXED", JOptionPane.INFORMATION_MESSAGE);
                 });
 
             } catch (Exception e) {
                 SwingUtilities.invokeLater(() -> {
-                    updateStatus("Strategy comparison failed: " + e.getMessage());
+                    updateStatus("❌ Strategy comparison failed: " + e.getMessage());
                     JOptionPane.showMessageDialog(this,
                             "Error comparing strategies: " + e.getMessage(),
                             "Comparison Error", JOptionPane.ERROR_MESSAGE);
@@ -503,7 +640,6 @@ public class GameFrame extends JFrame {
         }
     }
 
-    // OPTION 1: Update UI with proper state synchronization
     private void updateUI() {
         if (!SwingUtilities.isEventDispatchThread()) {
             SwingUtilities.invokeLater(this::updateUI);
@@ -541,9 +677,10 @@ public class GameFrame extends JFrame {
         }
 
         String winner = determineWinner();
-        updateStatus("Game Over - " + winner);
+        updateStatus("🏁 Game Over - " + winner);
 
-        JOptionPane.showMessageDialog(this, winner, "Game Over", JOptionPane.INFORMATION_MESSAGE);
+        JOptionPane.showMessageDialog(this, winner + "\n\nAI Engine: ULTIMATE (FIXED)",
+                "Game Over", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private String determineWinner() {

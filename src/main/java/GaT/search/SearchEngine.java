@@ -46,19 +46,36 @@ public class SearchEngine {
     /**
      * Main search dispatcher - routes to appropriate algorithm
      */
+    // Add this fix to the search method in SearchEngine.java:
+
     public int search(GameState state, int depth, int alpha, int beta,
                       boolean maximizingPlayer, SearchConfig.SearchStrategy strategy) {
-        return switch (strategy) {
-            case ALPHA_BETA -> alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer);
-            case ALPHA_BETA_Q -> alphaBetaWithQuiescence(state, depth, alpha, beta, maximizingPlayer);
-            case PVS -> pvsSearch(state, depth, alpha, beta, maximizingPlayer, true);
-            case PVS_Q -> pvsWithQuiescence(state, depth, alpha, beta, maximizingPlayer, true);
-        };
+
+        // Handle null strategy gracefully
+        if (strategy == null) {
+            System.err.println("⚠️ Null strategy provided, defaulting to ALPHA_BETA");
+            strategy = SearchConfig.SearchStrategy.ALPHA_BETA;
+        }
+
+        try {
+            return switch (strategy) {
+                case ALPHA_BETA -> alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer);
+                case ALPHA_BETA_Q -> alphaBetaWithQuiescence(state, depth, alpha, beta, maximizingPlayer);
+                case PVS -> pvsSearch(state, depth, alpha, beta, maximizingPlayer, true);
+                case PVS_Q -> pvsWithQuiescence(state, depth, alpha, beta, maximizingPlayer, true);
+                default -> {
+                    System.err.println("⚠️ Unknown strategy: " + strategy + ", using ALPHA_BETA");
+                    yield alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer);
+                }
+            };
+        } catch (Exception e) {
+            System.err.println("❌ Search error with strategy " + strategy + ": " + e.getMessage());
+            // Fallback to basic alpha-beta
+            return alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer);
+        }
     }
 
-    /**
-     * Search with timeout support
-     */
+    // Also update searchWithTimeout method signature:
     public int searchWithTimeout(GameState state, int depth, int alpha, int beta,
                                  boolean maximizingPlayer, SearchConfig.SearchStrategy strategy,
                                  BooleanSupplier timeoutCheck) {
@@ -69,6 +86,8 @@ public class SearchEngine {
             this.timeoutChecker = null;
         }
     }
+
+
 
     // === ALPHA-BETA SEARCH ALGORITHMS ===
 

@@ -5,6 +5,7 @@ import java.util.List;
 import GaT.search.MoveGenerator;
 import GaT.model.GameState;
 import GaT.model.Move;
+import GaT.model.SearchConfig;
 import GaT.engine.TimeManager;
 import GaT.engine.TimedMinimax;
 import GaT.search.Minimax;
@@ -100,7 +101,7 @@ public class GameClient {
     }
 
     /**
-     * ENHANCED AI move calculation with comprehensive time management and error handling
+     * ENHANCED AI move calculation with FIXED SearchStrategy enum usage
      */
     private static String getAIMove(String board, int player, long timeLeft) {
         try {
@@ -116,15 +117,15 @@ public class GameClient {
 
             System.out.println("🧠 AI Analysis:");
             System.out.println("   ⏰ Time allocated: " + timeForMove + "ms");
-            System.out.println("   🎯 Strategy: ULTIMATE (PVS + Quiescence + Time-Aware Evaluation)");
+            System.out.println("   🎯 Strategy: ULTIMATE (PVS + Quiescence + Time-Aware Evaluation) - FIXED");
             System.out.println("   🎮 Phase: " + timeManager.getCurrentPhase());
 
             // Use the ultimate AI strategy with precise time control
             long searchStartTime = System.currentTimeMillis();
 
-            // FIXED: Use the correct enum reference
+            // FIXED: Use SearchConfig.SearchStrategy.PVS_Q instead of Minimax.SearchStrategy
             Move bestMove = TimedMinimax.findBestMoveWithStrategy(state, 99, timeForMove,
-                    Minimax.SearchStrategy.PVS_Q);
+                    SearchConfig.SearchStrategy.PVS_Q);
 
             long searchTime = System.currentTimeMillis() - searchStartTime;
 
@@ -139,8 +140,11 @@ public class GameClient {
 
             // Validate move is legal
             List<Move> legalMoves = MoveGenerator.generateAllMoves(state);
-            if (!legalMoves.contains(bestMove)) {
+            if (bestMove != null && !legalMoves.contains(bestMove)) {
                 System.out.println("⚠️ WARNING: AI returned illegal move! Using fallback...");
+                bestMove = findSafeFallbackMove(state, legalMoves);
+            } else if (bestMove == null) {
+                System.out.println("⚠️ WARNING: AI returned null move! Using fallback...");
                 bestMove = findSafeFallbackMove(state, legalMoves);
             }
 
@@ -168,7 +172,6 @@ public class GameClient {
             return "A1-A2-1";
         }
     }
-
 
     /**
      * Find a safe fallback move when AI fails
@@ -250,8 +253,8 @@ public class GameClient {
             }
         }
 
-        System.out.println("   🧠 AI Strategy: ULTIMATE (PVS + Quiescence + Time-Aware Evaluation)");
+        System.out.println("   🧠 AI Strategy: ULTIMATE (PVS + Quiescence + Time-Aware Evaluation) - FIXED");
         System.out.println("   🔧 Time Manager: Advanced with Emergency Modes");
-        System.out.println("   ✅ Integration: Complete with Minimax time awareness");
+        System.out.println("   ✅ Integration: Complete with unified SearchStrategy enum");
     }
 }

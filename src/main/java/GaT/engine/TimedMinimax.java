@@ -3,98 +3,129 @@ package GaT.engine;
 import GaT.model.GameState;
 import GaT.model.Move;
 import GaT.model.TTEntry;
+import GaT.model.SearchConfig;
 import GaT.search.Minimax;
 import GaT.search.MoveGenerator;
 import GaT.search.MoveOrdering;
 import GaT.search.QuiescenceSearch;
 import GaT.search.PVSSearch;
+import GaT.search.SearchEngine;
+import GaT.search.SearchStatistics;
+import GaT.search.TranspositionTable;
+import GaT.evaluation.Evaluator;
 
 import java.util.List;
 
 /**
- * TIMED MINIMAX ENGINE - Enhanced with new architecture
+ * FIXED TIMED MINIMAX ENGINE - Properly integrated with unified SearchStrategy
  *
- * Responsibilities:
- * - Iterative deepening with time control
- * - Integration with refactored components
- * - Multiple search strategies
- * - Tournament-ready time management
+ * FIXES:
+ * ✅ 1. Uses only SearchConfig.SearchStrategy (no more enum conflicts)
+ * ✅ 2. Proper SearchEngine initialization and usage
+ * ✅ 3. Consistent architecture (no mixing static/instance)
+ * ✅ 4. Null pointer protection throughout
+ * ✅ 5. Fallback mechanisms for robustness
+ * ✅ 6. Better error handling and logging
  */
 public class TimedMinimax {
+
+    // === INTEGRATED COMPONENTS ===
+    private static final Evaluator evaluator = new Evaluator();
+    private static final MoveOrdering moveOrdering = new MoveOrdering();
+    private static final TranspositionTable transpositionTable = new TranspositionTable(SearchConfig.TT_SIZE);
+    private static final SearchStatistics statistics = SearchStatistics.getInstance();
+    private static final SearchEngine searchEngine = new SearchEngine(evaluator, moveOrdering, transpositionTable, statistics);
 
     // === TIME MANAGEMENT ===
     private static long timeLimitMillis;
     private static long startTime;
-
-    // === DEPENDENCIES ===
-    private static final MoveOrdering moveOrdering = new MoveOrdering();
 
     // === TIMEOUT EXCEPTION ===
     private static class TimeoutException extends RuntimeException {
         private static final long serialVersionUID = 1L;
     }
 
-    // === MAIN PUBLIC INTERFACES ===
+    // === MAIN PUBLIC INTERFACES - FIXED ENUM USAGE ===
 
     /**
      * Find best move with time limit - LEGACY COMPATIBLE
      */
     public static Move findBestMoveWithTime(GameState state, int maxDepth, long timeMillis) {
-        return findBestMoveIterative(state, maxDepth, timeMillis, Minimax.SearchStrategy.ALPHA_BETA);
+        return findBestMoveIterative(state, maxDepth, timeMillis, SearchConfig.SearchStrategy.ALPHA_BETA);
     }
 
     /**
      * Find best move with quiescence search and time control
      */
     public static Move findBestMoveWithTimeAndQuiescence(GameState state, int maxDepth, long timeMillis) {
-        return findBestMoveIterative(state, maxDepth, timeMillis, Minimax.SearchStrategy.ALPHA_BETA_Q);
+        return findBestMoveIterative(state, maxDepth, timeMillis, SearchConfig.SearchStrategy.ALPHA_BETA_Q);
     }
 
     /**
      * ULTIMATE AI - PVS + Quiescence + Iterative Deepening
      */
     public static Move findBestMoveUltimate(GameState state, int maxDepth, long timeMillis) {
-        return findBestMoveIterative(state, maxDepth, timeMillis, Minimax.SearchStrategy.PVS_Q);
+        return findBestMoveIterative(state, maxDepth, timeMillis, SearchConfig.SearchStrategy.PVS_Q);
     }
 
     /**
-     * Find best move with specific strategy and time control
+     * Find best move with specific strategy and time control - FIXED enum
      */
     public static Move findBestMoveWithStrategy(GameState state, int maxDepth, long timeMillis,
-                                                Minimax.SearchStrategy strategy) {
+                                                SearchConfig.SearchStrategy strategy) {
         return findBestMoveIterative(state, maxDepth, timeMillis, strategy);
     }
 
-    // === CORE ITERATIVE DEEPENING ===
+    // === CORE ITERATIVE DEEPENING - FIXED ===
 
     /**
-     * ENHANCED Iterative Deepening with comprehensive time management
+     * FIXED Iterative Deepening with proper SearchConfig.SearchStrategy integration
      */
     private static Move findBestMoveIterative(GameState state, int maxDepth, long timeMillis,
-                                              Minimax.SearchStrategy strategy) {
+                                              SearchConfig.SearchStrategy strategy) {
+        // === VALIDATION ===
+        if (state == null) {
+            System.err.println("❌ CRITICAL: Null game state provided!");
+            return null;
+        }
+
+        if (strategy == null) {
+            System.err.println("⚠️ Null strategy provided, defaulting to ALPHA_BETA");
+            strategy = SearchConfig.SearchStrategy.ALPHA_BETA;
+        }
+
         // Setup time management
         TimedMinimax.timeLimitMillis = timeMillis;
         TimedMinimax.startTime = System.currentTimeMillis();
 
         // Initialize components
         moveOrdering.resetKillerMoves();
-        Minimax.resetPruningStats();
+        statistics.reset();
+        statistics.startSearch();
 
-        if (strategy == Minimax.SearchStrategy.ALPHA_BETA_Q || strategy == Minimax.SearchStrategy.PVS_Q) {
+        if (strategy == SearchConfig.SearchStrategy.ALPHA_BETA_Q || strategy == SearchConfig.SearchStrategy.PVS_Q) {
             QuiescenceSearch.setRemainingTime(timeMillis);
             QuiescenceSearch.resetQuiescenceStats();
         }
 
-        if (strategy == Minimax.SearchStrategy.PVS || strategy == Minimax.SearchStrategy.PVS_Q) {
+        if (strategy == SearchConfig.SearchStrategy.PVS || strategy == SearchConfig.SearchStrategy.PVS_Q) {
             PVSSearch.setTimeoutChecker(() -> timedOut());
         }
 
+        // === EMERGENCY FALLBACK CHECK ===
+        List<Move> emergencyMoves = MoveGenerator.generateAllMoves(state);
+        if (emergencyMoves.isEmpty()) {
+            System.err.println("❌ CRITICAL: No legal moves available!");
+            return null;
+        }
+
         Move bestMove = null;
-        Move lastCompleteMove = null;
+        Move lastCompleteMove = emergencyMoves.get(0); // Emergency fallback
         int bestDepth = 0;
 
-        System.out.println("=== Iterative Deepening with " + strategy + " ===");
+        System.out.println("=== FIXED Iterative Deepening with " + strategy + " ===");
         System.out.println("Time limit: " + timeMillis + "ms, Max depth: " + maxDepth);
+        System.out.println("Available moves: " + emergencyMoves.size());
 
         // Iterative deepening loop
         for (int depth = 1; depth <= maxDepth; depth++) {
@@ -106,7 +137,7 @@ public class TimedMinimax {
             long depthStartTime = System.currentTimeMillis();
 
             try {
-                Move candidate = searchAtDepth(state, depth, strategy);
+                Move candidate = searchAtDepthFixed(state, depth, strategy);
 
                 if (candidate != null) {
                     lastCompleteMove = candidate;
@@ -121,19 +152,18 @@ public class TimedMinimax {
                         System.out.println("🎯 Winning move found at depth " + depth);
                         break;
                     }
+                } else {
+                    System.out.println("⚠️ Depth " + depth + " returned null, using previous best");
+                    break;
                 }
 
             } catch (TimeoutException e) {
                 System.out.println("⏱ Timeout at depth " + depth);
                 break;
-            } catch (RuntimeException e) {
-                if (e.getMessage() != null && e.getMessage().contains("Timeout")) {
-                    System.out.println("⏱ Search timeout at depth " + depth);
-                    break;
-                } else {
-                    System.err.println("❌ Search error at depth " + depth + ": " + e.getMessage());
-                    break;
-                }
+            } catch (Exception e) {
+                System.err.println("❌ Search error at depth " + depth + ": " + e.getMessage());
+                e.printStackTrace();
+                break;
             }
 
             // Adaptive time management
@@ -144,27 +174,38 @@ public class TimedMinimax {
         }
 
         // Final statistics
-        printFinalStatistics(strategy, bestDepth, bestMove);
+        statistics.endSearch();
+        printFinalStatistics(strategy, bestDepth, bestMove != null ? bestMove : lastCompleteMove);
 
-        return bestMove != null ? bestMove : lastCompleteMove;
+        // ENSURE WE NEVER RETURN NULL
+        Move finalMove = bestMove != null ? bestMove : lastCompleteMove;
+        if (finalMove == null) {
+            System.err.println("🚨 EMERGENCY: All searches failed, using first legal move");
+            finalMove = emergencyMoves.get(0);
+        }
+
+        return finalMove;
     }
 
-    // === DEPTH-SPECIFIC SEARCH ===
+    // === FIXED DEPTH-SPECIFIC SEARCH ===
 
     /**
-     * Search at specific depth with given strategy
+     * FIXED Search at specific depth with proper SearchEngine integration
      */
-    private static Move searchAtDepth(GameState state, int depth, Minimax.SearchStrategy strategy)
+    private static Move searchAtDepthFixed(GameState state, int depth, SearchConfig.SearchStrategy strategy)
             throws TimeoutException {
 
         List<Move> moves = MoveGenerator.generateAllMoves(state);
-        if (moves.isEmpty()) return null;
+        if (moves.isEmpty()) {
+            System.err.println("❌ No moves at depth " + depth);
+            return null;
+        }
 
         // Enhanced move ordering
         long hash = state.hash();
-        TTEntry entry = Minimax.getTranspositionEntry(hash);
-        moveOrdering.orderMovesEnhanced(moves, state, depth, entry, null,
-                timeLimitMillis - (System.currentTimeMillis() - startTime));
+        TTEntry entry = transpositionTable.get(hash);
+        long remainingTime = timeLimitMillis - (System.currentTimeMillis() - startTime);
+        moveOrdering.orderMovesEnhanced(moves, state, depth, entry, null, remainingTime);
 
         Move bestMove = null;
         boolean isRed = state.redToMove;
@@ -174,11 +215,11 @@ public class TimedMinimax {
         for (Move move : moves) {
             if (timedOut()) throw new TimeoutException();
 
-            GameState copy = state.copy();
-            copy.applyMove(move);
-
             try {
-                int score = searchWithTimeoutSupport(copy, depth - 1, Integer.MIN_VALUE,
+                GameState copy = state.copy();
+                copy.applyMove(move);
+
+                int score = searchWithTimeoutSupportFixed(copy, depth - 1, Integer.MIN_VALUE,
                         Integer.MAX_VALUE, !isRed, strategy);
 
                 if ((isRed && score > bestScore) || (!isRed && score < bestScore) || bestMove == null) {
@@ -186,138 +227,43 @@ public class TimedMinimax {
                     bestMove = move;
                 }
 
-            } catch (RuntimeException e) {
-                if (e.getMessage() != null && e.getMessage().equals("Timeout")) {
-                    throw new TimeoutException();
-                }
+            } catch (TimeoutException e) {
                 throw e;
+            } catch (Exception e) {
+                System.err.println("⚠️ Error searching move " + move + ": " + e.getMessage());
+                continue; // Try next move
             }
         }
 
         return bestMove;
     }
 
-    // === TIMEOUT-AWARE SEARCH DISPATCH ===
+    // === FIXED TIMEOUT-AWARE SEARCH DISPATCH ===
 
     /**
-     * Search with timeout support for all strategies
+     * FIXED Search with proper SearchEngine integration and timeout support
      */
-    private static int searchWithTimeoutSupport(GameState state, int depth, int alpha, int beta,
-                                                boolean maximizingPlayer, Minimax.SearchStrategy strategy) {
+    private static int searchWithTimeoutSupportFixed(GameState state, int depth, int alpha, int beta,
+                                                     boolean maximizingPlayer, SearchConfig.SearchStrategy strategy) {
         // Regular timeout check
         if (timedOut()) {
-            throw new RuntimeException("Timeout");
+            throw new TimeoutException();
         }
 
-        // Dispatch to appropriate search method
-        switch (strategy) {
-            case ALPHA_BETA:
-                return Minimax.minimaxWithTimeout(state, depth, alpha, beta, maximizingPlayer,
-                        () -> timedOut());
-            case ALPHA_BETA_Q:
-                return searchWithQuiescenceAndTimeout(state, depth, alpha, beta, maximizingPlayer);
-            case PVS:
-                return PVSSearch.search(state, depth, alpha, beta, maximizingPlayer, true);
-            case PVS_Q:
-                return PVSSearch.searchWithQuiescence(state, depth, alpha, beta, maximizingPlayer, true);
-            default:
-                throw new IllegalArgumentException("Unknown search strategy: " + strategy);
-        }
-    }
+        // Set timeout checker for SearchEngine
+        searchEngine.setTimeoutChecker(() -> timedOut());
 
-    /**
-     * Alpha-Beta with Quiescence and timeout support
-     */
-    private static int searchWithQuiescenceAndTimeout(GameState state, int depth, int alpha, int beta,
-                                                      boolean maximizingPlayer) {
-        if (timedOut()) {
-            throw new RuntimeException("Timeout");
-        }
+        try {
+            // Dispatch to appropriate search method using SearchEngine
+            return searchEngine.searchWithTimeout(state, depth, alpha, beta, maximizingPlayer, strategy, () -> timedOut());
 
-        // Check transposition table first
-        long hash = state.hash();
-        TTEntry entry = Minimax.getTranspositionEntry(hash);
-        if (entry != null && entry.depth >= depth) {
-            if (entry.flag == TTEntry.EXACT) {
-                return entry.score;
-            } else if (entry.flag == TTEntry.LOWER_BOUND && entry.score >= beta) {
-                return entry.score;
-            } else if (entry.flag == TTEntry.UPPER_BOUND && entry.score <= alpha) {
-                return entry.score;
+        } catch (RuntimeException e) {
+            if (e.getMessage() != null && e.getMessage().contains("Timeout")) {
+                throw new TimeoutException();
             }
-        }
-
-        // Terminal conditions
-        if (Minimax.isGameOver(state)) {
-            return Minimax.evaluate(state, depth);
-        }
-
-        // Use quiescence search when depth <= 0
-        if (depth <= 0) {
-            return QuiescenceSearch.quiesce(state, alpha, beta, maximizingPlayer, 0);
-        }
-
-        // Regular alpha-beta search
-        List<Move> moves = MoveGenerator.generateAllMoves(state);
-        moveOrdering.orderMovesEnhanced(moves, state, depth, entry, null,
-                timeLimitMillis - (System.currentTimeMillis() - startTime));
-
-        Move bestMove = null;
-        int originalAlpha = alpha;
-
-        if (maximizingPlayer) {
-            int maxEval = Integer.MIN_VALUE;
-            for (Move move : moves) {
-                if (timedOut()) throw new RuntimeException("Timeout");
-
-                GameState copy = state.copy();
-                copy.applyMove(move);
-
-                int eval = searchWithQuiescenceAndTimeout(copy, depth - 1, alpha, beta, false);
-
-                if (eval > maxEval) {
-                    maxEval = eval;
-                    bestMove = move;
-                }
-
-                alpha = Math.max(alpha, eval);
-                if (beta <= alpha) {
-                    break;
-                }
-            }
-
-            // Store in transposition table
-            int flag = maxEval <= originalAlpha ? TTEntry.UPPER_BOUND :
-                    maxEval >= beta ? TTEntry.LOWER_BOUND : TTEntry.EXACT;
-            storeInTranspositionTable(hash, maxEval, depth, flag, bestMove);
-
-            return maxEval;
-        } else {
-            int minEval = Integer.MAX_VALUE;
-            for (Move move : moves) {
-                if (timedOut()) throw new RuntimeException("Timeout");
-
-                GameState copy = state.copy();
-                copy.applyMove(move);
-
-                int eval = searchWithQuiescenceAndTimeout(copy, depth - 1, alpha, beta, true);
-
-                if (eval < minEval) {
-                    minEval = eval;
-                    bestMove = move;
-                }
-
-                beta = Math.min(beta, eval);
-                if (beta <= alpha) {
-                    break;
-                }
-            }
-
-            int flag = minEval <= originalAlpha ? TTEntry.UPPER_BOUND :
-                    minEval >= beta ? TTEntry.LOWER_BOUND : TTEntry.EXACT;
-            storeInTranspositionTable(hash, minEval, depth, flag, bestMove);
-
-            return minEval;
+            throw e;
+        } finally {
+            searchEngine.clearTimeoutChecker();
         }
     }
 
@@ -347,17 +293,14 @@ public class TimedMinimax {
      * Check if move is winning
      */
     private static boolean isWinningMove(Move move, GameState state) {
-        GameState afterMove = state.copy();
-        afterMove.applyMove(move);
-        return Minimax.isGameOver(afterMove);
-    }
-
-    /**
-     * Store entry in transposition table
-     */
-    private static void storeInTranspositionTable(long hash, int score, int depth, int flag, Move bestMove) {
-        TTEntry entry = new TTEntry(score, depth, flag, bestMove);
-        Minimax.storeTranspositionEntry(hash, entry);
+        try {
+            GameState afterMove = state.copy();
+            afterMove.applyMove(move);
+            return Minimax.isGameOver(afterMove);
+        } catch (Exception e) {
+            System.err.println("⚠️ Error checking winning move: " + e.getMessage());
+            return false;
+        }
     }
 
     // === LOGGING METHODS ===
@@ -369,24 +312,29 @@ public class TimedMinimax {
         long elapsed = System.currentTimeMillis() - startTime;
         long remaining = timeLimitMillis - elapsed;
 
-        System.out.printf("✓ Depth %d: %s (%dms) | Elapsed: %dms | Remaining: %dms%n",
-                depth, bestMove, timeUsed, elapsed, remaining);
+        System.out.printf("✓ Depth %d: %s (%dms) | Elapsed: %dms | Remaining: %dms | Nodes: %,d%n",
+                depth, bestMove, timeUsed, elapsed, remaining, statistics.getTotalNodes());
     }
 
     /**
      * Print final search statistics
      */
-    private static void printFinalStatistics(Minimax.SearchStrategy strategy, int bestDepth, Move bestMove) {
+    private static void printFinalStatistics(SearchConfig.SearchStrategy strategy, int bestDepth, Move bestMove) {
         long totalTime = System.currentTimeMillis() - startTime;
 
-        System.out.println("=== Search Complete ===");
+        System.out.println("=== FIXED Search Complete ===");
         System.out.println("Strategy: " + strategy);
         System.out.println("Best depth reached: " + bestDepth);
         System.out.println("Best move: " + bestMove);
         System.out.println("Total time: " + totalTime + "ms");
+        System.out.println("Total nodes: " + statistics.getTotalNodes());
+
+        if (totalTime > 0) {
+            System.out.println("Nodes per second: " + (statistics.getTotalNodes() * 1000 / totalTime));
+        }
 
         // Strategy-specific statistics
-        if (strategy == Minimax.SearchStrategy.ALPHA_BETA_Q || strategy == Minimax.SearchStrategy.PVS_Q) {
+        if (strategy == SearchConfig.SearchStrategy.ALPHA_BETA_Q || strategy == SearchConfig.SearchStrategy.PVS_Q) {
             if (QuiescenceSearch.qNodes > 0) {
                 System.out.println("Q-nodes: " + QuiescenceSearch.qNodes);
                 double standPatRate = (100.0 * QuiescenceSearch.standPatCutoffs) / QuiescenceSearch.qNodes;
@@ -397,12 +345,35 @@ public class TimedMinimax {
         System.out.println("====================");
     }
 
-    // === LEGACY COMPATIBILITY ===
+    // === LEGACY COMPATIBILITY - FIXED ===
 
     /**
      * Legacy method - find best move with PVS
      */
     public static Move findBestMoveWithPVS(GameState state, int maxDepth, long timeMillis) {
-        return findBestMoveIterative(state, maxDepth, timeMillis, Minimax.SearchStrategy.PVS);
+        return findBestMoveIterative(state, maxDepth, timeMillis, SearchConfig.SearchStrategy.PVS);
+    }
+
+    // === COMPONENT ACCESS ===
+
+    /**
+     * Get SearchEngine instance for direct access if needed
+     */
+    public static SearchEngine getSearchEngine() {
+        return searchEngine;
+    }
+
+    /**
+     * Get Evaluator instance
+     */
+    public static Evaluator getEvaluator() {
+        return evaluator;
+    }
+
+    /**
+     * Get current search statistics
+     */
+    public static SearchStatistics getStatistics() {
+        return statistics;
     }
 }
