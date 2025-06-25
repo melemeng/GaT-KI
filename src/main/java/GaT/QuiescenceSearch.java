@@ -9,22 +9,44 @@ import java.util.HashMap;
 import java.util.List;
 
 /**
- * Quiescence Search implementation for Guard & Towers
+ * FIXED Quiescence Search implementation for Guard & Towers
  *
- * Quiescence Search extends the search in tactical positions to avoid
- * the horizon effect. It only considers "quiet" positions for evaluation,
- * continuing to search captures, checks, and other forcing moves.
+ * Fixes:
+ * - Corrected parentheses in bitwise operations
+ * - Fixed guard movement detection
+ * - Proper SEE attacker value calculation
+ * - Added missing helper methods
  */
 public class QuiescenceSearch {
 
     private static final HashMap<Long, TTEntry> qTable = new HashMap<>();
-    private static final int MAX_Q_DEPTH = 8; // Limit quiescence depth
+    private static final int MAX_Q_DEPTH = 16; // INCREASED from 8
+
+    // Adaptive depth based on time pressure
+    private static long remainingTimeMs = 180000; // Updated from outside
 
     // Statistics for analysis
     public static long qNodes = 0;
     public static long qCutoffs = 0;
     public static long standPatCutoffs = 0;
     public static long qTTHits = 0;
+
+    /**
+     * Reset statistics
+     */
+    public static void resetQuiescenceStats() {
+        qNodes = 0;
+        qCutoffs = 0;
+        standPatCutoffs = 0;
+        qTTHits = 0;
+    }
+
+    /**
+     * Set remaining time for adaptive depth
+     */
+    public static void setRemainingTime(long timeMs) {
+        remainingTimeMs = timeMs;
+    }
 
     /**
      * Public interface for quiescence search - called by Minimax
@@ -34,13 +56,16 @@ public class QuiescenceSearch {
     }
 
     /**
-     * Quiescence search - only considers captures, checks, and other forcing moves
+     * OPTIMIZED Quiescence search
      */
     private static int quiesceInternal(GameState state, int alpha, int beta, boolean maximizingPlayer, int qDepth) {
         qNodes++;
 
-        // Prevent infinite quiescence search
-        if (qDepth >= MAX_Q_DEPTH) {
+        // Adaptive depth limit based on time pressure
+        int maxDepth = remainingTimeMs > 30000 ? MAX_Q_DEPTH :
+                remainingTimeMs > 10000 ? 12 : 8;
+
+        if (qDepth >= maxDepth) {
             return Minimax.evaluate(state, -qDepth);
         }
 
@@ -68,8 +93,8 @@ public class QuiescenceSearch {
             }
             alpha = Math.max(alpha, standPat);
 
-            // Generate only tactical moves (captures, checks, promotions)
-            List<Move> tacticalMoves = generateTacticalMoves(state);
+            // Generate only CRITICAL tactical moves
+            List<Move> tacticalMoves = generateCriticalTacticalMoves(state);
 
             if (tacticalMoves.isEmpty()) {
                 return standPat; // Quiet position
@@ -82,9 +107,9 @@ public class QuiescenceSearch {
             Move bestMove = null;
 
             for (Move move : tacticalMoves) {
-                // SEE pruning - skip obviously bad captures
-                if (isCapture(move, state) && staticExchangeEvaluation(move, state) < 0) {
-                    continue;
+                // IMPROVED SEE pruning - skip obviously bad captures
+                if (isCapture(move, state) && fastSEE(move, state) < -50) {
+                    continue; // Skip clearly losing captures
                 }
 
                 GameState copy = state.copy();
@@ -118,7 +143,7 @@ public class QuiescenceSearch {
             }
             beta = Math.min(beta, standPat);
 
-            List<Move> tacticalMoves = generateTacticalMoves(state);
+            List<Move> tacticalMoves = generateCriticalTacticalMoves(state);
 
             if (tacticalMoves.isEmpty()) {
                 return standPat; // Quiet position
@@ -130,7 +155,7 @@ public class QuiescenceSearch {
             Move bestMove = null;
 
             for (Move move : tacticalMoves) {
-                if (isCapture(move, state) && staticExchangeEvaluation(move, state) < 0) {
+                if (isCapture(move, state) && fastSEE(move, state) < -50) {
                     continue;
                 }
 
@@ -161,14 +186,18 @@ public class QuiescenceSearch {
     }
 
     /**
-     * Generate only tactical moves for quiescence search
+     * OPTIMIZED: Generate only CRITICAL tactical moves (more selective)
      */
     public static List<Move> generateTacticalMoves(GameState state) {
+        return generateCriticalTacticalMoves(state);
+    }
+
+    private static List<Move> generateCriticalTacticalMoves(GameState state) {
         List<Move> allMoves = MoveGenerator.generateAllMoves(state);
         List<Move> tacticalMoves = new ArrayList<>();
 
         for (Move move : allMoves) {
-            if (isTacticalMove(move, state)) {
+            if (isCriticalTacticalMove(move, state)) {
                 tacticalMoves.add(move);
             }
         }
@@ -177,26 +206,26 @@ public class QuiescenceSearch {
     }
 
     /**
-     * Check if a move is tactical (forcing)
+     * OPTIMIZED: More selective tactical move detection
      */
-    private static boolean isTacticalMove(Move move, GameState state) {
-        // Captures
+    private static boolean isCriticalTacticalMove(Move move, GameState state) {
+        // 1. All captures are tactical
         if (isCapture(move, state)) {
             return true;
         }
 
-        // Checks (moves that put enemy guard in danger)
-        if (givesCheck(move, state)) {
+        // 2. Winning guard moves (guard to enemy castle)
+        if (isWinningGuardMove(move, state)) {
             return true;
         }
 
-        // Guard moves to castle field
-        if (isGuardMoveToWinning(move, state)) {
+        // 3. FAST check detection (much more efficient than before)
+        if (fastGivesCheck(move, state)) {
             return true;
         }
 
-        // Promotion-like moves (high-value stacking)
-        if (isHighValueStack(move, state)) {
+        // 4. Guard escape moves when in danger
+        if (isGuardEscapeMove(move, state)) {
             return true;
         }
 
@@ -204,7 +233,75 @@ public class QuiescenceSearch {
     }
 
     /**
-     * Order tactical moves by potential value
+     * FAST check detection - no expensive move generation
+     */
+    private static boolean fastGivesCheck(Move move, GameState state) {
+        boolean isRed = state.redToMove;
+        long enemyGuard = isRed ? state.blueGuard : state.redGuard;
+
+        if (enemyGuard == 0) return false;
+
+        int enemyGuardPos = Long.numberOfTrailingZeros(enemyGuard);
+
+        // Check if our move destination can attack the enemy guard
+        return canPositionAttackTarget(move.to, enemyGuardPos, move.amountMoved);
+    }
+
+    /**
+     * FIXED: Fast position attack check with proper guard movement
+     */
+    private static boolean canPositionAttackTarget(int from, int target, int moveDistance) {
+        int rankDiff = Math.abs(GameState.rank(from) - GameState.rank(target));
+        int fileDiff = Math.abs(GameState.file(from) - GameState.file(target));
+
+        // Guard can attack adjacent squares (orthogonally only)
+        if (moveDistance == 1) {
+            return (rankDiff + fileDiff == 1) && (rankDiff <= 1 && fileDiff <= 1);
+        }
+
+        // Tower can attack along rank/file up to its movement distance
+        boolean sameRank = rankDiff == 0;
+        boolean sameFile = fileDiff == 0;
+        int distance = Math.max(rankDiff, fileDiff);
+
+        return (sameRank || sameFile) && distance <= moveDistance;
+    }
+
+    /**
+     * FIXED: Check if move is a winning guard move
+     */
+    private static boolean isWinningGuardMove(Move move, GameState state) {
+        boolean isRed = state.redToMove;
+
+        // FIXED: Check if piece at from position is actually a guard
+        boolean isGuardMove = ((isRed && (state.redGuard & GameState.bit(move.from)) != 0) ||
+                (!isRed && (state.blueGuard & GameState.bit(move.from)) != 0));
+
+        if (!isGuardMove) return false;
+
+        // Check if moving to enemy castle
+        int targetCastle = isRed ? Minimax.BLUE_CASTLE_INDEX : Minimax.RED_CASTLE_INDEX;
+        return move.to == targetCastle;
+    }
+
+    /**
+     * Check if move is a guard escape when in danger
+     */
+    private static boolean isGuardEscapeMove(Move move, GameState state) {
+        boolean isRed = state.redToMove;
+        long guardBit = isRed ? state.redGuard : state.blueGuard;
+
+        if (guardBit == 0) return false;
+
+        int guardPos = Long.numberOfTrailingZeros(guardBit);
+        if (move.from != guardPos) return false;
+
+        // Only consider escape if guard is currently in danger
+        return Minimax.isGuardInDangerImproved(state, isRed);
+    }
+
+    /**
+     * IMPROVED tactical move ordering
      */
     private static void orderTacticalMoves(List<Move> moves, GameState state) {
         moves.sort((a, b) -> {
@@ -215,47 +312,92 @@ public class QuiescenceSearch {
     }
 
     /**
-     * Score tactical moves for ordering
+     * FIXED: Tactical move scoring with proper parentheses
      */
     private static int scoreTacticalMove(Move move, GameState state) {
         int score = 0;
+        boolean isRed = state.redToMove;
 
-        // Capture scoring with MVV-LVA (Most Valuable Victim - Least Valuable Attacker)
+        // Winning move gets highest priority
+        if (isWinningGuardMove(move, state)) {
+            score += 10000;
+        }
+
+        // Capture scoring with MVV-LVA
         if (isCapture(move, state)) {
-            score += getCaptureValue(move, state) * 100;
+            long toBit = GameState.bit(move.to);
+
+            // FIXED: Proper parentheses for guard capture check
+            if (((isRed ? state.blueGuard : state.redGuard) & toBit) != 0) {
+                score += 3000; // Guard capture
+            } else {
+                int victimHeight = isRed ? state.blueStackHeights[move.to] : state.redStackHeights[move.to];
+                score += victimHeight * 100; // Tower capture by height
+            }
+
+            // Attacker value (subtract for MVV-LVA)
             score -= getAttackerValue(move, state);
         }
 
         // Check bonus
-        if (givesCheck(move, state)) {
+        if (fastGivesCheck(move, state)) {
             score += 500;
         }
 
-        // Winning move bonus
-        if (isGuardMoveToWinning(move, state)) {
-            score += 10000;
+        // Guard escape bonus
+        if (isGuardEscapeMove(move, state)) {
+            score += 800;
         }
 
         return score;
     }
 
     /**
-     * Static Exchange Evaluation - estimates the value of a capture sequence
+     * FIXED: Static Exchange Evaluation with proper attacker calculation
      */
-    private static int staticExchangeEvaluation(Move move, GameState state) {
+    private static int fastSEE(Move move, GameState state) {
         if (!isCapture(move, state)) {
-            return 0; // No capture
+            return 0;
         }
 
-        int targetValue = getCaptureValue(move, state);
+        boolean isRed = state.redToMove;
+        long toBit = GameState.bit(move.to);
+
+        // Calculate victim value
+        int victimValue = 0;
+        if (((isRed ? state.blueGuard : state.redGuard) & toBit) != 0) {
+            victimValue = 3000; // Guard value
+        } else {
+            int height = isRed ? state.blueStackHeights[move.to] : state.redStackHeights[move.to];
+            victimValue = height * 100; // Tower value
+        }
+
+        // FIXED: Calculate proper attacker value
         int attackerValue = getAttackerValue(move, state);
 
-        // Simple SEE: if we capture something more valuable than our attacker, it's good
-        // More sophisticated SEE would simulate the entire exchange sequence
-        return targetValue - attackerValue;
+        // Simple SEE: victim value minus attacker value
+        return victimValue - attackerValue;
     }
 
-    // Helper methods
+    /**
+     * NEW: Calculate the value of the piece making the attack
+     */
+    private static int getAttackerValue(Move move, GameState state) {
+        boolean isRed = state.redToMove;
+        long fromBit = GameState.bit(move.from);
+
+        // Check if attacker is a guard
+        if (((isRed ? state.redGuard : state.blueGuard) & fromBit) != 0) {
+            return 50; // Guard has low material value but high strategic value
+        }
+
+        // Attacker is a tower - value based on height
+        int height = isRed ? state.redStackHeights[move.from] : state.blueStackHeights[move.from];
+        return height * 25; // Towers worth 25 per height level for SEE purposes
+    }
+
+    // === HELPER METHODS ===
+
     private static boolean isCapture(Move move, GameState state) {
         long toBit = GameState.bit(move.to);
         boolean isRed = state.redToMove;
@@ -271,120 +413,12 @@ public class QuiescenceSearch {
         return capturesGuard || capturesTower;
     }
 
-    private static boolean givesCheck(Move move, GameState state) {
-        GameState copy = state.copy();
-        copy.applyMove(move);
-
-        // Check if enemy guard is in danger after this move
-        boolean enemyIsRed = !state.redToMove;
-        long enemyGuard = enemyIsRed ? copy.redGuard : copy.blueGuard;
-
-        if (enemyGuard == 0) return false; // Guard already captured
-
-        // Generate our moves in the new position to see if we can capture the guard
-        copy.redToMove = state.redToMove; // Set to our turn again
-        List<Move> ourMoves = MoveGenerator.generateAllMoves(copy);
-
-        for (Move ourMove : ourMoves) {
-            if (GameState.bit(ourMove.to) == enemyGuard) {
-                return true; // We can capture the enemy guard
-            }
-        }
-
-        return false;
-    }
-
-    private static boolean isGuardMoveToWinning(Move move, GameState state) {
-        boolean isRed = state.redToMove;
-        boolean isGuardMove = (move.amountMoved == 1) &&
-                (((isRed && (state.redGuard & GameState.bit(move.from)) != 0)) ||
-                        (!isRed && (state.blueGuard & GameState.bit(move.from)) != 0));
-
-        if (!isGuardMove) return false;
-
-        // Check if moving to enemy castle
-        int targetCastle = isRed ? Minimax.BLUE_CASTLE_INDEX : Minimax.RED_CASTLE_INDEX;
-        return move.to == targetCastle;
-    }
-
-    private static boolean isHighValueStack(Move move, GameState state) {
-        boolean isRed = state.redToMove;
-        long ownTowers = isRed ? state.redTowers : state.blueTowers;
-
-        // Check if stacking on own tower to create high stack
-        if ((ownTowers & GameState.bit(move.to)) != 0) {
-            int[] stackHeights = isRed ? state.redStackHeights : state.blueStackHeights;
-            return stackHeights[move.to] + move.amountMoved >= 4; // Creates stack of 4+
-        }
-
-        return false;
-    }
-
-    private static int getCaptureValue(Move move, GameState state) {
-        long toBit = GameState.bit(move.to);
-        boolean isRed = state.redToMove;
-
-        // Guard is most valuable
-        if ((isRed && (state.blueGuard & toBit) != 0) ||
-                (!isRed && (state.redGuard & toBit) != 0)) {
-            return 10000;
-        }
-
-        // Tower value based on height
-        if (isRed && (state.blueTowers & toBit) != 0) {
-            return state.blueStackHeights[move.to] * 100;
-        } else if (!isRed && (state.redTowers & toBit) != 0) {
-            return state.redStackHeights[move.to] * 100;
-        }
-
-        return 0;
-    }
-
-    private static int getAttackerValue(Move move, GameState state) {
-        // Guard move
-        if (move.amountMoved == 1) {
-            boolean isRed = state.redToMove;
-            long guardBit = GameState.bit(move.from);
-            if (((isRed && (state.redGuard & guardBit) != 0)) ||
-                    (!isRed && (state.blueGuard & guardBit) != 0)) {
-                return 10000; // Guard value
-            }
-        }
-
-        // Tower move - value based on amount moved (partial stack)
-        return move.amountMoved * 100;
-    }
-
     /**
-     * Get current quiescence search statistics
-     */
-    public static void printQuiescenceStats() {
-        System.out.println("=== Quiescence Search Statistics ===");
-        System.out.println("Q-Nodes searched: " + qNodes);
-        System.out.println("Q-Cutoffs: " + qCutoffs);
-        System.out.println("Stand-pat cutoffs: " + standPatCutoffs);
-        System.out.println("Q-TT hits: " + qTTHits);
-        if (qNodes > 0) {
-            System.out.println("Q-Cutoff rate: " + (100.0 * qCutoffs / qNodes) + "%");
-            System.out.println("Stand-pat rate: " + (100.0 * standPatCutoffs / qNodes) + "%");
-        }
-        System.out.println("=====================================");
-    }
-
-    /**
-     * Reset quiescence statistics
-     */
-    public static void resetQuiescenceStats() {
-        qNodes = 0;
-        qCutoffs = 0;
-        standPatCutoffs = 0;
-        qTTHits = 0;
-    }
-
-    /**
-     * Clear quiescence transposition table
+     * Clear quiescence table periodically to prevent memory issues
      */
     public static void clearQuiescenceTable() {
-        qTable.clear();
+        if (qTable.size() > 100000) { // Clear when table gets too large
+            qTable.clear();
+        }
     }
 }
