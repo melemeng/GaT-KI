@@ -108,7 +108,6 @@ public class Minimax {
             int score = searchWithStrategy(copy, depth - 1, Integer.MIN_VALUE,
                     Integer.MAX_VALUE, !isRed, strategy, true);
 
-            System.out.println(move + " -> Score: " + score);
 
             if ((isRed && score > bestScore) || (!isRed && score < bestScore) || bestMove == null) {
                 bestScore = score;
