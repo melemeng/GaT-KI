@@ -3,159 +3,122 @@ package GaT.engine;
 import GaT.search.MoveGenerator;
 import GaT.model.GameState;
 import GaT.model.Move;
-import GaT.search.QuiescenceSearch;
-
-import java.util.Arrays;
 import java.util.List;
 
-/**
- * FIXED TIME MANAGER - Viel aggressiveres Zeitmanagement
- *
- * KRITISCHE FIXES:
- * ✅ 1. Viel höhere Zeitallokation (60-80% statt 5%)
- * ✅ 2. Angepasste Sicherheitsmargen
- * ✅ 3. Bessere Phasenerkennug
- * ✅ 4. Tournament-ready Zeitverteilung
- */
 public class TimeManager {
     private long remainingTime;
     private int estimatedMovesLeft;
     private Phase phase;
 
-    // FIXED: Viel weniger konservative Schwellenwerte
-    private static final long PANIC_TIME_THRESHOLD = 1000;     // 1 Sekunde (war 3)
-    private static final long EMERGENCY_TIME_THRESHOLD = 5000; // 5 Sekunden (war 10)
+    // FIXED: More aggressive thresholds
+    private static final long PANIC_TIME_THRESHOLD = 1000;
+    private static final long EMERGENCY_TIME_THRESHOLD = 5000;
 
-    enum Phase {
-        START,
-        MID,
-        END,
+    public enum Phase {
+        OPENING, MIDDLEGAME, ENDGAME
     }
 
     public TimeManager(long remainingTime, int estimatedMovesLeft) {
         this.remainingTime = remainingTime;
-        this.estimatedMovesLeft = estimatedMovesLeft;
-        this.phase = Phase.START;
+        this.estimatedMovesLeft = Math.max(estimatedMovesLeft, 8); // More realistic
+        this.phase = Phase.OPENING;
     }
 
     /**
-     * FIXED: Viel aggressivere Zeitallokation
+     * FIXED: More aggressive time allocation
      */
     public long calculateTimeForMove(GameState state) {
-        // === EMERGENCY TIME MANAGEMENT ===
+        // Emergency handling
         if (remainingTime <= PANIC_TIME_THRESHOLD) {
-            long panicTime = Math.max(300, remainingTime / 5); // Weniger konservativ
-            System.out.println("⚠️ PANIC: " + panicTime + "ms");
-            return panicTime;
+            return Math.max(200, remainingTime / 3); // Use 1/3 of remaining in panic
         }
 
         if (remainingTime <= EMERGENCY_TIME_THRESHOLD) {
-            long emergencyTime = Math.max(800, remainingTime / 4); // Weniger konservativ
-            System.out.println("🚨 EMERGENCY: " + emergencyTime + "ms");
-            return emergencyTime;
+            return Math.max(500, remainingTime / 2); // Use 1/2 in emergency
         }
 
-        // === AGGRESSIVE TIME CALCULATION ===
-        long baseTime = calculateAggressiveTimePerMove();
+        // FIXED: Much more aggressive base time calculation
+        long baseTime = calculateAggressiveBaseTime();
 
         // Phase adjustment
         this.phase = detectGamePhase(state);
-        if (phase.equals(Phase.START)) {
-            baseTime = baseTime * 4 / 5; // 20% weniger für Eröffnung
-        } else if (phase.equals(Phase.END)) {
-            baseTime = baseTime * 6 / 4; // 50% mehr für Endspiel
+        switch (phase) {
+            case OPENING -> baseTime = baseTime * 4 / 5; // 20% less for opening
+            case MIDDLEGAME -> baseTime = baseTime * 5 / 4; // 25% more for middlegame
+            case ENDGAME -> baseTime = baseTime * 3 / 2; // 50% more for endgame
         }
 
-        // Complexity adjustment - viel aggressiver
+        // Complexity adjustment
         int complexity = evaluatePositionComplexity(state);
-        if (complexity > 20) {
-            baseTime = baseTime * 3 / 2; // 50% mehr für komplexe Positionen
-        } else if (complexity < 5) {
-            baseTime = baseTime * 3 / 4; // Nur 25% weniger für einfache
+        if (complexity > 25) {
+            baseTime = baseTime * 3 / 2; // 50% more for complex positions
+        } else if (complexity < 10) {
+            baseTime = baseTime * 4 / 5; // 20% less for simple positions
         }
 
-        // === MUCH MORE AGGRESSIVE TIME LIMITS ===
-        // FIXED: Verwende viel mehr Zeit!
-        long maxTimeForMove = remainingTime / Math.max(estimatedMovesLeft, 3); // War 6!
-        long minTimeForMove = Math.max(1000, remainingTime / 20); // Minimum 1s, war 300ms
+        // FIXED: Aggressive bounds
+        long minTime = Math.max(500, remainingTime / 30); // Minimum 500ms or 3.3% of remaining
+        long maxTime = remainingTime / 3; // Maximum 33% of remaining time
 
-        // CRITICAL: Verwende mindestens 30% der Grundzeit
-        long aggressiveMinimum = remainingTime / 10; // 10% der verbleibenden Zeit
-        baseTime = Math.max(baseTime, aggressiveMinimum);
+        baseTime = Math.max(minTime, Math.min(baseTime, maxTime));
 
-        baseTime = Math.max(minTimeForMove, Math.min(baseTime, maxTimeForMove));
+        System.out.printf("🕐 AGGRESSIVE Time: %dms (Phase: %s, Complexity: %d, Remaining: %dms)%n",
+                baseTime, phase, complexity, remainingTime);
 
-        System.out.println("🕐 AGGRESSIVE Allocated: " + baseTime + "ms (Phase: " + phase +
-                ", Complexity: " + complexity + ", Remaining: " + remainingTime + "ms)");
         return baseTime;
     }
 
     /**
-     * FIXED: Viel aggressivere Grundzeit-Berechnung
+     * FIXED: More aggressive base time calculation
      */
-    private long calculateAggressiveTimePerMove() {
-        // FIXED: Verwende viel mehr Zeit pro Zug
-        long baseTimePerMove = remainingTime / Math.max(estimatedMovesLeft, 8); // War viel höher
+    private long calculateAggressiveBaseTime() {
+        // Use much more time per move
+        long baseTimePerMove = remainingTime / Math.max(estimatedMovesLeft, 6); // Was much higher
 
-        // Garantiere minimum aggressive Zeit
-        long aggressiveBase = remainingTime / 15; // 6.7% der verbleibenden Zeit
+        // Guarantee aggressive minimum
+        long aggressiveMinimum = remainingTime / 10; // 10% of remaining time minimum
 
-        return Math.max(baseTimePerMove, aggressiveBase);
+        return Math.max(baseTimePerMove, aggressiveMinimum);
     }
 
-    /**
-     * FIXED: Bessere Phasenerkennug
-     */
     private Phase detectGamePhase(GameState state) {
-        int totalPieces = getMaterialCount(state);
+        int totalPieces = getTotalMaterial(state);
         boolean guardsAdvanced = areGuardsAdvanced(state);
 
-        // Mehr nuancierte Phasenerkennung
         if (totalPieces >= 12 && !guardsAdvanced) {
-            return Phase.START;
+            return Phase.OPENING;
         } else if (totalPieces <= 6 || guardsAdvanced) {
-            return Phase.END;
+            return Phase.ENDGAME;
         } else {
-            return Phase.MID;
+            return Phase.MIDDLEGAME;
         }
     }
 
-    /**
-     * FIXED: Aggressivere Komplexitätsbewertung
-     */
     private int evaluatePositionComplexity(GameState state) {
-        int totalMoves = MoveGenerator.generateAllMoves(state).size();
-        List<Move> tacticalMoves = QuiescenceSearch.generateTacticalMoves(state);
+        try {
+            List<Move> allMoves = MoveGenerator.generateAllMoves(state);
+            int complexity = allMoves.size() / 2;
 
-        // Basis-Komplexität
-        int complexity = totalMoves / 2;
+            // Check for captures and threats
+            int captureCount = 0;
+            for (Move move : allMoves) {
+                if (isCapture(move, state)) {
+                    captureCount++;
+                }
+            }
+            complexity += captureCount * 3;
 
-        // FIXED: Taktische Züge bekommen noch mehr Gewicht
-        complexity += tacticalMoves.size() * 5; // War 3
+            // Check guard positions
+            if (areGuardsAdvanced(state)) {
+                complexity += 10;
+            }
 
-        // Gefährdete Wächter = sehr komplex
-        if (isGuardInDanger(state, tacticalMoves)) {
-            complexity += 15; // War 10
+            return complexity;
+        } catch (Exception e) {
+            return 15; // Safe default
         }
-
-        // Material-Ungleichgewicht
-        int materialImbalance = Math.abs(
-                Arrays.stream(state.redStackHeights).sum() -
-                        Arrays.stream(state.blueStackHeights).sum()
-        );
-        if (materialImbalance > 1 && materialImbalance < 8) {
-            complexity += 8; // War 5
-        }
-
-        // Fortgeschrittene Wächter
-        if (areGuardsAdvanced(state)) {
-            complexity += 12; // War 8
-        }
-
-        return complexity;
     }
 
-    // Rest der Methoden bleiben gleich...
     private boolean areGuardsAdvanced(GameState state) {
         if (state.redGuard != 0) {
             int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
@@ -170,33 +133,26 @@ public class TimeManager {
         return false;
     }
 
-    private int getMaterialCount(GameState state) {
-        int redCount = Arrays.stream(state.redStackHeights).sum();
-        int blueCount = Arrays.stream(state.blueStackHeights).sum();
-        return redCount + blueCount;
-    }
-
-    private boolean isGuardInDanger(GameState state, List<Move> tacticalMoves) {
-        return tacticalMoves.stream()
-                .anyMatch(move -> isGuardCapture(move, state));
-    }
-
-    private boolean isGuardCapture(Move move, GameState state) {
-        long targetBit = GameState.bit(move.to);
-        if (state.redToMove) {
-            return (state.blueGuard & targetBit) != 0;
-        } else {
-            return (state.redGuard & targetBit) != 0;
+    private int getTotalMaterial(GameState state) {
+        int total = 0;
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            total += state.redStackHeights[i] + state.blueStackHeights[i];
         }
+        return total;
     }
 
-    // Public interface methods
+    private boolean isCapture(Move move, GameState state) {
+        long toBit = GameState.bit(move.to);
+        return ((state.redTowers | state.blueTowers | state.redGuard | state.blueGuard) & toBit) != 0;
+    }
+
+    // Public interface
     public void updateRemainingTime(long remainingTime) {
-        this.remainingTime = remainingTime;
+        this.remainingTime = Math.max(0, remainingTime);
     }
 
     public void decrementEstimatedMovesLeft() {
-        if (estimatedMovesLeft > 2) { // FIXED: War 1
+        if (estimatedMovesLeft > 3) {
             this.estimatedMovesLeft--;
         }
     }
