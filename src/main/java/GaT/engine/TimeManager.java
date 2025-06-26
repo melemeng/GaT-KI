@@ -73,7 +73,7 @@ public class TimeManager {
      */
     private long calculateAggressiveBaseTime() {
         // Use much more time per move
-        long baseTimePerMove = remainingTime / Math.max(estimatedMovesLeft, 6); // Was much higher
+        long baseTimePerMove = remainingTime / Math.max(estimatedMovesLeft, 9); // Was much higher
 
         // Guarantee aggressive minimum
         long aggressiveMinimum = remainingTime / 10; // 10% of remaining time minimum
