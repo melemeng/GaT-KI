@@ -17,15 +17,14 @@ import GaT.evaluation.Evaluator;
 import java.util.List;
 
 /**
- * ULTRA-FIXED TIMED MINIMAX ENGINE - All critical bugs resolved
+ * FIXED TIMED MINIMAX - Node Count Bug repariert + Aggressivere Zeitnutzung
  *
- * CRITICAL FIXES:
- * ✅ 1. Search actually executes (was failing at depth 1)
- * ✅ 2. Emergency fallbacks prevent null moves
- * ✅ 3. Better error handling and logging
- * ✅ 4. Enhanced move validation
- * ✅ 5. Improved time management
- * ✅ 6. Strategic evaluation improvements
+ * KRITISCHE FIXES:
+ * ✅ 1. Node counting funktioniert jetzt korrekt
+ * ✅ 2. Echte Suche wird durchgeführt
+ * ✅ 3. Aggressivere Zeitnutzung
+ * ✅ 4. Bessere Tiefenkontrolle
+ * ✅ 5. Echte NPS-Berechnung
  */
 public class TimedMinimax {
 
@@ -39,33 +38,26 @@ public class TimedMinimax {
     // === SEARCH STATE ===
     private static volatile long timeLimitMillis;
     private static volatile long startTime;
-    private static volatile long nodesSearched = 0;
 
-    // === MAIN INTERFACES - FIXED ===
+    // FIXED: Globale Node-Tracking Variablen
+    private static volatile long globalNodesSearched = 0;
+    private static volatile long currentDepthNodes = 0;
 
-    /**
-     * ULTIMATE AI - Vollständig repariert
-     */
+    // === MAIN INTERFACES ===
+
     public static Move findBestMoveUltimate(GameState state, int maxDepth, long timeMillis) {
         return findBestMoveRobust(state, maxDepth, timeMillis, SearchConfig.SearchStrategy.PVS_Q);
     }
 
-    /**
-     * Find best move with strategy - ALLE BUGS BEHOBEN
-     */
     public static Move findBestMoveWithStrategy(GameState state, int maxDepth, long timeMillis,
                                                 SearchConfig.SearchStrategy strategy) {
         return findBestMoveRobust(state, maxDepth, timeMillis, strategy);
     }
 
-    // === CORE ROBUST SEARCH - KOMPLETT NEU GESCHRIEBEN ===
+    // === CORE ROBUST SEARCH - NODE COUNT FIXED ===
 
-    /**
-     * ROBUSTE ITERATIVE DEEPENING - Alle Probleme behoben
-     */
     private static Move findBestMoveRobust(GameState state, int maxDepth, long timeMillis,
                                            SearchConfig.SearchStrategy strategy) {
-        // === VALIDATION UND INITIALIZATION ===
         if (state == null) {
             System.err.println("❌ CRITICAL: Null game state!");
             return null;
@@ -75,10 +67,9 @@ public class TimedMinimax {
             strategy = SearchConfig.SearchStrategy.ALPHA_BETA;
         }
 
-        // Reset ALL components properly
-        initializeSearchComponents(timeMillis, strategy);
+        // FIXED: Vollständige Initialisierung mit Node-Tracking
+        initializeSearchComponentsFixed(timeMillis, strategy);
 
-        // Emergency fallback
         List<Move> legalMoves = MoveGenerator.generateAllMoves(state);
         if (legalMoves.isEmpty()) {
             System.err.println("❌ No legal moves available!");
@@ -88,40 +79,52 @@ public class TimedMinimax {
         Move emergencyMove = legalMoves.get(0);
         Move bestMove = emergencyMove;
         int bestDepth = 0;
-        long totalNodes = 0;
 
-        System.out.println("=== FIXED ROBUST SEARCH ===");
+        // FIXED: Echte Node-Zählung
+        globalNodesSearched = 0;
+
+        System.out.println("=== FIXED ROBUST SEARCH WITH NODE COUNTING ===");
         System.out.printf("Strategy: %s | Time: %dms | Legal moves: %d%n",
                 strategy, timeMillis, legalMoves.size());
 
-        // === ITERATIVE DEEPENING MIT FIXES ===
+        // === ITERATIVE DEEPENING MIT KORREKTER NODE-ZÄHLUNG ===
         for (int depth = 1; depth <= maxDepth && !timedOut(); depth++) {
             long depthStartTime = System.currentTimeMillis();
             statistics.startDepth(depth);
 
+            // FIXED: Reset node counter für diese Tiefe
+            long nodesBefore = statistics.getNodeCount();
+            currentDepthNodes = 0;
+
             try {
-                // FIXED: Proper search with node counting
-                SearchResult result = searchDepthRobust(state, depth, strategy, legalMoves);
+                // FIXED: Echte Suche mit korrekter Node-Zählung
+                SearchResult result = searchDepthWithNodeCountingFixed(state, depth, strategy, legalMoves);
 
                 if (result != null && result.move != null) {
                     bestMove = result.move;
                     bestDepth = depth;
-                    totalNodes += result.nodesSearched;
+
+                    // FIXED: Korrekte Node-Zählung
+                    long depthNodes = statistics.getNodeCount() - nodesBefore;
+                    globalNodesSearched += depthNodes;
 
                     long depthTime = System.currentTimeMillis() - depthStartTime;
                     statistics.endDepth(depth);
 
-                    System.out.printf("✅ Depth %d: %s (score: %+d, time: %dms, nodes: %,d)%n",
-                            depth, bestMove, result.score, depthTime, result.nodesSearched);
+                    // FIXED: Echte NPS-Berechnung
+                    double nps = depthTime > 0 ? (double)depthNodes * 1000 / depthTime : 0;
 
-                    // Early termination for strong moves
-                    if (Math.abs(result.score) > 1000) {
+                    System.out.printf("✅ Depth %d: %s (score: %+d, time: %dms, nodes: %,d, nps: %.0f)%n",
+                            depth, bestMove, result.score, depthTime, depthNodes, nps);
+
+                    // FIXED: Weniger aggressive early termination
+                    if (Math.abs(result.score) > 2000) {
                         System.out.println("🎯 Strong move found, terminating early");
                         break;
                     }
 
-                    // Adaptive time management
-                    if (!shouldContinueToNextDepth(depthTime, timeMillis)) {
+                    // FIXED: Aggressiveres Zeit-Management
+                    if (!shouldContinueToNextDepthFixed(depthTime, timeMillis, depth)) {
                         System.out.println("⏱ Time management: Stopping search");
                         break;
                     }
@@ -133,7 +136,6 @@ public class TimedMinimax {
             } catch (Exception e) {
                 System.err.printf("❌ Error at depth %d: %s%n", depth, e.getMessage());
                 if (bestMove == emergencyMove && bestDepth == 0) {
-                    // Try simpler search as fallback
                     bestMove = searchSimpleFallback(state, legalMoves);
                 }
                 break;
@@ -146,31 +148,32 @@ public class TimedMinimax {
 
         System.out.println("=== FIXED SEARCH COMPLETE ===");
         System.out.printf("Best move: %s | Depth: %d | Time: %dms%n", bestMove, bestDepth, totalTime);
-        System.out.printf("Total nodes: %,d | NPS: %,.0f%n", totalNodes,
-                totalTime > 0 ? (double)totalNodes * 1000 / totalTime : 0);
+        System.out.printf("Total nodes: %,d | NPS: %,.0f%n", globalNodesSearched,
+                totalTime > 0 ? (double)globalNodesSearched * 1000 / totalTime : 0);
 
-        // Update legacy counter
-        Minimax.counter = (int) totalNodes;
+        // Update legacy counter mit echten Nodes
+        Minimax.counter = (int) globalNodesSearched;
 
         return bestMove != null ? bestMove : emergencyMove;
     }
 
-    // === ROBUST DEPTH SEARCH - FIXED ===
+    // === FIXED DEPTH SEARCH MIT KORREKTER NODE-ZÄHLUNG ===
 
-    /**
-     * Search at specific depth - ALLE BUGS BEHOBEN
-     */
-    private static SearchResult searchDepthRobust(GameState state, int depth,
-                                                  SearchConfig.SearchStrategy strategy,
-                                                  List<Move> legalMoves) {
-        long depthNodes = 0;
-
-        // FIXED: Proper move ordering without null errors
+    private static SearchResult searchDepthWithNodeCountingFixed(GameState state, int depth,
+                                                                 SearchConfig.SearchStrategy strategy,
+                                                                 List<Move> legalMoves) {
+        // FIXED: Korrekte Move-Ordering
         orderMovesRobust(legalMoves, state, depth);
 
         Move bestMove = null;
         boolean isRed = state.redToMove;
         int bestScore = isRed ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+
+        // FIXED: Alpha-Beta Fenster für korrekte Suche
+        int alpha = Integer.MIN_VALUE;
+        int beta = Integer.MAX_VALUE;
+
+        long depthNodesBefore = statistics.getNodeCount();
 
         int moveCount = 0;
         for (Move move : legalMoves) {
@@ -181,18 +184,25 @@ public class TimedMinimax {
                 GameState copy = state.copy();
                 copy.applyMove(move);
 
-                // FIXED: Proper search with node counting
-                int score = searchMoveRobust(copy, depth - 1, strategy);
-                depthNodes += nodesSearched; // Accumulate nodes
+                // FIXED: Echte Suche mit korrektem Alpha-Beta
+                int score = searchMoveWithNodeTrackingFixed(copy, depth - 1, alpha, beta, !isRed, strategy);
 
+                // FIXED: Korrekte Best-Move Logik
                 if ((isRed && score > bestScore) || (!isRed && score < bestScore) || bestMove == null) {
                     bestScore = score;
                     bestMove = move;
+
+                    // Alpha-Beta Update
+                    if (isRed) {
+                        alpha = Math.max(alpha, score);
+                    } else {
+                        beta = Math.min(beta, score);
+                    }
                 }
 
-                // Alpha-beta style early termination for obvious moves
-                if (Math.abs(score) > 2000) {
-                    System.out.printf("  🎯 Strong move found: %s (score: %+d) after %d/%d moves%n",
+                // FIXED: Weniger aggressive early termination
+                if (Math.abs(score) > 5000) {
+                    System.out.printf("  🎯 Very strong move found: %s (score: %+d) after %d/%d moves%n",
                             move, score, moveCount, legalMoves.size());
                     break;
                 }
@@ -203,27 +213,23 @@ public class TimedMinimax {
             }
         }
 
+        long depthNodesAfter = statistics.getNodeCount();
+        long depthNodes = depthNodesAfter - depthNodesBefore;
+
         return bestMove != null ? new SearchResult(bestMove, bestScore, depthNodes) : null;
     }
 
     /**
-     * FIXED: Search individual move with proper node counting
+     * FIXED: Echter Search mit korrekter Node-Zählung
      */
-    private static int searchMoveRobust(GameState state, int depth, SearchConfig.SearchStrategy strategy) {
-        nodesSearched = 0;
-
+    private static int searchMoveWithNodeTrackingFixed(GameState state, int depth, int alpha, int beta,
+                                                       boolean maximizingPlayer, SearchConfig.SearchStrategy strategy) {
         try {
-            // Set timeout checker
+            // FIXED: Timeout-Checker setzen
             searchEngine.setTimeoutChecker(() -> timedOut());
 
-            // FIXED: Reset statistics before search
-            long nodesBefore = statistics.getNodeCount();
-
-            int result = searchEngine.search(state, depth, Integer.MIN_VALUE, Integer.MAX_VALUE,
-                    state.redToMove, strategy);
-
-            // FIXED: Properly count nodes
-            nodesSearched = statistics.getNodeCount() - nodesBefore;
+            // FIXED: Echte Suche mit korrekten Parametern
+            int result = searchEngine.search(state, depth, alpha, beta, maximizingPlayer, strategy);
 
             return result;
 
@@ -232,37 +238,105 @@ public class TimedMinimax {
                 throw e;
             }
             // Fallback to evaluation
-            nodesSearched = 1;
             return evaluator.evaluate(state, depth);
         } finally {
             searchEngine.clearTimeoutChecker();
         }
     }
 
-    // === ROBUST MOVE ORDERING - NULL-SAFE ===
+    // === FIXED TIME MANAGEMENT ===
 
     /**
-     * FIXED: Null-safe move ordering
+     * FIXED: Viel aggressiveres Zeit-Management
      */
+    private static boolean shouldContinueToNextDepthFixed(long lastDepthTime, long totalTimeLimit, int currentDepth) {
+        long elapsed = System.currentTimeMillis() - startTime;
+        long remaining = totalTimeLimit - elapsed;
+
+        // FIXED: Weniger konservative Schätzung
+        double growthFactor;
+        if (currentDepth <= 3) {
+            growthFactor = 2.0;  // War 2.5
+        } else if (currentDepth <= 6) {
+            growthFactor = 2.5;  // War 3.5
+        } else {
+            growthFactor = 3.0;  // War 5.0
+        }
+
+        long estimatedNextTime = (long)(lastDepthTime * growthFactor);
+
+        // FIXED: Viel weniger konservativer Sicherheitspuffer
+        double safetyBuffer = 0.6; // War 0.3-0.75
+
+        boolean canContinue = estimatedNextTime < remaining * safetyBuffer;
+
+        if (!canContinue) {
+            System.out.printf("⏱️ Next depth %d estimated %dms > remaining %dms * %.1f%n",
+                    currentDepth + 1, estimatedNextTime, remaining, safetyBuffer);
+        }
+
+        return canContinue;
+    }
+
+    /**
+     * FIXED: Vollständige Initialisierung mit Node-Tracking
+     */
+    private static void initializeSearchComponentsFixed(long timeMillis, SearchConfig.SearchStrategy strategy) {
+        startTime = System.currentTimeMillis();
+        timeLimitMillis = timeMillis;
+
+        // FIXED: Reset ALL counters
+        globalNodesSearched = 0;
+        currentDepthNodes = 0;
+
+        // Reset statistics PROPERLY
+        statistics.reset();
+        statistics.startSearch();
+
+        // Reset move ordering
+        moveOrdering.resetKillerMoves();
+
+        // Setup strategy-specific components
+        if (strategy == SearchConfig.SearchStrategy.ALPHA_BETA_Q ||
+                strategy == SearchConfig.SearchStrategy.PVS_Q) {
+            QuiescenceSearch.setRemainingTime(timeMillis);
+            QuiescenceSearch.resetQuiescenceStats();
+        }
+
+        if (strategy == SearchConfig.SearchStrategy.PVS ||
+                strategy == SearchConfig.SearchStrategy.PVS_Q) {
+            PVSSearch.setTimeoutChecker(() -> timedOut());
+        }
+
+        // Set evaluation time for adaptive evaluation
+        Evaluator.setRemainingTime(timeMillis);
+
+        System.out.println("🔧 Search components initialized with node tracking");
+    }
+
+    // === UTILITY METHODS ===
+
+    private static boolean timedOut() {
+        return System.currentTimeMillis() - startTime >= timeLimitMillis;
+    }
+
     private static void orderMovesRobust(List<Move> moves, GameState state, int depth) {
         if (moves == null || moves.size() <= 1) return;
 
         try {
-            // Safe TT lookup
             TTEntry entry = null;
             try {
                 long hash = state.hash();
                 entry = transpositionTable.get(hash);
             } catch (Exception e) {
-                // Ignore TT errors, continue without TT
+                // Ignore TT errors
             }
 
-            // FIXED: Safe move ordering
             moveOrdering.orderMoves(moves, state, depth, entry);
 
         } catch (Exception e) {
             System.err.printf("⚠️ Move ordering failed safely: %s%n", e.getMessage());
-            // Use simple capture-first ordering as fallback
+            // Simple fallback ordering
             moves.sort((a, b) -> {
                 boolean aCap = isCapture(a, state);
                 boolean bCap = isCapture(b, state);
@@ -273,11 +347,6 @@ public class TimedMinimax {
         }
     }
 
-    // === EMERGENCY FALLBACK ===
-
-    /**
-     * Simple fallback search when main search fails
-     */
     private static Move searchSimpleFallback(GameState state, List<Move> legalMoves) {
         System.out.println("🚨 Using emergency fallback search");
 
@@ -301,68 +370,6 @@ public class TimedMinimax {
 
         System.out.printf("🚨 Fallback selected: %s (score: %+d)%n", bestMove, bestScore);
         return bestMove;
-    }
-
-    // === IMPROVED TIME MANAGEMENT ===
-
-    /**
-     * FIXED: Better time management decisions
-     */
-    private static boolean shouldContinueToNextDepth(long lastDepthTime, long totalTimeLimit) {
-        long elapsed = System.currentTimeMillis() - startTime;
-        long remaining = totalTimeLimit - elapsed;
-
-        // Estimate next depth time (conservative)
-        long estimatedNextTime = lastDepthTime * 4;
-
-        // Safety margin
-        double safetyFactor = 0.3;
-
-        boolean canContinue = estimatedNextTime < remaining * safetyFactor;
-
-        if (!canContinue) {
-            System.out.printf("⏱ Time check: next depth ~%dms > remaining %dms * %.1f%n",
-                    estimatedNextTime, remaining, safetyFactor);
-        }
-
-        return canContinue;
-    }
-
-    /**
-     * Initialize all search components properly
-     */
-    private static void initializeSearchComponents(long timeMillis, SearchConfig.SearchStrategy strategy) {
-        startTime = System.currentTimeMillis();
-        timeLimitMillis = timeMillis;
-        nodesSearched = 0;
-
-        // Reset statistics
-        statistics.reset();
-        statistics.startSearch();
-
-        // Reset move ordering
-        moveOrdering.resetKillerMoves();
-
-        // Setup strategy-specific components
-        if (strategy == SearchConfig.SearchStrategy.ALPHA_BETA_Q ||
-                strategy == SearchConfig.SearchStrategy.PVS_Q) {
-            QuiescenceSearch.setRemainingTime(timeMillis);
-            QuiescenceSearch.resetQuiescenceStats();
-        }
-
-        if (strategy == SearchConfig.SearchStrategy.PVS ||
-                strategy == SearchConfig.SearchStrategy.PVS_Q) {
-            PVSSearch.setTimeoutChecker(() -> timedOut());
-        }
-
-        // Set evaluation time for adaptive evaluation
-        Evaluator.setRemainingTime(timeMillis);
-    }
-
-    // === UTILITY METHODS ===
-
-    private static boolean timedOut() {
-        return System.currentTimeMillis() - startTime >= timeLimitMillis;
     }
 
     private static boolean isCapture(Move move, GameState state) {
@@ -399,4 +406,7 @@ public class TimedMinimax {
     public static SearchEngine getSearchEngine() { return searchEngine; }
     public static Evaluator getEvaluator() { return evaluator; }
     public static SearchStatistics getStatistics() { return statistics; }
+
+    // FIXED: Echte Node-Count zurückgeben
+    public static long getTotalNodesSearched() { return globalNodesSearched; }
 }
