@@ -259,7 +259,7 @@ public class Minimax {
      * Legacy guard danger check
      */
     public static boolean isGuardInDangerImproved(GameState state, boolean checkRed) {
-        return evaluator.getSafetyEvaluator().isGuardInDanger(state, checkRed);
+        return evaluator.isGuardInDanger(state, checkRed);
     }
 
     // === MOVE SCORING FOR COMPATIBILITY ===
@@ -310,7 +310,7 @@ public class Minimax {
 
         // Guard escape bonus
         if (isGuardMove(move, state)) {
-            boolean guardInDanger = evaluator.getSafetyEvaluator().isGuardInDanger(state, state.redToMove);
+            boolean guardInDanger = evaluator.isGuardInDanger(state, state.redToMove);
             if (guardInDanger) {
                 score += 1500;
             }
