@@ -57,8 +57,8 @@ public class SearchEngine {
             return switch (strategy) {
                 case ALPHA_BETA -> alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer);
                 case ALPHA_BETA_Q -> alphaBetaWithQuiescence(state, depth, alpha, beta, maximizingPlayer);
-                case PVS -> pvsSearch(state, depth, alpha, beta, maximizingPlayer, true);
-                case PVS_Q -> pvsWithQuiescence(state, depth, alpha, beta, maximizingPlayer, true);
+                case PVS -> alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer); // TEMP FIX
+                case PVS_Q -> alphaBetaWithQuiescence(state, depth, alpha, beta, maximizingPlayer); // TEMP FIX
                 default -> {
                     System.err.println("⚠️ Unknown strategy: " + strategy + ", using ALPHA_BETA");
                     yield alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer);

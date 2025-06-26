@@ -127,11 +127,11 @@ public class GameClient {
 
             if (timeLeft > 120000) {  // More than 2 minutes
                 timeForMove = Math.min(rawTimeForMove, timeLeft / 4);  // Up to 25% of remaining time
-                timeForMove = Math.max(timeForMove, 3000);  // Minimum 3 seconds
+                timeForMove = Math.max(timeForMove, 5000);  // Minimum 5 seconds
                 timeForMove = Math.min(timeForMove, 15000); // Maximum 15 seconds
             } else if (timeLeft > 60000) {  // 1-2 minutes
                 timeForMove = Math.min(rawTimeForMove, timeLeft / 5);  // Up to 20% of remaining time
-                timeForMove = Math.max(timeForMove, 2000);  // Minimum 2 seconds
+                timeForMove = Math.max(timeForMove, 5000);  // Minimum 5 seconds
                 timeForMove = Math.min(timeForMove, 10000); // Maximum 10 seconds
             } else if (timeLeft > 30000) {  // 30-60 seconds
                 timeForMove = Math.min(rawTimeForMove, timeLeft / 6);  // Up to 16% of remaining time
@@ -154,8 +154,8 @@ public class GameClient {
 
             // FIXED: Use enhanced search with higher depth limits
             int maxDepth = calculateAggressiveMaxDepth(timeForMove, state);
-            Move bestMove = TimedMinimax.findBestMoveUltimate(state, maxDepth, timeForMove);
-
+            Move bestMove = TimedMinimax.findBestMoveWithStrategy(state, maxDepth, timeForMove,
+                    SearchConfig.SearchStrategy.ALPHA_BETA_Q);
             long searchTime = System.currentTimeMillis() - searchStartTime;
 
             // FIXED: Enhanced validation and intelligent fallback
