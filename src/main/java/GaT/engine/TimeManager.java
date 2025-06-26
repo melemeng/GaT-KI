@@ -10,9 +10,9 @@ public class TimeManager {
     private int estimatedMovesLeft;
     private Phase phase;
 
-    // FIXED: More aggressive thresholds
-    private static final long PANIC_TIME_THRESHOLD = 1000;
-    private static final long EMERGENCY_TIME_THRESHOLD = 5000;
+    // FIXED: Much more aggressive thresholds
+    private static final long PANIC_TIME_THRESHOLD = 500;     // Was 1000
+    private static final long EMERGENCY_TIME_THRESHOLD = 3000; // Was 5000
 
     public enum Phase {
         OPENING, MIDDLEGAME, ENDGAME
@@ -20,65 +20,90 @@ public class TimeManager {
 
     public TimeManager(long remainingTime, int estimatedMovesLeft) {
         this.remainingTime = remainingTime;
-        this.estimatedMovesLeft = Math.max(estimatedMovesLeft, 8); // More realistic
+        this.estimatedMovesLeft = Math.max(estimatedMovesLeft, 15); // More aggressive
         this.phase = Phase.OPENING;
     }
 
     /**
-     * FIXED: More aggressive time allocation
+     * FIXED: MUCH more aggressive time allocation
      */
     public long calculateTimeForMove(GameState state) {
         // Emergency handling
         if (remainingTime <= PANIC_TIME_THRESHOLD) {
-            return Math.max(200, remainingTime / 3); // Use 1/3 of remaining in panic
+            return Math.max(100, remainingTime / 4); // Use 25% in panic
         }
 
         if (remainingTime <= EMERGENCY_TIME_THRESHOLD) {
-            return Math.max(500, remainingTime / 2); // Use 1/2 in emergency
+            return Math.max(300, remainingTime / 3); // Use 33% in emergency
         }
 
-        // FIXED: Much more aggressive base time calculation
-        long baseTime = calculateAggressiveBaseTime();
-
-        // Phase adjustment
+        // Detect game phase
         this.phase = detectGamePhase(state);
+
+        // FIXED: AGGRESSIVE base time calculation
+        long baseTime = calculateUltraAggressiveBaseTime();
+
+        // Phase-based multipliers (more aggressive)
         switch (phase) {
-            case OPENING -> baseTime = baseTime * 4 / 5; // 20% less for opening
-            case MIDDLEGAME -> baseTime = baseTime * 5 / 4; // 25% more for middlegame
-            case ENDGAME -> baseTime = baseTime * 3 / 2; // 50% more for endgame
+            case OPENING -> baseTime = baseTime * 9 / 10;    // 10% less for opening
+            case MIDDLEGAME -> baseTime = baseTime * 3 / 2;  // 50% more for middlegame
+            case ENDGAME -> baseTime = baseTime * 2;         // 100% more for endgame
         }
 
         // Complexity adjustment
         int complexity = evaluatePositionComplexity(state);
-        if (complexity > 25) {
-            baseTime = baseTime * 3 / 2; // 50% more for complex positions
+        if (complexity > 20) {
+            baseTime = baseTime * 2;     // 100% more for complex positions
+        } else if (complexity > 15) {
+            baseTime = baseTime * 3 / 2; // 50% more for moderate complexity
         } else if (complexity < 10) {
             baseTime = baseTime * 4 / 5; // 20% less for simple positions
         }
 
-        // FIXED: Aggressive bounds
-        long minTime = Math.max(500, remainingTime / 30); // Minimum 500ms or 3.3% of remaining
-        long maxTime = remainingTime / 3; // Maximum 33% of remaining time
+        // Critical position bonus
+        if (isCriticalPosition(state)) {
+            baseTime = baseTime * 3 / 2; // 50% more for critical positions
+        }
+
+        // FIXED: AGGRESSIVE bounds - use much more time!
+        long minTime = Math.max(1000, remainingTime / 20);  // Min 5% of remaining
+        long maxTime = remainingTime / 2;                    // Max 50% of remaining time!
+
+        // For endgame, be even more aggressive
+        if (phase == Phase.ENDGAME && remainingTime > 30000) {
+            maxTime = remainingTime * 2 / 3; // Up to 66% in endgame!
+        }
 
         baseTime = Math.max(minTime, Math.min(baseTime, maxTime));
 
-        System.out.printf("🕐 AGGRESSIVE Time: %dms (Phase: %s, Complexity: %d, Remaining: %dms)%n",
-                baseTime, phase, complexity, remainingTime);
+        System.out.printf("🕐 ULTRA-AGGRESSIVE Time: %dms (Phase: %s, Complexity: %d, Critical: %s, Remaining: %dms)%n",
+                baseTime, phase, complexity, isCriticalPosition(state), remainingTime);
 
         return baseTime;
     }
 
     /**
-     * FIXED: More aggressive base time calculation
+     * FIXED: Ultra-aggressive base time calculation
      */
-    private long calculateAggressiveBaseTime() {
-        // Use much more time per move
-        long baseTimePerMove = remainingTime / Math.max(estimatedMovesLeft, 9); // Was much higher
+    private long calculateUltraAggressiveBaseTime() {
+        // Target using 20-30% of remaining time per move on average
+        long targetTimePerMove = remainingTime * 25 / (estimatedMovesLeft * 100); // 25% average
 
-        // Guarantee aggressive minimum
-        long aggressiveMinimum = remainingTime / 10; // 10% of remaining time minimum
+        // But guarantee aggressive minimums based on remaining time
+        long aggressiveMinimum;
+        if (remainingTime > 120000) {      // > 2 minutes
+            aggressiveMinimum = 15000;     // At least 15 seconds
+        } else if (remainingTime > 60000) { // > 1 minute
+            aggressiveMinimum = 10000;     // At least 10 seconds
+        } else if (remainingTime > 30000) { // > 30 seconds
+            aggressiveMinimum = 5000;      // At least 5 seconds
+        } else if (remainingTime > 10000) { // > 10 seconds
+            aggressiveMinimum = 2000;      // At least 2 seconds
+        } else {
+            aggressiveMinimum = remainingTime / 10; // 10% minimum
+        }
 
-        return Math.max(baseTimePerMove, aggressiveMinimum);
+        return Math.max(targetTimePerMove, aggressiveMinimum);
     }
 
     private Phase detectGamePhase(GameState state) {
@@ -97,26 +122,102 @@ public class TimeManager {
     private int evaluatePositionComplexity(GameState state) {
         try {
             List<Move> allMoves = MoveGenerator.generateAllMoves(state);
-            int complexity = allMoves.size() / 2;
+            int complexity = allMoves.size();
 
             // Check for captures and threats
             int captureCount = 0;
+            int checkCount = 0;
+
             for (Move move : allMoves) {
                 if (isCapture(move, state)) {
                     captureCount++;
                 }
+                // Check if move attacks enemy guard
+                if (threatsEnemyGuard(move, state)) {
+                    checkCount++;
+                }
             }
-            complexity += captureCount * 3;
 
-            // Check guard positions
+            complexity += captureCount * 3;
+            complexity += checkCount * 5;
+
+            // Guard position complexity
             if (areGuardsAdvanced(state)) {
                 complexity += 10;
             }
 
+            // Guards in danger = very complex
+            if (isGuardInDanger(state)) {
+                complexity += 15;
+            }
+
             return complexity;
         } catch (Exception e) {
-            return 15; // Safe default
+            return 20; // Assume complex on error
         }
+    }
+
+    private boolean isCriticalPosition(GameState state) {
+        // Guards advanced
+        if (areGuardsAdvanced(state)) {
+            return true;
+        }
+
+        // Guard in danger
+        if (isGuardInDanger(state)) {
+            return true;
+        }
+
+        // Very few pieces left
+        if (getTotalMaterial(state) <= 5) {
+            return true;
+        }
+
+        // Can capture enemy guard
+        List<Move> moves = MoveGenerator.generateAllMoves(state);
+        for (Move move : moves) {
+            if (capturesEnemyGuard(move, state)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean isGuardInDanger(GameState state) {
+        // Simple check - would need proper implementation
+        long guardBit = state.redToMove ? state.redGuard : state.blueGuard;
+        if (guardBit == 0) return true; // No guard = danger!
+
+        // Check if enemy pieces can capture our guard
+        // This is simplified - real implementation would check all enemy attacks
+        return false;
+    }
+
+    private boolean threatsEnemyGuard(Move move, GameState state) {
+        long enemyGuard = state.redToMove ? state.blueGuard : state.redGuard;
+        if (enemyGuard == 0) return false;
+
+        int guardPos = Long.numberOfTrailingZeros(enemyGuard);
+        // Check if move puts piece in position to attack guard
+        return canAttackFrom(move.to, guardPos, move.amountMoved);
+    }
+
+    private boolean capturesEnemyGuard(Move move, GameState state) {
+        long toBit = GameState.bit(move.to);
+        long enemyGuard = state.redToMove ? state.blueGuard : state.redGuard;
+        return (enemyGuard & toBit) != 0;
+    }
+
+    private boolean canAttackFrom(int from, int to, int range) {
+        int rankDiff = Math.abs(GameState.rank(from) - GameState.rank(to));
+        int fileDiff = Math.abs(GameState.file(from) - GameState.file(to));
+
+        // Must be on same rank or file
+        if (rankDiff != 0 && fileDiff != 0) return false;
+
+        int distance = Math.max(rankDiff, fileDiff);
+        return distance <= range;
     }
 
     private boolean areGuardsAdvanced(GameState state) {
@@ -152,7 +253,7 @@ public class TimeManager {
     }
 
     public void decrementEstimatedMovesLeft() {
-        if (estimatedMovesLeft > 3) {
+        if (estimatedMovesLeft > 5) { // Keep minimum of 5
             this.estimatedMovesLeft--;
         }
     }
