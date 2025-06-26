@@ -154,8 +154,9 @@ public class GameClient {
 
             // FIXED: Use enhanced search with higher depth limits
             int maxDepth = calculateAggressiveMaxDepth(timeForMove, state);
+            System.out.println("🎯 Using PVS + Quiescence with depth " + maxDepth);
             Move bestMove = TimedMinimax.findBestMoveWithStrategy(state, maxDepth, timeForMove,
-                    SearchConfig.SearchStrategy.ALPHA_BETA_Q);
+                    SearchConfig.SearchStrategy.PVS_Q);
             long searchTime = System.currentTimeMillis() - searchStartTime;
 
             // FIXED: Enhanced validation and intelligent fallback
