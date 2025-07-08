@@ -6,14 +6,14 @@ import GaT.model.Move;
 import java.util.List;
 
 /**
- * OPTIMIZED TimeManager - Balanced Time Allocation
+ * PHASE 1 FIXED TimeManager - More Conservative Time Allocation
  *
- * KEY IMPROVEMENTS:
- * ✅ 1. Reduced maximum time per move (was 50%, now 30% for critical)
- * ✅ 2. Better time distribution across game phases
- * ✅ 3. More accurate critical position detection
- * ✅ 4. Adaptive time based on move number
- * ✅ 5. Emergency time conservation
+ * PHASE 1 FIXES:
+ * ✅ 1. Reduced critical position time (33% -> 25%)
+ * ✅ 2. More conservative max time limits (33% -> 25%)
+ * ✅ 3. Safer minimum time calculation (5% -> 4%)
+ * ✅ 4. Better low-time handling (25% -> 20%)
+ * ✅ 5. Emergency time conservation enhanced
  */
 public class TimeManager {
     private long remainingTime;
@@ -39,7 +39,7 @@ public class TimeManager {
     }
 
     /**
-     * OPTIMIZED: Balanced time allocation
+     * PHASE 1 FIXED: More conservative time allocation
      */
     public long calculateTimeForMove(GameState state) {
         moveNumber++;
@@ -85,10 +85,10 @@ public class TimeManager {
                 break;
         }
 
-        // Critical position adjustment - more conservative
+        // PHASE 1 FIX: Critical position adjustment - more conservative
         if (isCritical) {
             System.out.println("🔴 CRITICAL POSITION DETECTED!");
-            long criticalTime = remainingTime / 3; // Use 33% max (was 50%)
+            long criticalTime = remainingTime / 4; // FIXED: Use 25% max (was 33%)
             baseTime = Math.max(baseTime, criticalTime);
         }
 
@@ -100,13 +100,13 @@ public class TimeManager {
             baseTime = (long)(baseTime * 0.9); // Slightly faster when winning
         }
 
-        // Time bounds - more conservative
-        long minTime = Math.max(500, remainingTime / 20);    // Min 5% or 0.5 seconds
-        long maxTime = remainingTime / 3;                     // Max 33% (was 75%)
+        // PHASE 1 FIX: Time bounds - more conservative
+        long minTime = Math.max(500, remainingTime / 25);    // FIXED: Min 4% (was 5%) or 0.5 seconds
+        long maxTime = remainingTime / 4;                     // FIXED: Max 25% (was 33%)
 
-        // Special handling for low time
+        // PHASE 1 FIX: Special handling for low time - even more conservative
         if (remainingTime < LOW_TIME_THRESHOLD) {
-            maxTime = remainingTime / 4; // Max 25% when low on time
+            maxTime = remainingTime / 5; // FIXED: Max 20% when low on time (was 25%)
         }
 
         // Ensure we don't use too much time per move

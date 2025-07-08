@@ -9,14 +9,15 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 /**
- * FIXED PRINCIPAL VARIATION SEARCH - Statistics Integration Repariert
+ * FIXED PRINCIPAL VARIATION SEARCH - PHASE 1 TIMEOUT FIX
  *
  * CRITICAL FIXES:
- * ✅ 1. Statistics properly integrated with SearchStatistics.getInstance()
- * ✅ 2. Node counting now works correctly
- * ✅ 3. Timeout handling improved
- * ✅ 4. Move ordering integration fixed
- * ✅ 5. Quiescence search properly integrated
+ * ✅ 1. GRACEFUL TIMEOUT HANDLING - No more RuntimeException crashes
+ * ✅ 2. Search interruption flag for clean exits
+ * ✅ 3. Statistics properly integrated with SearchStatistics.getInstance()
+ * ✅ 4. Node counting now works correctly
+ * ✅ 5. Move ordering integration fixed
+ * ✅ 6. Quiescence search properly integrated
  */
 public class PVSSearch {
 
@@ -24,8 +25,9 @@ public class PVSSearch {
     private static final MoveOrdering moveOrdering = new MoveOrdering();
     private static final SearchStatistics statistics = SearchStatistics.getInstance(); // FIXED: Use shared instance
 
-    // === TIMEOUT MANAGEMENT ===
+    // === TIMEOUT MANAGEMENT - PHASE 1 FIX ===
     private static BooleanSupplier timeoutChecker = null;
+    private static volatile boolean searchInterrupted = false; // NEW: Graceful interruption
 
     // === MAIN PVS INTERFACE ===
 
@@ -37,8 +39,16 @@ public class PVSSearch {
 
         statistics.incrementNodeCount(); // FIXED: Proper node counting
 
+        // PHASE 1 FIX: Graceful timeout - don't throw immediately
         if (timeoutChecker != null && timeoutChecker.getAsBoolean()) {
-            throw new RuntimeException("Timeout");
+            searchInterrupted = true;
+            // Return evaluation instead of throwing
+            return Minimax.evaluate(state, depth);
+        }
+
+        // Check if search was interrupted previously
+        if (searchInterrupted) {
+            return Minimax.evaluate(state, depth);
         }
 
         // TT-Lookup with caution for PV nodes
@@ -84,7 +94,13 @@ public class PVSSearch {
         if (maximizingPlayer) {
             int maxEval = Integer.MIN_VALUE;
 
-            for (Move move : moves) {
+            for (int i = 0; i < moves.size(); i++) {
+                // PHASE 1 FIX: Periodic interruption checks
+                if (i % 3 == 0 && searchInterrupted) {
+                    break; // Exit gracefully
+                }
+
+                Move move = moves.get(i);
                 GameState copy = state.copy();
                 copy.applyMove(move);
                 statistics.addMovesSearched(1); // FIXED: Count moves searched
@@ -128,7 +144,13 @@ public class PVSSearch {
         } else {
             int minEval = Integer.MAX_VALUE;
 
-            for (Move move : moves) {
+            for (int i = 0; i < moves.size(); i++) {
+                // PHASE 1 FIX: Periodic interruption checks
+                if (i % 3 == 0 && searchInterrupted) {
+                    break; // Exit gracefully
+                }
+
+                Move move = moves.get(i);
                 GameState copy = state.copy();
                 copy.applyMove(move);
                 statistics.addMovesSearched(1); // FIXED: Count moves searched
@@ -176,8 +198,16 @@ public class PVSSearch {
 
         statistics.incrementNodeCount(); // FIXED: Proper node counting
 
+        // PHASE 1 FIX: Graceful timeout - don't throw immediately
         if (timeoutChecker != null && timeoutChecker.getAsBoolean()) {
-            throw new RuntimeException("Timeout");
+            searchInterrupted = true;
+            // Return evaluation instead of throwing
+            return Minimax.evaluate(state, depth);
+        }
+
+        // Check if search was interrupted previously
+        if (searchInterrupted) {
+            return Minimax.evaluate(state, depth);
         }
 
         // TT-Lookup with PV node caution
@@ -228,7 +258,13 @@ public class PVSSearch {
         if (maximizingPlayer) {
             int maxEval = Integer.MIN_VALUE;
 
-            for (Move move : moves) {
+            for (int i = 0; i < moves.size(); i++) {
+                // PHASE 1 FIX: Periodic interruption checks
+                if (i % 3 == 0 && searchInterrupted) {
+                    break; // Exit gracefully
+                }
+
+                Move move = moves.get(i);
                 GameState copy = state.copy();
                 copy.applyMove(move);
                 statistics.addMovesSearched(1); // FIXED: Count moves searched
@@ -273,7 +309,13 @@ public class PVSSearch {
             // === MINIMIZING PLAYER ===
             int minEval = Integer.MAX_VALUE;
 
-            for (Move move : moves) {
+            for (int i = 0; i < moves.size(); i++) {
+                // PHASE 1 FIX: Periodic interruption checks
+                if (i % 3 == 0 && searchInterrupted) {
+                    break; // Exit gracefully
+                }
+
+                Move move = moves.get(i);
                 GameState copy = state.copy();
                 copy.applyMove(move);
                 statistics.addMovesSearched(1); // FIXED: Count moves searched
@@ -392,7 +434,7 @@ public class PVSSearch {
         statistics.incrementTTStores(); // FIXED: Count TT stores
     }
 
-    // === TIMEOUT MANAGEMENT ===
+    // === TIMEOUT MANAGEMENT - PHASE 1 ENHANCEMENTS ===
 
     /**
      * Set timeout checker from TimedMinimax
@@ -406,6 +448,13 @@ public class PVSSearch {
      */
     public static void clearTimeoutChecker() {
         timeoutChecker = null;
+    }
+
+    /**
+     * PHASE 1 NEW: Reset search state for clean start
+     */
+    public static void resetSearchState() {
+        searchInterrupted = false;
     }
 
     // === LEGACY COMPATIBILITY ===

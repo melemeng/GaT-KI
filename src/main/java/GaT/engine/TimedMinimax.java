@@ -10,14 +10,14 @@ import GaT.evaluation.Evaluator;
 import java.util.List;
 
 /**
- * FIXED: TimedMinimax - Truly Ultra-Aggressive Search
+ * PHASE 2 FIXED: TimedMinimax - Conservative Time Prediction
  *
- * KEY FIXES:
- * ✅ 1. Removed premature termination for "good" scores
- * ✅ 2. Much more aggressive time usage (70-90% of allocated)
- * ✅ 3. Better depth continuation logic
- * ✅ 4. Only terminate for actual checkmate scores
- * ✅ 5. Improved time prediction for next depth
+ * PHASE 2 FIXES:
+ * ✅ 1. Much more conservative time prediction (70% statt 85%)
+ * ✅ 2. Higher growth factors for safer depth estimation
+ * ✅ 3. Earlier timeout checks (90% statt 95%)
+ * ✅ 4. Better abort logic (95% statt 98%)
+ * ✅ 5. Enhanced emergency fallback
  */
 public class TimedMinimax {
 
@@ -113,9 +113,9 @@ public class TimedMinimax {
                         break;
                     }
 
-                    // FIXED: Ultra-aggressive time management
-                    if (!shouldContinueSearchAggressive(depthTime, timeMillis, depth, totalNodes)) {
-                        System.out.println("⏱ Time management: Stopping search (used time effectively)");
+                    // PHASE 2 FIX: More conservative time management
+                    if (!shouldContinueSearchConservative(depthTime, timeMillis, depth, totalNodes)) {
+                        System.out.println("⏱ Time management: Stopping search (conservative prediction)");
                         break;
                     }
                 } else {
@@ -142,18 +142,13 @@ public class TimedMinimax {
                 totalNodes, statistics.getNodeCount(), statistics.getQNodeCount(),
                 totalTime > 0 ? (double)totalNodes * 1000 / totalTime : 0);
 
-        // Warn if we didn't use enough time
-        if (timeUsagePercent < 50 && bestDepth < 8) {
-            System.out.println("⚠️ WARNING: Only used " + timeUsagePercent + "% of time - could be more aggressive!");
-        }
-
         return bestMove;
     }
 
-    // === FIXED: ULTRA-AGGRESSIVE TIME MANAGEMENT ===
+    // === PHASE 2 FIX: CONSERVATIVE TIME MANAGEMENT ===
 
-    private static boolean shouldContinueSearchAggressive(long lastDepthTime, long totalTimeLimit,
-                                                          int currentDepth, long totalNodes) {
+    private static boolean shouldContinueSearchConservative(long lastDepthTime, long totalTimeLimit,
+                                                            int currentDepth, long totalNodes) {
         long elapsed = System.currentTimeMillis() - startTime;
         long remaining = totalTimeLimit - elapsed;
 
@@ -162,42 +157,37 @@ public class TimedMinimax {
             return true;
         }
 
-        // FIXED: If we have lots of time left, ALWAYS continue
-        if (remaining > totalTimeLimit * 0.4) { // More than 40% time remaining
+        // PHASE 2 FIX: More conservative - only continue if we have lots of time
+        if (remaining > totalTimeLimit * 0.5) { // More than 50% time remaining
             System.out.printf("  ⚡ Plenty of time left (%.1f%%), continuing to depth %d%n",
                     (double)remaining/totalTimeLimit*100, currentDepth + 1);
             return true;
         }
 
-        // FIXED: More accurate growth prediction based on actual data
+        // PHASE 2 FIX: Conservative growth prediction
         double growthFactor;
-        if (currentDepth <= 3) {
-            growthFactor = 2.0;  // Early depths grow moderately
-        } else if (currentDepth <= 5) {
-            growthFactor = 2.5;  // Mid depths grow faster
-        } else if (currentDepth <= 7) {
-            growthFactor = 3.0;  // Deep searches grow significantly
-        } else if (currentDepth <= 9) {
-            growthFactor = 3.5;  // Very deep searches
+        if (currentDepth <= 4) {
+            growthFactor = 3.0;  // Conservative for early depths (was 2.0)
+        } else if (currentDepth <= 6) {
+            growthFactor = 3.5;  // More conservative for mid depths (was 2.5)
+        } else if (currentDepth <= 8) {
+            growthFactor = 4.0;  // Very conservative for deep searches (was 3.0)
         } else {
-            growthFactor = 4.0;  // Extreme depths
+            growthFactor = 5.0;  // Extremely conservative for very deep (was 4.0)
         }
 
-        // Adjust growth factor based on node count (branching factor indicator)
+        // Adjust based on complexity
         if (totalNodes > 1000000) {
-            growthFactor *= 1.2; // Complex positions grow faster
+            growthFactor *= 1.3; // Even more conservative for complex positions
         }
 
         long estimatedNextTime = (long)(lastDepthTime * growthFactor);
 
-        // FIXED: Use 85% of remaining time (ultra-aggressive)
-        boolean canComplete = estimatedNextTime < remaining * 0.85;
+        // PHASE 2 FIX: Use only 70% of remaining time (much more conservative than 85%)
+        boolean canComplete = estimatedNextTime < remaining * 0.70;
 
         if (!canComplete) {
-            System.out.printf("  ⏱ Next depth %d estimated %dms > 85%% of remaining %dms%n",
-                    currentDepth + 1, estimatedNextTime, remaining);
-        } else {
-            System.out.printf("  ⚡ Continuing to depth %d (estimated %dms < 85%% of %dms remaining)%n",
+            System.out.printf("  ⏱ Next depth %d estimated %dms > 70%% of remaining %dms%n",
                     currentDepth + 1, estimatedNextTime, remaining);
         }
 
@@ -217,9 +207,9 @@ public class TimedMinimax {
         int alpha = Integer.MIN_VALUE;
         int beta = Integer.MAX_VALUE;
 
-        // Set timeout checker for SearchEngine
+        // PHASE 2 FIX: Set timeout checker for SearchEngine - more conservative
         searchEngine.setTimeoutChecker(() -> searchAborted ||
-                System.currentTimeMillis() - startTime >= timeLimitMillis * 95 / 100);
+                System.currentTimeMillis() - startTime >= timeLimitMillis * 90 / 100); // 90% statt 95%
 
         try {
             int moveCount = 0;
@@ -309,8 +299,9 @@ public class TimedMinimax {
         }
     }
 
+    // PHASE 2 FIX: More conservative abort check
     private static boolean shouldAbortSearch() {
-        if (!searchAborted && System.currentTimeMillis() - startTime >= timeLimitMillis * 98 / 100) {
+        if (!searchAborted && System.currentTimeMillis() - startTime >= timeLimitMillis * 95 / 100) { // 95% statt 98%
             searchAborted = true;
             return true;
         }
