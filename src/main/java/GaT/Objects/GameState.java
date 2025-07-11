@@ -311,9 +311,12 @@ public class GameState {
 
                 // Empty squares
                 if (Character.isDigit(ch)) {
-                    int count = ch - '0';
+                    int start = i;
+                    while (i < row.length() && Character.isDigit(row.charAt(i))) {
+                        i++;
+                    }
+                    int count = Integer.parseInt(row.substring(start, i));
                     file += count;
-                    i++;
                     continue;
                 }
 
@@ -321,14 +324,16 @@ public class GameState {
 
                 if (ch == 'r' || ch == 'b') {
                     boolean isBlue = ch == 'b';
-                    i++;
+                    int start = i + 1;
+                    while (start < row.length() && Character.isDigit(row.charAt(start))) {
+                        start++;
+                    }
 
                     int height = 1;
-                    // Look ahead for ONE digit only (0–7)
-                    if (i < row.length() && Character.isDigit(row.charAt(i))) {
-                        height = row.charAt(i) - '0';
-                        i++;
+                    if (start > i + 1) {
+                        height = Integer.parseInt(row.substring(i + 1, start));
                     }
+                    i = start;
 
                     if (isBlue) {
                         state.blueTowers |= bit(index);
