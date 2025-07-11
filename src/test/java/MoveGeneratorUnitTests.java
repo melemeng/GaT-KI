@@ -3,9 +3,6 @@ import GaT.Objects.GameState;
 import GaT.Objects.Move;
 import GaT.MoveGenerator;
 import org.junit.Test;
-import org.junit.Before;
-
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -59,10 +56,6 @@ public class MoveGeneratorUnitTests {
         String board = "7/7/7/2rRGr13/3r33/7/3BG3 r";
         GameState state = GameState.fromFen(board);
 
-        // Debug: Print the board to verify setup
-        System.out.println("Test board:");
-        state.printBoard();
-
         List<Move> moves = MoveGenerator.generateAllMoves(state);
 
         // Red guard at D4 (index 24)
@@ -71,11 +64,6 @@ public class MoveGeneratorUnitTests {
                 .filter(m -> m.from == redGuardPos && m.amountMoved == 1)
                 .collect(Collectors.toList());
 
-        // Debug: Print guard moves
-        System.out.println("Guard moves found:");
-        for (Move move : guardMoves) {
-            System.out.println("  " + move);
-        }
 
         // FIXED: Should have 1 move (up to D5), as D3 is blocked by red tower,
         // C4 and E4 are blocked by red towers
@@ -178,13 +166,10 @@ public class MoveGeneratorUnitTests {
         heights[1] = 1;  // B1 height 1
 
         GameState state = new GameState(0, towers, heights, 0, 0, new int[49], true);
-        state.printBoard();
-
         List<Move> moves = MoveGenerator.generateAllMoves(state);
-        System.out.println("All moves:");
-        for (Move move : moves) {
-            System.out.println("  " + move);
-        }
+
+        // Basic sanity check on generated moves
+        assertFalse("Expected some moves for tower debug scenario", moves.isEmpty());
     }
 
     @Test
@@ -192,11 +177,9 @@ public class MoveGeneratorUnitTests {
         String board = "7/7/7/2rRGr13/3r33/7/3BG3 r";
         GameState state = GameState.fromFen(board);
 
-        System.out.println("Actual board:");
-        state.printBoard();
-
-        System.out.println("Red guard position: " + Long.numberOfTrailingZeros(state.redGuard));
-        System.out.println("Expected position: " + GameState.getIndex(3, 3));
+        int expected = GameState.getIndex(3, 3);
+        int actual = Long.numberOfTrailingZeros(state.redGuard);
+        assertEquals("Red guard should be at expected position", expected, actual);
     }
     @Test
     public void testTowerStackingMechanics() {
@@ -332,11 +315,6 @@ public class MoveGeneratorUnitTests {
         GameState state = new GameState(0, towers, heights, 0, 0, new int[49], true);
         List<Move> moves = MoveGenerator.generateAllMoves(state);
 
-        // Debug output
-        System.out.println("Complex stacking moves:");
-        for (Move move : moves) {
-            System.out.println("  " + move);
-        }
 
         // A4 tower (height 1) should be able to move to B4 (1 square)
         Move moveA4toB4 = new Move(GameState.getIndex(3, 0), GameState.getIndex(3, 1), 1);
@@ -361,18 +339,15 @@ public class MoveGeneratorUnitTests {
             assertNotEquals("Source and destination should be different", move.from, move.to);
         }
 
-        System.out.println("Generated " + moves.size() + " valid moves from start position");
     }
 
     // ================================================================================================
     // HELPER METHODS FOR TESTING
     // ================================================================================================
 
+    // Helper methods retained for potential debugging
     private void printMoves(List<Move> moves, String description) {
-        System.out.println("\n" + description + " (" + moves.size() + " moves):");
-        for (Move move : moves) {
-            System.out.println("  " + move);
-        }
+        // Intentionally left blank to minimize test output
     }
 
     private List<Move> filterGuardMoves(List<Move> moves, int guardPosition) {
@@ -398,7 +373,6 @@ public class MoveGeneratorUnitTests {
         long endTime = System.currentTimeMillis();
 
         long timePerGeneration = (endTime - startTime) / 10000;
-        System.out.println("Average move generation time: " + timePerGeneration + "ms");
 
         assertTrue("Move generation should be fast", timePerGeneration < 10);
     }
