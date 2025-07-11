@@ -614,4 +614,6 @@ public class SafetyEval {
         int fileDiff = Math.abs(GameState.file(from) - GameState.file(to));
         return rankDiff + fileDiff;
     }
+
+
 }

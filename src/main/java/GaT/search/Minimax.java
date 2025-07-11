@@ -1,5 +1,6 @@
 package GaT.search;
 
+import GaT.evaluation.ModularEvaluator;
 import GaT.model.GameState;
 import GaT.model.Move;
 import GaT.model.TTEntry;
@@ -24,7 +25,7 @@ import GaT.search.QuiescenceSearch;
 public class Minimax {
 
     // === CORE COMPONENTS ===
-    private static final Evaluator evaluator = new Evaluator();
+    private static final Evaluator evaluator = new ModularEvaluator();;
     private static final MoveOrdering moveOrdering = new MoveOrdering();
     private static final TranspositionTable transpositionTable = new TranspositionTable(SearchConfig.TT_SIZE);
     private static final SearchStatistics statistics = SearchStatistics.getInstance();

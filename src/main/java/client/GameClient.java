@@ -2,6 +2,7 @@ package client;
 
 import java.util.List;
 
+import GaT.evaluation.ModularEvaluator;
 import GaT.search.MoveGenerator;
 import GaT.search.PVSSearch;
 import GaT.model.GameState;
@@ -35,7 +36,7 @@ public class GameClient {
     private static TimeManager timeManager = new TimeManager(180000, 20); // Adjusted estimate
 
     // Use the new tactical evaluator
-    private static TacticalEvaluator evaluator = new TacticalEvaluator();
+    private static ModularEvaluator evaluator = new ModularEvaluator();
 
     public static void main(String[] args) {
         boolean running = true;

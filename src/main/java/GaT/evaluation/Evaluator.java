@@ -3,6 +3,8 @@ package GaT.evaluation;
 import GaT.model.GameState;
 import GaT.search.MoveGenerator;
 import GaT.model.Move;
+import static GaT.evaluation.SafetyEval.*;
+
 
 import java.util.List;
 

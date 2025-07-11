@@ -60,18 +60,8 @@ public class PositionalEval {
      * ADVANCED POSITIONAL EVALUATION - For deep analysis
      */
     public int evaluatePositionalAdvanced(GameState state) {
-        int positionalScore = 0;
-
-        // Core positional factors
-        positionalScore += evaluatePositional(state);
-
-        // Advanced concepts
-        positionalScore += evaluateStrategicControl(state);
-        positionalScore += evaluateOutposts(state);
-        positionalScore += evaluatePawnStructure(state); // Adapted for Guard & Towers
-        positionalScore += evaluateKingActivity(state);
-
-        return positionalScore;
+        // Falls nicht vorhanden, hinzufügen:
+        return evaluatePositional(state);
     }
 
     // === GUARD ADVANCEMENT EVALUATION ===
@@ -95,9 +85,8 @@ public class PositionalEval {
         return advancementScore;
     }
 
-    /**
-     * Fast guard advancement evaluation for time pressure
-     */
+
+
     public int evaluateGuardAdvancementFast(GameState state) {
         int advancementScore = 0;
 
