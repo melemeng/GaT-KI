@@ -441,7 +441,7 @@ public class Minimax {
     private static boolean isPositionUnderAttack(GameState state, int pos, boolean byRed) {
         long attackers = byRed ? (state.redTowers | state.redGuard) : (state.blueTowers | state.blueGuard);
 
-        for (int i = 0; i < 64; i++) {
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
             if ((attackers & GameState.bit(i)) != 0) {
                 int height = byRed ? state.redStackHeights[i] : state.blueStackHeights[i];
                 if (height == 0 && (byRed ? state.redGuard : state.blueGuard) != GameState.bit(i)) continue;
