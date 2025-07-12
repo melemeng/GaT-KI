@@ -2,6 +2,7 @@ package GaT.search;
 
 import GaT.model.GameState;
 import GaT.model.Move;
+import GaT.model.SearchConfig;
 import GaT.model.TTEntry;
 import GaT.search.MoveGenerator;
 
@@ -9,44 +10,41 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 /**
- * FIXED PRINCIPAL VARIATION SEARCH - PHASE 1 TIMEOUT FIX
+ * ENHANCED PRINCIPAL VARIATION SEARCH - WITH HISTORY HEURISTIC
  *
- * CRITICAL FIXES:
- * ✅ 1. GRACEFUL TIMEOUT HANDLING - No more RuntimeException crashes
- * ✅ 2. Search interruption flag for clean exits
- * ✅ 3. Statistics properly integrated with SearchStatistics.getInstance()
- * ✅ 4. Node counting now works correctly
- * ✅ 5. Move ordering integration fixed
- * ✅ 6. Quiescence search properly integrated
+ * ENHANCEMENTS:
+ * ✅ History Heuristic integration for better move ordering
+ * ✅ Graceful timeout handling
+ * ✅ Enhanced statistics tracking
+ * ✅ Proper cutoff handling with history updates
+ * ✅ Optimized for single-threaded performance
  */
 public class PVSSearch {
 
-    // === DEPENDENCIES - FIXED ===
+    // === DEPENDENCIES - ENHANCED ===
     private static final MoveOrdering moveOrdering = new MoveOrdering();
-    private static final SearchStatistics statistics = SearchStatistics.getInstance(); // FIXED: Use shared instance
+    private static final SearchStatistics statistics = SearchStatistics.getInstance();
 
-    // === TIMEOUT MANAGEMENT - PHASE 1 FIX ===
+    // === TIMEOUT MANAGEMENT ===
     private static BooleanSupplier timeoutChecker = null;
-    private static volatile boolean searchInterrupted = false; // NEW: Graceful interruption
+    private static volatile boolean searchInterrupted = false;
 
     // === MAIN PVS INTERFACE ===
 
     /**
-     * Standard PVS without Quiescence - FIXED
+     * Standard PVS without Quiescence - ENHANCED WITH HISTORY
      */
     public static int search(GameState state, int depth, int alpha, int beta,
                              boolean maximizingPlayer, boolean isPVNode) {
 
-        statistics.incrementNodeCount(); // FIXED: Proper node counting
+        statistics.incrementNodeCount();
 
-        // PHASE 1 FIX: Graceful timeout - don't throw immediately
+        // Graceful timeout handling
         if (timeoutChecker != null && timeoutChecker.getAsBoolean()) {
             searchInterrupted = true;
-            // Return evaluation instead of throwing
             return Minimax.evaluate(state, depth);
         }
 
-        // Check if search was interrupted previously
         if (searchInterrupted) {
             return Minimax.evaluate(state, depth);
         }
@@ -55,12 +53,11 @@ public class PVSSearch {
         long hash = state.hash();
         TTEntry entry = Minimax.getTranspositionEntry(hash);
         if (entry != null && entry.depth >= depth) {
-            statistics.incrementTTHits(); // FIXED: Count TT hits
+            statistics.incrementTTHits();
 
-            // In PV nodes, only use EXACT scores or be more careful
             if (entry.flag == TTEntry.EXACT && (!isPVNode || depth <= 0)) {
                 return entry.score;
-            } else if (!isPVNode) { // Only normal TT cutoffs in non-PV nodes
+            } else if (!isPVNode) {
                 if (entry.flag == TTEntry.LOWER_BOUND && entry.score >= beta) {
                     return entry.score;
                 } else if (entry.flag == TTEntry.UPPER_BOUND && entry.score <= alpha) {
@@ -68,23 +65,81 @@ public class PVSSearch {
                 }
             }
         } else {
-            statistics.incrementTTMisses(); // FIXED: Count TT misses
+            statistics.incrementTTMisses();
+        }
+
+        // *** NEUE NULL-MOVE PRUNING SEKTION ***
+        // Null-Move Pruning (nur für Non-PV nodes und Beta-Cutoff Suche)
+        if (!isPVNode && depth >= SearchConfig.NULL_MOVE_MIN_DEPTH &&
+                beta != Integer.MAX_VALUE && canApplyNullMove(state, depth)) {
+
+            // *** ERWEITERTE STATISTIK-AUFZEICHNUNG ***
+            statistics.recordNullMoveAttempt(depth);
+
+            // Null-Move State erstellen
+            GameState nullMoveState = state.copy();
+            nullMoveState.redToMove = !state.redToMove;
+
+            // *** ADAPTIVE REDUCTION VERWENDEN ***
+            int reduction = getNullMoveReduction(state, depth);
+            int reducedDepth = depth - 1 - reduction;
+
+            // Geschätzte Knoten für Statistik
+            long estimatedNodes = (long) Math.pow(4, Math.max(0, reducedDepth));
+
+            // Reduzierte Suche durchführen
+            int nullMoveScore = search(nullMoveState, reducedDepth, -beta, -beta + 1,
+                    !maximizingPlayer, false);
+
+            // Fail-High Detection mit verbesserter Statistik
+            if ((maximizingPlayer && nullMoveScore >= beta) ||
+                    (!maximizingPlayer && nullMoveScore <= alpha)) {
+
+                // *** ERFOLGREICHE PRUNE AUFZEICHNEN ***
+                statistics.recordNullMovePrune(depth, estimatedNodes);
+
+                // Verification bei kritischen Positionen
+                if (depth >= SearchConfig.NULL_MOVE_VERIFICATION_DEPTH &&
+                        Math.abs(nullMoveScore) < 2000 && isTacticalPosition(state)) {
+
+                    statistics.recordNullMoveVerification(false); // Start verification
+
+                    // Verification Search mit reduzierter Tiefe
+                    int verifyDepth = Math.max(1, depth - reduction - 1);
+                    int verifyScore = search(state, verifyDepth, alpha, beta,
+                            maximizingPlayer, false);
+
+                    if ((maximizingPlayer && verifyScore >= beta) ||
+                            (!maximizingPlayer && verifyScore <= alpha)) {
+                        statistics.recordNullMoveVerification(true); // Verification successful
+                        return maximizingPlayer ? beta : alpha;
+                    } else {
+                        statistics.recordNullMoveFailure(); // Verification failed
+                    }
+                } else {
+                    // Direkter Cutoff bei eindeutigen Positionen
+                    return maximizingPlayer ? beta : alpha;
+                }
+            } else {
+                // *** FEHLGESCHLAGENE PRUNE AUFZEICHNEN ***
+                statistics.recordNullMoveFailure();
+            }
         }
 
         // Terminal conditions
         if (depth == 0 || Minimax.isGameOver(state)) {
-            statistics.incrementLeafNodeCount(); // FIXED: Count leaf nodes
+            statistics.incrementLeafNodeCount();
             return Minimax.evaluate(state, depth);
         }
 
         List<Move> moves = MoveGenerator.generateAllMoves(state);
-        statistics.addMovesGenerated(moves.size()); // FIXED: Count moves generated
+        statistics.addMovesGenerated(moves.size());
 
         // Enhanced move ordering for PV vs Non-PV nodes
         if (isPVNode) {
             orderMovesForPV(moves, state, depth, entry);
         } else {
-            moveOrdering.orderMoves(moves, state, depth, entry); // FIXED: Use proper move ordering
+            moveOrdering.orderMoves(moves, state, depth, entry);
         }
 
         Move bestMove = null;
@@ -95,29 +150,25 @@ public class PVSSearch {
             int maxEval = Integer.MIN_VALUE;
 
             for (int i = 0; i < moves.size(); i++) {
-                // PHASE 1 FIX: Periodic interruption checks
                 if (i % 3 == 0 && searchInterrupted) {
-                    break; // Exit gracefully
+                    break;
                 }
 
                 Move move = moves.get(i);
                 GameState copy = state.copy();
                 copy.applyMove(move);
-                statistics.addMovesSearched(1); // FIXED: Count moves searched
+                statistics.addMovesSearched(1);
 
                 int eval;
 
                 if (isFirstMove || isPVNode) {
-                    // First moves AND PV nodes get full search
                     eval = search(copy, depth - 1, alpha, beta, false, isPVNode);
                     isFirstMove = false;
                 } else {
-                    // Less aggressive null window for better differentiation
                     int nullWindow = isPVNode ? alpha + 10 : alpha + 1;
                     eval = search(copy, depth - 1, alpha, nullWindow, false, false);
 
                     if (eval > alpha && eval < beta) {
-                        // Re-search with full window
                         eval = search(copy, depth - 1, eval, beta, false, true);
                     }
                 }
@@ -129,10 +180,12 @@ public class PVSSearch {
 
                 alpha = Math.max(alpha, eval);
                 if (beta <= alpha) {
-                    statistics.incrementAlphaBetaCutoffs(); // FIXED: Count cutoffs
+                    statistics.incrementAlphaBetaCutoffs();
+
+                    // ENHANCED HISTORY UPDATE
                     if (!Minimax.isCapture(move, state)) {
                         moveOrdering.storeKillerMove(move, depth);
-                        moveOrdering.updateHistory(move, depth);
+                        moveOrdering.updateHistoryOnCutoff(move, state, depth); // ← CORRECTED SIGNATURE
                     }
                     break;
                 }
@@ -145,15 +198,14 @@ public class PVSSearch {
             int minEval = Integer.MAX_VALUE;
 
             for (int i = 0; i < moves.size(); i++) {
-                // PHASE 1 FIX: Periodic interruption checks
                 if (i % 3 == 0 && searchInterrupted) {
-                    break; // Exit gracefully
+                    break;
                 }
 
                 Move move = moves.get(i);
                 GameState copy = state.copy();
                 copy.applyMove(move);
-                statistics.addMovesSearched(1); // FIXED: Count moves searched
+                statistics.addMovesSearched(1);
 
                 int eval;
 
@@ -176,10 +228,12 @@ public class PVSSearch {
 
                 beta = Math.min(beta, eval);
                 if (beta <= alpha) {
-                    statistics.incrementAlphaBetaCutoffs(); // FIXED: Count cutoffs
+                    statistics.incrementAlphaBetaCutoffs();
+
+                    // ENHANCED HISTORY UPDATE
                     if (!Minimax.isCapture(move, state)) {
                         moveOrdering.storeKillerMove(move, depth);
-                        moveOrdering.updateHistory(move, depth);
+                        moveOrdering.updateHistoryOnCutoff(move, state, depth); // ← CORRECTED SIGNATURE
                     }
                     break;
                 }
@@ -191,20 +245,19 @@ public class PVSSearch {
     }
 
     /**
-     * PVS with Quiescence Search Integration - FIXED
+     * PVS with Quiescence Search Integration - ENHANCED WITH HISTORY
      */
-    public static int searchWithQuiescence(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer, boolean isPVNode) {
+    public static int searchWithQuiescence(GameState state, int depth, int alpha, int beta,
+                                           boolean maximizingPlayer, boolean isPVNode) {
 
-        statistics.incrementNodeCount(); // FIXED: Proper node counting
+        statistics.incrementNodeCount();
 
-        // PHASE 1 FIX: Graceful timeout - don't throw immediately
+        // Graceful timeout handling
         if (timeoutChecker != null && timeoutChecker.getAsBoolean()) {
             searchInterrupted = true;
-            // Return evaluation instead of throwing
             return Minimax.evaluate(state, depth);
         }
 
-        // Check if search was interrupted previously
         if (searchInterrupted) {
             return Minimax.evaluate(state, depth);
         }
@@ -213,7 +266,7 @@ public class PVSSearch {
         long hash = state.hash();
         TTEntry entry = Minimax.getTranspositionEntry(hash);
         if (entry != null && entry.depth >= depth) {
-            statistics.incrementTTHits(); // FIXED: Count TT hits
+            statistics.incrementTTHits();
 
             if (entry.flag == TTEntry.EXACT && (!isPVNode || depth <= 0)) {
                 return entry.score;
@@ -225,29 +278,86 @@ public class PVSSearch {
                 }
             }
         } else {
-            statistics.incrementTTMisses(); // FIXED: Count TT misses
+            statistics.incrementTTMisses();
+        }
+
+        // *** NEUE NULL-MOVE PRUNING SEKTION ***
+        if (!isPVNode && depth >= SearchConfig.NULL_MOVE_MIN_DEPTH &&
+                beta != Integer.MAX_VALUE && canApplyNullMove(state, depth)) {
+
+            // *** ERWEITERTE STATISTIK-AUFZEICHNUNG ***
+            statistics.recordNullMoveAttempt(depth);
+
+            // Null-Move State erstellen
+            GameState nullMoveState = state.copy();
+            nullMoveState.redToMove = !state.redToMove;
+
+            // *** ADAPTIVE REDUCTION VERWENDEN ***
+            int reduction = getNullMoveReduction(state, depth);
+            int reducedDepth = depth - 1 - reduction;
+
+            // Geschätzte Knoten für Statistik
+            long estimatedNodes = (long) Math.pow(4, Math.max(0, reducedDepth));
+
+            // Reduzierte Suche durchführen
+            int nullMoveScore = search(nullMoveState, reducedDepth, -beta, -beta + 1,
+                    !maximizingPlayer, false);
+
+            // Fail-High Detection mit verbesserter Statistik
+            if ((maximizingPlayer && nullMoveScore >= beta) ||
+                    (!maximizingPlayer && nullMoveScore <= alpha)) {
+
+                // *** ERFOLGREICHE PRUNE AUFZEICHNEN ***
+                statistics.recordNullMovePrune(depth, estimatedNodes);
+
+                // Verification bei kritischen Positionen
+                if (depth >= SearchConfig.NULL_MOVE_VERIFICATION_DEPTH &&
+                        Math.abs(nullMoveScore) < 2000 && isTacticalPosition(state)) {
+
+                    statistics.recordNullMoveVerification(false); // Start verification
+
+                    // Verification Search mit reduzierter Tiefe
+                    int verifyDepth = Math.max(1, depth - reduction - 1);
+                    int verifyScore = search(state, verifyDepth, alpha, beta,
+                            maximizingPlayer, false);
+
+                    if ((maximizingPlayer && verifyScore >= beta) ||
+                            (!maximizingPlayer && verifyScore <= alpha)) {
+                        statistics.recordNullMoveVerification(true); // Verification successful
+                        return maximizingPlayer ? beta : alpha;
+                    } else {
+                        statistics.recordNullMoveFailure(); // Verification failed
+                    }
+                } else {
+                    // Direkter Cutoff bei eindeutigen Positionen
+                    return maximizingPlayer ? beta : alpha;
+                }
+            } else {
+                // *** FEHLGESCHLAGENE PRUNE AUFZEICHNEN ***
+                statistics.recordNullMoveFailure();
+            }
         }
 
         // Terminal conditions
         if (Minimax.isGameOver(state)) {
-            statistics.incrementLeafNodeCount(); // FIXED: Count leaf nodes
+            statistics.incrementLeafNodeCount();
             return Minimax.evaluate(state, depth);
         }
 
         // Quiescence Search when depth exhausted
         if (depth <= 0) {
-            statistics.incrementQNodeCount(); // FIXED: Count quiescence nodes
+            statistics.incrementQNodeCount();
             return QuiescenceSearch.quiesce(state, alpha, beta, maximizingPlayer, 0);
         }
 
         List<Move> moves = MoveGenerator.generateAllMoves(state);
-        statistics.addMovesGenerated(moves.size()); // FIXED: Count moves generated
+        statistics.addMovesGenerated(moves.size());
 
         // Enhanced move ordering for PV vs Non-PV nodes
         if (isPVNode) {
             orderMovesForPV(moves, state, depth, entry);
         } else {
-            moveOrdering.orderMoves(moves, state, depth, entry); // FIXED: Use proper move ordering
+            moveOrdering.orderMoves(moves, state, depth, entry);
         }
 
         Move bestMove = null;
@@ -258,29 +368,25 @@ public class PVSSearch {
             int maxEval = Integer.MIN_VALUE;
 
             for (int i = 0; i < moves.size(); i++) {
-                // PHASE 1 FIX: Periodic interruption checks
                 if (i % 3 == 0 && searchInterrupted) {
-                    break; // Exit gracefully
+                    break;
                 }
 
                 Move move = moves.get(i);
                 GameState copy = state.copy();
                 copy.applyMove(move);
-                statistics.addMovesSearched(1); // FIXED: Count moves searched
+                statistics.addMovesSearched(1);
 
                 int eval;
 
                 if (isFirstMove || isPVNode) {
-                    // First moves AND PV nodes get full search
                     eval = searchWithQuiescence(copy, depth - 1, alpha, beta, false, isPVNode);
                     isFirstMove = false;
                 } else {
-                    // Null window search
                     int nullWindow = isPVNode ? alpha + 10 : alpha + 1;
                     eval = searchWithQuiescence(copy, depth - 1, alpha, nullWindow, false, false);
 
                     if (eval > alpha && eval < beta) {
-                        // Re-search with full window
                         eval = searchWithQuiescence(copy, depth - 1, eval, beta, false, true);
                     }
                 }
@@ -292,10 +398,12 @@ public class PVSSearch {
 
                 alpha = Math.max(alpha, eval);
                 if (beta <= alpha) {
-                    statistics.incrementAlphaBetaCutoffs(); // FIXED: Count cutoffs
+                    statistics.incrementAlphaBetaCutoffs();
+
+                    // ENHANCED HISTORY UPDATE
                     if (!Minimax.isCapture(move, state)) {
                         moveOrdering.storeKillerMove(move, depth);
-                        moveOrdering.updateHistory(move, depth);
+                        moveOrdering.updateHistoryOnCutoff(move, state, depth); // ← CORRECTED SIGNATURE
                     }
                     break;
                 }
@@ -309,15 +417,14 @@ public class PVSSearch {
             int minEval = Integer.MAX_VALUE;
 
             for (int i = 0; i < moves.size(); i++) {
-                // PHASE 1 FIX: Periodic interruption checks
                 if (i % 3 == 0 && searchInterrupted) {
-                    break; // Exit gracefully
+                    break;
                 }
 
                 Move move = moves.get(i);
                 GameState copy = state.copy();
                 copy.applyMove(move);
-                statistics.addMovesSearched(1); // FIXED: Count moves searched
+                statistics.addMovesSearched(1);
 
                 int eval;
 
@@ -340,24 +447,36 @@ public class PVSSearch {
 
                 beta = Math.min(beta, eval);
                 if (beta <= alpha) {
-                    statistics.incrementAlphaBetaCutoffs(); // FIXED: Count cutoffs
+                    statistics.incrementAlphaBetaCutoffs();
+
+                    // ENHANCED HISTORY UPDATE
                     if (!Minimax.isCapture(move, state)) {
                         moveOrdering.storeKillerMove(move, depth);
-                        moveOrdering.updateHistory(move, depth);
+                        moveOrdering.updateHistoryOnCutoff(move, state, depth); // ← CORRECTED SIGNATURE
                     }
                     break;
                 }
             }
 
             storeTTEntry(hash, minEval, depth, originalAlpha, beta, bestMove);
+
+            // Estimate time saved by null-move pruning
+            if (statistics.getNullMoveNodesSkipped() > 0) {
+                long avgTimePerNode = statistics.getTotalSearchTime() > 0 ?
+                        statistics.getTotalSearchTime() * 1000000 / statistics.getTotalNodes() : 1000;
+                statistics.estimateTimeSaved(avgTimePerNode);
+            }
+
             return minEval;
         }
+
+
     }
 
-    // === ENHANCED MOVE ORDERING FOR PV NODES - FIXED ===
+    // === ENHANCED MOVE ORDERING FOR PV NODES ===
 
     /**
-     * Special move ordering for PV nodes - FIXED
+     * Special move ordering for PV nodes - ENHANCED
      */
     private static void orderMovesForPV(List<Move> moves, GameState state, int depth, TTEntry entry) {
         // TT Move has highest priority
@@ -371,52 +490,92 @@ public class PVSSearch {
             }
         }
 
-        // In PV nodes, evaluate more moves with high priority
+        // Enhanced move ordering for PV nodes
         if (moves.size() > 1) {
             int startIndex = (entry != null && entry.bestMove != null) ? 1 : 0;
             List<Move> restMoves = moves.subList(startIndex, moves.size());
 
             restMoves.sort((a, b) -> {
-                int scoreA = scoreMoveForPV(state, a, depth);
-                int scoreB = scoreMoveForPV(state, b, depth);
+                int scoreA = scoreMoveForPVEnhanced(state, a, depth);
+                int scoreB = scoreMoveForPVEnhanced(state, b, depth);
                 return Integer.compare(scoreB, scoreA);
             });
         }
     }
 
     /**
-     * Enhanced move scoring for PV nodes
+     * Enhanced move scoring for PV nodes with history integration
      */
-    private static int scoreMoveForPV(GameState state, Move move, int depth) {
-        // Start with basic move score
+    private static int scoreMoveForPVEnhanced(GameState state, Move move, int depth) {
         int score = Minimax.scoreMove(state, move);
 
-        // In PV nodes, also score quiet moves higher for diversity
+        // Enhanced history scoring for PV nodes
         if (!Minimax.isCapture(move, state)) {
-            // Bonus for different target squares (anti-repetition)
-            score += move.to * 2;
+            // Get history score from both systems
+            if (moveOrdering.getHistoryHeuristic().isQuietMove(move, state)) {
+                boolean isRedMove = state.redToMove;
+                score += moveOrdering.getHistoryHeuristic().getScore(move, isRedMove);
+            }
 
-            // Bonus for different amounts moved
+            // PV-specific bonuses
+            score += move.to * 2;
             score += move.amountMoved * 5;
 
-            // Bonus for central moves
+            // Central control bonus
             int targetFile = GameState.file(move.to);
             int targetRank = GameState.rank(move.to);
             int centrality = Math.abs(targetFile - 3) + Math.abs(targetRank - 3);
             score += (6 - centrality) * 3;
 
-            // Anti-repetition: bonus for moves to new squares
+            // Anti-repetition bonus
             long hash = state.hash();
-            score += (int)(hash % 20) - 10; // Pseudo-random variation based on position
+            score += (int)(hash % 20) - 10;
         }
 
         return score;
     }
 
-    // === HELPER METHODS - FIXED ===
+    /**
+     * Prüft, ob Null-Move Pruning angewendet werden kann
+     * @param state Current game state
+     * @param depth Current search depth
+     * @return true wenn Null-Move sicher anwendbar ist
+     */
+    private static boolean canApplyNullMove(GameState state, int depth) {
+        // Null-Move global deaktiviert
+        if (!SearchConfig.NULL_MOVE_ENABLED) {
+            return false;
+        }
+
+        // Minimale Tiefe nicht erreicht
+        if (depth < SearchConfig.NULL_MOVE_MIN_DEPTH) {
+            return false;
+        }
+
+        // Wächter im Schach - kein Null-Move!
+        if (Minimax.isInCheck(state)) {
+            return false;
+        }
+
+        // Kein Material für sinnvolle Züge (kritisch in Guard & Towers)
+        if (!Minimax.hasNonPawnMaterial(state)) {
+            return false;
+        }
+
+        // Endspiel-Vorsicht: Bei sehr wenig Material kann Null-Move gefährlich sein
+        if (Minimax.isEndgame(state) && getTotalMaterial(state) <= 4) {
+            return false;
+        }
+
+        return true;
+    }
+
+
+
+    // === HELPER METHODS ===
 
     /**
-     * Store entry in transposition table - FIXED
+     * Store entry in transposition table
      */
     private static void storeTTEntry(long hash, int score, int depth, int originalAlpha, int beta, Move bestMove) {
         int flag;
@@ -430,10 +589,10 @@ public class PVSSearch {
 
         TTEntry entry = new TTEntry(score, depth, flag, bestMove);
         Minimax.storeTranspositionEntry(hash, entry);
-        statistics.incrementTTStores(); // FIXED: Count TT stores
+        statistics.incrementTTStores();
     }
 
-    // === TIMEOUT MANAGEMENT - PHASE 1 ENHANCEMENTS ===
+    // === TIMEOUT MANAGEMENT ===
 
     /**
      * Set timeout checker from TimedMinimax
@@ -450,7 +609,7 @@ public class PVSSearch {
     }
 
     /**
-     * PHASE 1 NEW: Reset search state for clean start
+     * Reset search state for clean start
      */
     public static void resetSearchState() {
         searchInterrupted = false;
@@ -463,5 +622,129 @@ public class PVSSearch {
      */
     public static void orderMovesAdvanced(List<Move> moves, GameState state, int depth, TTEntry entry) {
         orderMovesForPV(moves, state, depth, entry);
+    }
+
+
+    /**
+     * Hilfsmethode: Gesamtmaterial für Null-Move Entscheidung
+     */
+    private static int getTotalMaterial(GameState state) {
+        int total = 0;
+        for (int i = 0; i < 49; i++) {
+            total += state.redStackHeights[i] + state.blueStackHeights[i];
+        }
+        // Wächter zählen jeweils als 1
+        total += (state.redGuard != 0 ? 1 : 0) + (state.blueGuard != 0 ? 1 : 0);
+        return total;
+    }
+
+
+    /**
+     * Erweiterte Null-Move Reduction basierend auf Position und Tiefe
+     * Diese Methode gehört als private static method in PVSSearch.java
+     */
+    private static int getNullMoveReduction(GameState state, int depth) {
+        int baseReduction = SearchConfig.NULL_MOVE_REDUCTION;
+
+        // === SPIELPHASEN-ANPASSUNG ===
+
+        // Vorsichtiger im Endspiel (weniger aggressive Reduction)
+        if (Minimax.isEndgame(state)) {
+            return Math.max(1, baseReduction - 1);
+        }
+
+        // === TIEFENABHÄNGIGE ANPASSUNG ===
+
+        // Aggressiver bei großer Tiefe (mehr Reduction möglich)
+        if (depth >= 10) {
+            return baseReduction + 1;
+        }
+
+        // === GUARD & TOWERS SPEZIFISCHE ANPASSUNGEN ===
+
+        // Weniger Reduction bei taktischen Positionen
+        if (isTacticalPosition(state)) {
+            return Math.max(1, baseReduction - 1);
+        }
+
+        // Mehr Reduction bei ruhigen Positionen
+        if (isQuietPosition(state)) {
+            return baseReduction + 1;
+        }
+
+        return baseReduction;
+    }
+
+    /**
+     * Prüft ob Position taktisch ist (vorsichtigere Null-Move Behandlung)
+     */
+    private static boolean isTacticalPosition(GameState state) {
+        boolean isRed = state.redToMove;
+
+        // Wächter nah beieinander = taktisch
+        if (state.redGuard != 0 && state.blueGuard != 0) {
+            int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
+            int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
+            int distance = manhattanDistance(redGuardPos, blueGuardPos);
+
+            if (distance <= 3) {
+                return true;  // Wächter-Kampf möglich
+            }
+        }
+
+        // Hohe Türme in der Nähe des gegnerischen Wächters
+        long enemyGuard = isRed ? state.blueGuard : state.redGuard;
+        if (enemyGuard != 0) {
+            int enemyGuardPos = Long.numberOfTrailingZeros(enemyGuard);
+            long ownTowers = isRed ? state.redTowers : state.blueTowers;
+            int[] ownHeights = isRed ? state.redStackHeights : state.blueStackHeights;
+
+            for (int i = 0; i < 49; i++) {
+                if ((ownTowers & GameState.bit(i)) != 0 && ownHeights[i] >= 3) {
+                    int distance = manhattanDistance(i, enemyGuardPos);
+                    if (distance <= ownHeights[i] + 1) {
+                        return true;  // Eroberung möglich
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Prüft ob Position ruhig ist (aggressive Null-Move Behandlung)
+     */
+    private static boolean isQuietPosition(GameState state) {
+        // Keine direkten Bedrohungen
+        if (isTacticalPosition(state)) {
+            return false;
+        }
+
+        // Wenige hohe Türme = ruhiger
+        boolean isRed = state.redToMove;
+        long ownTowers = isRed ? state.redTowers : state.blueTowers;
+        int[] ownHeights = isRed ? state.redStackHeights : state.blueStackHeights;
+
+        int highTowers = 0;
+        for (int i = 0; i < 49; i++) {
+            if ((ownTowers & GameState.bit(i)) != 0 && ownHeights[i] >= 4) {
+                highTowers++;
+            }
+        }
+
+        return highTowers <= 1;  // Maximal 1 hoher Turm = ruhig
+    }
+
+    /**
+     * Manhattan-Distanz zwischen zwei Positionen
+     */
+    private static int manhattanDistance(int from, int to) {
+        int fromRank = GameState.rank(from);
+        int fromFile = GameState.file(from);
+        int toRank = GameState.rank(to);
+        int toFile = GameState.file(to);
+
+        return Math.abs(fromRank - toRank) + Math.abs(fromFile - toFile);
     }
 }
