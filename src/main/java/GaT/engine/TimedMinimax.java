@@ -1,5 +1,6 @@
 package GaT.engine;
 
+import GaT.evaluation.ModularEvaluator;
 import GaT.model.GameState;
 import GaT.model.Move;
 import GaT.model.TTEntry;
@@ -23,7 +24,7 @@ public class TimedMinimax {
 
     // === SHARED COMPONENTS ===
     private static final SearchStatistics statistics = SearchStatistics.getInstance();
-    private static final Evaluator evaluator = new Evaluator();
+    private static final Evaluator evaluator = new ModularEvaluator();
     private static final MoveOrdering moveOrdering = new MoveOrdering();
     private static final TranspositionTable transpositionTable = new TranspositionTable(SearchConfig.TT_SIZE);
     private static final SearchEngine searchEngine = new SearchEngine(evaluator, moveOrdering, transpositionTable, statistics);

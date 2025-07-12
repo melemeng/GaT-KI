@@ -13,7 +13,6 @@ import GaT.engine.TimedMinimax;
 import GaT.search.Minimax;
 import GaT.search.QuiescenceSearch;
 import GaT.search.SearchStatistics;
-import GaT.evaluation.TacticalEvaluator;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
@@ -129,7 +128,6 @@ public class GameClient {
             timeManager.updateRemainingTime(timeLeft);
             Minimax.setRemainingTime(timeLeft);
             QuiescenceSearch.setRemainingTime(timeLeft);
-            TacticalEvaluator.setRemainingTime(timeLeft);
 
             // Get aggressive time allocation
             long timeForMove = timeManager.calculateTimeForMove(state);
