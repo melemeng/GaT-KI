@@ -161,6 +161,157 @@ public class Minimax {
         return bestMove;
     }
 
+    public static boolean isInCheck(GameState state) {
+        boolean isRed = state.redToMove;
+        long ownGuard = isRed ? state.redGuard : state.blueGuard;
+
+        // Kein Wächter = nicht im Schach (Spiel bereits vorbei)
+        if (ownGuard == 0) {
+            return false;
+        }
+
+        int guardPosition = Long.numberOfTrailingZeros(ownGuard);
+        long enemyTowers = isRed ? state.blueTowers : state.redTowers;
+        int[] enemyHeights = isRed ? state.blueStackHeights : state.redStackHeights;
+
+        // Prüfe alle gegnerischen Türme auf Bedrohung
+        for (int i = 0; i < 49; i++) {
+            if ((enemyTowers & GameState.bit(i)) != 0) {
+                int towerHeight = enemyHeights[i];
+                int distance = manhattanDistance(i, guardPosition);
+
+                // Turm kann Wächter erobern wenn:
+                // 1. Entfernung = Turmhöhe (Guard & Towers Bewegungsregel)
+                // 2. Pfad ist frei
+                if (distance == towerHeight && isPathClear(i, guardPosition, state)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Prüft ob genügend Material für sinnvolle Züge vorhanden ist
+     * In Guard & Towers: Mindestens Türme oder strategische Bedrohung
+     */
+    public static boolean hasNonPawnMaterial(GameState state) {
+        boolean isRed = state.redToMove;
+        long ownTowers = isRed ? state.redTowers : state.blueTowers;
+        int[] ownHeights = isRed ? state.redStackHeights : state.blueStackHeights;
+
+        // Mindestens ein Turm mit Höhe >= 2, oder mindestens 2 Türme
+        int towerCount = 0;
+        int totalHeight = 0;
+
+        for (int i = 0; i < 49; i++) {
+            if ((ownTowers & GameState.bit(i)) != 0) {
+                towerCount++;
+                totalHeight += ownHeights[i];
+
+                // Ein hoher Turm reicht aus
+                if (ownHeights[i] >= 3) {
+                    return true;
+                }
+            }
+        }
+
+        // Mindestens 2 Türme oder Gesamthöhe >= 3
+        return towerCount >= 2 || totalHeight >= 3;
+    }
+
+    /**
+     * Prüft ob das Spiel im Endspiel ist
+     * Guard & Towers Endspiel: Wenig Material oder Wächter nah am Ziel
+     */
+    public static boolean isEndgame(GameState state) {
+        // Materialschwelle
+        int totalMaterial = 0;
+        for (int i = 0; i < 49; i++) {
+            totalMaterial += state.redStackHeights[i] + state.blueStackHeights[i];
+        }
+
+        if (totalMaterial <= SearchConfig.ENDGAME_MATERIAL_THRESHOLD) {
+            return true;
+        }
+
+        // Wächter nah am Ziel (Rang 1 oder 6/7)
+        if (state.redGuard != 0) {
+            int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
+            int redGuardRank = GameState.rank(redGuardPos);
+            if (redGuardRank <= 1) return true;  // Nah an blauem Schloss (D1)
+        }
+
+        if (state.blueGuard != 0) {
+            int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
+            int blueGuardRank = GameState.rank(blueGuardPos);
+            if (blueGuardRank >= 5) return true;  // Nah an rotem Schloss (D7)
+        }
+
+        return false;
+    }
+
+    /**
+     * Manhattan-Distanz zwischen zwei Positionen (für Guard & Towers Bewegung)
+     */
+    private static int manhattanDistance(int from, int to) {
+        int fromRank = GameState.rank(from);
+        int fromFile = GameState.file(from);
+        int toRank = GameState.rank(to);
+        int toFile = GameState.file(to);
+
+        return Math.abs(fromRank - toRank) + Math.abs(fromFile - toFile);
+    }
+
+    /**
+     * Prüft ob der Pfad zwischen zwei Positionen orthogonal frei ist
+     */
+    private static boolean isPathClear(int from, int to, GameState state) {
+        int fromRank = GameState.rank(from);
+        int fromFile = GameState.file(from);
+        int toRank = GameState.rank(to);
+        int toFile = GameState.file(to);
+
+        // Nur orthogonale Bewegungen sind erlaubt
+        if (fromRank != toRank && fromFile != toFile) {
+            return false;
+        }
+
+        // Richtung bestimmen
+        int rankStep = Integer.compare(toRank, fromRank);
+        int fileStep = Integer.compare(toFile, fromFile);
+
+        // Pfad prüfen (ohne Start- und Zielfeld)
+        int currentRank = fromRank + rankStep;
+        int currentFile = fromFile + fileStep;
+
+        while (currentRank != toRank || currentFile != toFile) {
+            int pos = GameState.getIndex(currentRank, currentFile);
+
+            // Blockiert durch andere Figur?
+            if (isOccupied(pos, state)) {
+                return false;
+            }
+
+            currentRank += rankStep;
+            currentFile += fileStep;
+        }
+
+        return true;
+    }
+
+    /**
+     * Hilfsmethode: Prüft ob Position besetzt ist
+     */
+    private static boolean isOccupied(int position, GameState state) {
+        long bit = GameState.bit(position);
+        return (state.redTowers & bit) != 0 ||
+                (state.blueTowers & bit) != 0 ||
+                (state.redGuard & bit) != 0 ||
+                (state.blueGuard & bit) != 0;
+    }
+
     // === LEGACY COMPATIBILITY METHODS - FIXED ===
 
     /**
@@ -372,10 +523,10 @@ public class Minimax {
 
     /**
      * Get search statistics summary
-     */
+
     public static String getSearchStatistics() {
         return statistics.getSummary();
-    }
+    }*/
 
     // === SEARCH CONFIGURATION ===
 

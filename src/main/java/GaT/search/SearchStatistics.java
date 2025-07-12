@@ -3,27 +3,17 @@ package GaT.search;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * ENHANCED SEARCH STATISTICS - WITH HISTORY HEURISTIC INTEGRATION
- * Centralized metrics tracking with comprehensive move ordering analysis
- *
- * ENHANCEMENTS:
- * ✅ History Heuristic statistics integration
- * ✅ Enhanced move ordering analysis
- * ✅ Comprehensive statistical output
- * ✅ Move ordering effectiveness tracking
- * ✅ History table analysis methods
- */
+
 public class SearchStatistics {
 
-    // === CORE STATISTICS ===
+    // === CORE SEARCH STATISTICS ===
     private long nodeCount = 0;
     private long qNodeCount = 0;
     private long leafNodeCount = 0;
     private long branchingFactor = 0;
     private int maxDepthReached = 0;
 
-    // === TRANSPOSITION TABLE STATS ===
+    // === TRANSPOSITION TABLE STATISTICS ===
     private long ttHits = 0;
     private long ttMisses = 0;
     private long ttStores = 0;
@@ -32,10 +22,19 @@ public class SearchStatistics {
     // === PRUNING STATISTICS ===
     private long alphaBetaCutoffs = 0;
     private long reverseFutilityCutoffs = 0;
-    private long nullMoveCutoffs = 0;
     private long futilityCutoffs = 0;
     private long lmrReductions = 0;
     private long checkExtensions = 0;
+
+    // === NULL-MOVE PRUNING STATISTICS (ERWEITERT) ===
+    private long nullMoveAttempts = 0;           // Wie oft wurde Null-Move versucht?
+    private long nullMovePrunes = 0;             // Wie oft war es erfolgreich?
+    private long nullMoveVerifications = 0;      // Wie oft wurde Verification aufgerufen?
+    private long nullMoveVerificationSuccesses = 0; // Wie oft war Verification erfolgreich?
+    private long nullMoveFailures = 0;           // Wie oft schlug Null-Move fehl?
+    private int[] nullMovePrunesByDepth = new int[20]; // Prunes nach Tiefe aufgeschlüsselt
+    private long nullMoveTimesSaved = 0;         // Geschätzte eingesparte Zeit in ms
+    private long nullMoveNodesSkipped = 0;       // Geschätzte übersprungene Knoten
 
     // === QUIESCENCE STATISTICS ===
     private long qCutoffs = 0;
@@ -43,26 +42,24 @@ public class SearchStatistics {
     private long deltaPruningCutoffs = 0;
     private long qTTHits = 0;
 
-    // === ENHANCED MOVE ORDERING STATISTICS ===
+    // === MOVE ORDERING STATISTICS ===
     private long killerMoveHits = 0;
     private long historyMoveHits = 0;
     private long ttMoveHits = 0;
     private long captureOrderingHits = 0;
+    private long firstMoveCutoffs = 0;
+    private long secondMoveCutoffs = 0;
+    private long laterMoveCutoffs = 0;
+    private Map<Integer, Long> cutoffsByMoveNumber = new HashMap<>();
+    private Map<String, Long> cutoffsByMoveType = new HashMap<>();
 
-    // === NEW: HISTORY HEURISTIC STATISTICS ===
+    // === HISTORY HEURISTIC STATISTICS ===
     private long historyHeuristicUpdates = 0;
     private long historyHeuristicCutoffs = 0;
     private long historyTableAges = 0;
     private long quietMovesEvaluated = 0;
     private long firstMoveWasHistoryMove = 0;
     private long totalMoveOrderingQueries = 0;
-
-    // === ENHANCED MOVE ORDERING ANALYSIS ===
-    private long firstMoveCutoffs = 0;
-    private long secondMoveCutoffs = 0;
-    private long laterMoveCutoffs = 0;
-    private Map<Integer, Long> cutoffsByMoveNumber = new HashMap<>();
-    private Map<String, Long> cutoffsByMoveType = new HashMap<>();
 
     // === TIMING STATISTICS ===
     private long searchStartTime = 0;
@@ -92,35 +89,54 @@ public class SearchStatistics {
      * Reset all statistics for a new search
      */
     public void reset() {
+        // Core statistics
         nodeCount = 0;
         qNodeCount = 0;
         leafNodeCount = 0;
         branchingFactor = 0;
         maxDepthReached = 0;
 
+        // Transposition Table
         ttHits = 0;
         ttMisses = 0;
         ttStores = 0;
         ttCollisions = 0;
 
+        // Pruning
         alphaBetaCutoffs = 0;
         reverseFutilityCutoffs = 0;
-        nullMoveCutoffs = 0;
         futilityCutoffs = 0;
         lmrReductions = 0;
         checkExtensions = 0;
 
+        // Null-Move Pruning (Erweitert)
+        nullMoveAttempts = 0;
+        nullMovePrunes = 0;
+        nullMoveVerifications = 0;
+        nullMoveVerificationSuccesses = 0;
+        nullMoveFailures = 0;
+        nullMovePrunesByDepth = new int[20];
+        nullMoveTimesSaved = 0;
+        nullMoveNodesSkipped = 0;
+
+        // Quiescence
         qCutoffs = 0;
         standPatCutoffs = 0;
         deltaPruningCutoffs = 0;
         qTTHits = 0;
 
+        // Move Ordering
         killerMoveHits = 0;
         historyMoveHits = 0;
         ttMoveHits = 0;
         captureOrderingHits = 0;
+        firstMoveCutoffs = 0;
+        secondMoveCutoffs = 0;
+        laterMoveCutoffs = 0;
+        cutoffsByMoveNumber.clear();
+        cutoffsByMoveType.clear();
 
-        // Reset history heuristic statistics
+        // History Heuristic
         historyHeuristicUpdates = 0;
         historyHeuristicCutoffs = 0;
         historyTableAges = 0;
@@ -128,51 +144,36 @@ public class SearchStatistics {
         firstMoveWasHistoryMove = 0;
         totalMoveOrderingQueries = 0;
 
-        // Reset move ordering analysis
-        firstMoveCutoffs = 0;
-        secondMoveCutoffs = 0;
-        laterMoveCutoffs = 0;
-        cutoffsByMoveNumber.clear();
-        cutoffsByMoveType.clear();
-
+        // Timing
         searchStartTime = 0;
         totalSearchTime = 0;
         depthTimes = new long[32];
         iterationsCompleted = 0;
 
+        // Moves
         moveFrequency.clear();
         totalMovesGenerated = 0;
         totalMovesSearched = 0;
     }
 
-    /**
-     * Start timing a search
-     */
+    // === TIMING METHODS ===
+
     public void startSearch() {
         searchStartTime = System.currentTimeMillis();
     }
 
-    /**
-     * End timing a search
-     */
     public void endSearch() {
         if (searchStartTime > 0) {
             totalSearchTime = System.currentTimeMillis() - searchStartTime;
         }
     }
 
-    /**
-     * Start timing a depth iteration
-     */
     public void startDepth(int depth) {
         if (depth < depthTimes.length) {
             depthTimes[depth] = System.currentTimeMillis();
         }
     }
 
-    /**
-     * End timing a depth iteration
-     */
     public void endDepth(int depth) {
         if (depth < depthTimes.length && depthTimes[depth] > 0) {
             depthTimes[depth] = System.currentTimeMillis() - depthTimes[depth];
@@ -181,7 +182,7 @@ public class SearchStatistics {
         }
     }
 
-    // === NODE COUNTING ===
+    // === CORE NODE COUNTING ===
 
     public void incrementNodeCount() { nodeCount++; }
     public void incrementQNodeCount() { qNodeCount++; }
@@ -199,10 +200,62 @@ public class SearchStatistics {
 
     public void incrementAlphaBetaCutoffs() { alphaBetaCutoffs++; }
     public void incrementReverseFutilityCutoffs() { reverseFutilityCutoffs++; }
-    public void incrementNullMoveCutoffs() { nullMoveCutoffs++; }
     public void incrementFutilityCutoffs() { futilityCutoffs++; }
     public void incrementLMRReductions() { lmrReductions++; }
     public void incrementCheckExtensions() { checkExtensions++; }
+
+    // === NULL-MOVE PRUNING (ERWEITERTE TRACKING) ===
+
+    /**
+     * Record einem Null-Move Versuch
+     */
+    public void recordNullMoveAttempt(int depth) {
+        nullMoveAttempts++;
+        if (depth < nullMovePrunesByDepth.length) {
+            // Track attempts by depth for analysis
+        }
+    }
+
+    /**
+     * Record einem erfolgreichen Null-Move Prune
+     */
+    public void recordNullMovePrune(int depth, long estimatedNodesSkipped) {
+        nullMovePrunes++;
+        nullMoveNodesSkipped += estimatedNodesSkipped;
+
+        if (depth < nullMovePrunesByDepth.length) {
+            nullMovePrunesByDepth[depth]++;
+        }
+    }
+
+    /**
+     * Record eine Null-Move Verification
+     */
+    public void recordNullMoveVerification(boolean successful) {
+        nullMoveVerifications++;
+        if (successful) {
+            nullMoveVerificationSuccesses++;
+        }
+    }
+
+    /**
+     * Record einem fehlgeschlagenen Null-Move
+     */
+    public void recordNullMoveFailure() {
+        nullMoveFailures++;
+    }
+
+    /**
+     * Estimate time saved durch Null-Move Pruning
+     */
+    public void estimateTimeSaved(long timePerNode) {
+        nullMoveTimesSaved += nullMoveNodesSkipped * timePerNode / 1000000; // Convert ns to ms
+    }
+
+    // Legacy method for compatibility
+    public void incrementNullMovePrunes() {
+        nullMovePrunes++;
+    }
 
     // === QUIESCENCE ===
 
@@ -211,27 +264,13 @@ public class SearchStatistics {
     public void incrementDeltaPruningCutoffs() { deltaPruningCutoffs++; }
     public void incrementQTTHits() { qTTHits++; }
 
-    // === ENHANCED MOVE ORDERING ===
+    // === MOVE ORDERING ===
 
     public void incrementKillerMoveHits() { killerMoveHits++; }
     public void incrementHistoryMoveHits() { historyMoveHits++; }
     public void incrementTTMoveHits() { ttMoveHits++; }
     public void incrementCaptureOrderingHits() { captureOrderingHits++; }
 
-    // === NEW: HISTORY HEURISTIC TRACKING ===
-
-    public void incrementHistoryHeuristicUpdates() { historyHeuristicUpdates++; }
-    public void incrementHistoryHeuristicCutoffs() { historyHeuristicCutoffs++; }
-    public void incrementHistoryTableAges() { historyTableAges++; }
-    public void incrementQuietMovesEvaluated() { quietMovesEvaluated++; }
-    public void incrementFirstMoveWasHistoryMove() { firstMoveWasHistoryMove++; }
-    public void incrementTotalMoveOrderingQueries() { totalMoveOrderingQueries++; }
-
-    // === ENHANCED MOVE ORDERING ANALYSIS ===
-
-    /**
-     * Record a cutoff by move position in the move list
-     */
     public void recordCutoffByMoveNumber(int moveNumber) {
         if (moveNumber == 1) {
             firstMoveCutoffs++;
@@ -243,12 +282,18 @@ public class SearchStatistics {
         cutoffsByMoveNumber.merge(moveNumber, 1L, Long::sum);
     }
 
-    /**
-     * Record a cutoff by move type (TT, Killer, History, Capture, etc.)
-     */
     public void recordCutoffByMoveType(String moveType) {
         cutoffsByMoveType.merge(moveType, 1L, Long::sum);
     }
+
+    // === HISTORY HEURISTIC ===
+
+    public void incrementHistoryHeuristicUpdates() { historyHeuristicUpdates++; }
+    public void incrementHistoryHeuristicCutoffs() { historyHeuristicCutoffs++; }
+    public void incrementHistoryTableAges() { historyTableAges++; }
+    public void incrementQuietMovesEvaluated() { quietMovesEvaluated++; }
+    public void incrementFirstMoveWasHistoryMove() { firstMoveWasHistoryMove++; }
+    public void incrementTotalMoveOrderingQueries() { totalMoveOrderingQueries++; }
 
     // === MOVE TRACKING ===
 
@@ -266,12 +311,14 @@ public class SearchStatistics {
 
     // === GETTERS ===
 
+    // Core getters
     public long getNodeCount() { return nodeCount; }
     public long getQNodeCount() { return qNodeCount; }
     public long getLeafNodeCount() { return leafNodeCount; }
     public long getTotalNodes() { return nodeCount + qNodeCount; }
     public int getMaxDepthReached() { return maxDepthReached; }
 
+    // TT getters
     public long getTTHits() { return ttHits; }
     public long getTTMisses() { return ttMisses; }
     public double getTTHitRate() {
@@ -279,13 +326,36 @@ public class SearchStatistics {
         return total > 0 ? (double) ttHits / total : 0.0;
     }
 
+    // Pruning getters
     public long getAlphaBetaCutoffs() { return alphaBetaCutoffs; }
-
     public long getTotalCutoffs() {
-        return alphaBetaCutoffs + reverseFutilityCutoffs + nullMoveCutoffs +
-                futilityCutoffs + qCutoffs + deltaPruningCutoffs;
+        return alphaBetaCutoffs + reverseFutilityCutoffs + futilityCutoffs +
+                qCutoffs + deltaPruningCutoffs + nullMovePrunes;
     }
 
+    // NULL-MOVE GETTERS (ERWEITERT)
+    public long getNullMoveAttempts() { return nullMoveAttempts; }
+    public long getNullMovePrunes() { return nullMovePrunes; }
+    public long getNullMoveVerifications() { return nullMoveVerifications; }
+    public long getNullMoveVerificationSuccesses() { return nullMoveVerificationSuccesses; }
+    public long getNullMoveFailures() { return nullMoveFailures; }
+    public long getNullMoveNodesSkipped() { return nullMoveNodesSkipped; }
+    public long getNullMoveTimesSaved() { return nullMoveTimesSaved; }
+
+    public double getNullMoveSuccessRate() {
+        return nullMoveAttempts > 0 ? (double) nullMovePrunes / nullMoveAttempts : 0.0;
+    }
+
+    public double getNullMoveVerificationRate() {
+        return nullMoveVerifications > 0 ?
+                (double) nullMoveVerificationSuccesses / nullMoveVerifications : 0.0;
+    }
+
+    public double getNullMoveEfficiency() {
+        return nodeCount > 0 ? (double) nullMoveNodesSkipped / nodeCount : 0.0;
+    }
+
+    // Performance calculations
     public double getCutoffRate() {
         return nodeCount > 0 ? (double) getTotalCutoffs() / nodeCount : 0.0;
     }
@@ -295,20 +365,16 @@ public class SearchStatistics {
     }
 
     public long getTotalSearchTime() { return totalSearchTime; }
+
     public double getNodesPerSecond() {
         return totalSearchTime > 0 ? (double) getTotalNodes() * 1000 / totalSearchTime : 0.0;
     }
 
     public int getIterationsCompleted() { return iterationsCompleted; }
 
-    // === NEW: HISTORY HEURISTIC GETTERS ===
-
+    // History heuristic getters
     public long getHistoryHeuristicUpdates() { return historyHeuristicUpdates; }
     public long getHistoryHeuristicCutoffs() { return historyHeuristicCutoffs; }
-    public long getHistoryTableAges() { return historyTableAges; }
-    public long getQuietMovesEvaluated() { return quietMovesEvaluated; }
-    public long getFirstMoveWasHistoryMove() { return firstMoveWasHistoryMove; }
-
     public double getHistoryHeuristicEffectiveness() {
         return historyHeuristicUpdates > 0 ? (double) historyHeuristicCutoffs / historyHeuristicUpdates : 0.0;
     }
@@ -317,136 +383,85 @@ public class SearchStatistics {
         return totalMoveOrderingQueries > 0 ? (double) firstMoveCutoffs / totalMoveOrderingQueries : 0.0;
     }
 
-    // === ENHANCED ANALYSIS METHODS ===
+    // === ANALYSIS METHODS ===
 
     /**
-     * Get comprehensive move ordering effectiveness analysis
+     * Get detaillierte Null-Move Analyse
      */
-    public String getMoveOrderingAnalysis() {
+    public String getNullMoveAnalysis() {
         StringBuilder sb = new StringBuilder();
-        sb.append("=== MOVE ORDERING ANALYSIS ===\n");
+        sb.append("=== NULL-MOVE PRUNING ANALYSIS ===\n");
 
-        long totalCutoffs = firstMoveCutoffs + secondMoveCutoffs + laterMoveCutoffs;
-        if (totalCutoffs > 0) {
-            sb.append(String.format("First move cutoffs: %,d (%.1f%%)\n",
-                    firstMoveCutoffs, 100.0 * firstMoveCutoffs / totalCutoffs));
-            sb.append(String.format("Second move cutoffs: %,d (%.1f%%)\n",
-                    secondMoveCutoffs, 100.0 * secondMoveCutoffs / totalCutoffs));
-            sb.append(String.format("Later move cutoffs: %,d (%.1f%%)\n",
-                    laterMoveCutoffs, 100.0 * laterMoveCutoffs / totalCutoffs));
+        if (nullMoveAttempts > 0) {
+            sb.append(String.format("Attempts: %,d\n", nullMoveAttempts));
+            sb.append(String.format("Successful Prunes: %,d (%.1f%%)\n",
+                    nullMovePrunes, getNullMoveSuccessRate() * 100));
+            sb.append(String.format("Failures: %,d (%.1f%%)\n",
+                    nullMoveFailures, 100.0 * nullMoveFailures / nullMoveAttempts));
+
+            if (nullMoveVerifications > 0) {
+                sb.append(String.format("Verifications: %,d (%.1f%% successful)\n",
+                        nullMoveVerifications, getNullMoveVerificationRate() * 100));
+            }
+
+            sb.append(String.format("Nodes Skipped: %,d (%.1f%% of total)\n",
+                    nullMoveNodesSkipped, getNullMoveEfficiency() * 100));
+
+            if (nullMoveTimesSaved > 0) {
+                sb.append(String.format("Estimated Time Saved: %,dms\n", nullMoveTimesSaved));
+            }
+
+            // Top depths for null-move pruning
+            sb.append("Prunes by depth: ");
+            for (int i = 0; i < Math.min(nullMovePrunesByDepth.length, 10); i++) {
+                if (nullMovePrunesByDepth[i] > 0) {
+                    sb.append(String.format("D%d:%d ", i, nullMovePrunesByDepth[i]));
+                }
+            }
+            sb.append("\n");
 
             // Effectiveness rating
-            double firstMoveRate = (double) firstMoveCutoffs / totalCutoffs;
-            if (firstMoveRate > 0.5) {
-                sb.append("🏆 Excellent move ordering!\n");
-            } else if (firstMoveRate > 0.3) {
-                sb.append("✅ Good move ordering\n");
-            } else if (firstMoveRate > 0.15) {
-                sb.append("📈 Average move ordering\n");
+            double successRate = getNullMoveSuccessRate();
+            if (successRate > 0.6) {
+                sb.append("🏆 Excellent null-move effectiveness!\n");
+            } else if (successRate > 0.4) {
+                sb.append("✅ Good null-move effectiveness\n");
+            } else if (successRate > 0.2) {
+                sb.append("📈 Average null-move effectiveness\n");
             } else {
-                sb.append("⚠️ Poor move ordering\n");
-            }
-        }
-
-        // Cutoffs by move type
-        if (!cutoffsByMoveType.isEmpty()) {
-            sb.append("\nCutoffs by move type:\n");
-            cutoffsByMoveType.entrySet().stream()
-                    .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
-                    .forEach(entry -> sb.append(String.format("  %s: %,d\n", entry.getKey(), entry.getValue())));
-        }
-
-        return sb.toString();
-    }
-
-    /**
-     * Get history heuristic effectiveness analysis
-     */
-    public String getHistoryHeuristicAnalysis() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("=== HISTORY HEURISTIC ANALYSIS ===\n");
-
-        if (historyHeuristicUpdates > 0) {
-            sb.append(String.format("History updates: %,d\n", historyHeuristicUpdates));
-            sb.append(String.format("History cutoffs: %,d\n", historyHeuristicCutoffs));
-            sb.append(String.format("Effectiveness: %.1f%%\n",
-                    100.0 * historyHeuristicCutoffs / historyHeuristicUpdates));
-
-            if (quietMovesEvaluated > 0) {
-                sb.append(String.format("Quiet moves evaluated: %,d\n", quietMovesEvaluated));
-                sb.append(String.format("History move success rate: %.1f%%\n",
-                        100.0 * firstMoveWasHistoryMove / quietMovesEvaluated));
-            }
-
-            if (historyTableAges > 0) {
-                sb.append(String.format("History table aged: %,d times\n", historyTableAges));
-            }
-
-            // Integration with actual HistoryHeuristic instance
-            try {
-                MoveOrdering ordering = Minimax.getMoveOrdering();
-                if (ordering != null && ordering.getHistoryHeuristic() != null) {
-                    sb.append("\n").append(ordering.getHistoryHeuristic().getStatistics()).append("\n");
-                    sb.append("Best history move: ").append(ordering.getHistoryHeuristic().getBestHistoryMove()).append("\n");
-                }
-            } catch (Exception e) {
-                // Silent fail - not critical
+                sb.append("⚠️ Poor null-move effectiveness\n");
             }
 
         } else {
-            sb.append("No history heuristic data recorded\n");
+            sb.append("No null-move data recorded\n");
         }
 
         return sb.toString();
     }
 
     /**
-     * Get search efficiency score with history consideration (0-100)
+     * Enhanced Search Efficiency Score (0-100) inklusive Null-Move
      */
     public double getEnhancedSearchEfficiency() {
-        double ttEfficiency = getTTHitRate() * 15;           // 0-15 points
-        double cutoffEfficiency = getCutoffRate() * 25;      // 0-25 points
-        double moveOrderingEfficiency = getFirstMoveSuccessRate() * 25; // 0-25 points
-        double historyEfficiency = getHistoryHeuristicEffectiveness() * 15; // 0-15 points
+        double ttEfficiency = getTTHitRate() * 15;                    // 0-15 points
+        double cutoffEfficiency = getCutoffRate() * 20;               // 0-20 points
+        double moveOrderingEfficiency = getFirstMoveSuccessRate() * 20; // 0-20 points
+        double historyEfficiency = getHistoryHeuristicEffectiveness() * 10; // 0-10 points
+        double nullMoveEfficiency = getNullMoveEfficiency() * 15;     // 0-15 points (NEU)
         double branchingEfficiency = Math.max(0, 20 - getAverageBranchingFactor()); // 0-20 points
 
         return Math.min(100, ttEfficiency + cutoffEfficiency + moveOrderingEfficiency +
-                historyEfficiency + branchingEfficiency);
+                historyEfficiency + nullMoveEfficiency + branchingEfficiency);
     }
 
-    /**
-     * Get search efficiency score (0-100) - original method
-     */
-    public double getSearchEfficiency() {
-        double ttEfficiency = getTTHitRate() * 20;           // 0-20 points
-        double cutoffEfficiency = getCutoffRate() * 30;      // 0-30 points
-        double branchingEfficiency = Math.max(0, 25 - getAverageBranchingFactor()); // 0-25 points
-        double speedEfficiency = Math.min(25, getNodesPerSecond() / 10000); // 0-25 points
-
-        return Math.min(100, ttEfficiency + cutoffEfficiency + branchingEfficiency + speedEfficiency);
-    }
+    // === COMPREHENSIVE OUTPUT ===
 
     /**
-     * Get most frequently searched moves
+     * Get comprehensive statistics summary mit Null-Move Details
      */
-    public Map<String, Integer> getTopMoves(int limit) {
-        return moveFrequency.entrySet()
-                .stream()
-                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-                .limit(limit)
-                .collect(HashMap::new,
-                        (m, e) -> m.put(e.getKey(), e.getValue()),
-                        HashMap::putAll);
-    }
-
-    // === ENHANCED FORMATTED OUTPUT ===
-
-    /**
-     * Get comprehensive statistics summary with history heuristic
-     */
-    public String getEnhancedSummary() {
+    public String getComprehensiveSummary() {
         StringBuilder sb = new StringBuilder();
-        sb.append("=== ENHANCED SEARCH STATISTICS ===\n");
+        sb.append("=== COMPREHENSIVE SEARCH STATISTICS ===\n");
 
         // Core stats
         sb.append(String.format("Nodes: %,d (%.1fk NPS)\n",
@@ -459,26 +474,28 @@ public class SearchStatistics {
         sb.append(String.format("\nTT: %.1f%% hit rate (%,d hits, %,d misses)\n",
                 getTTHitRate() * 100, ttHits, ttMisses));
 
-        // Enhanced pruning effectiveness
+        // Pruning effectiveness
         sb.append(String.format("\nPruning: %.1f%% cutoff rate (%,d total cutoffs)\n",
                 getCutoffRate() * 100, getTotalCutoffs()));
         sb.append(String.format("  Alpha-Beta: %,d (%.1f%%)\n",
                 alphaBetaCutoffs, 100.0 * alphaBetaCutoffs / nodeCount));
 
+        // NULL-MOVE DETAILS
+        if (nullMoveAttempts > 0) {
+            sb.append(String.format("  Null-Move: %,d/%,d (%.1f%% success, %,d nodes saved)\n",
+                    nullMovePrunes, nullMoveAttempts, getNullMoveSuccessRate() * 100, nullMoveNodesSkipped));
+        }
+
         if (reverseFutilityCutoffs > 0) {
             sb.append(String.format("  RFP: %,d (%.1f%%)\n",
                     reverseFutilityCutoffs, 100.0 * reverseFutilityCutoffs / nodeCount));
-        }
-        if (nullMoveCutoffs > 0) {
-            sb.append(String.format("  Null Move: %,d (%.1f%%)\n",
-                    nullMoveCutoffs, 100.0 * nullMoveCutoffs / nodeCount));
         }
         if (futilityCutoffs > 0) {
             sb.append(String.format("  Futility: %,d (%.1f%%)\n",
                     futilityCutoffs, 100.0 * futilityCutoffs / nodeCount));
         }
 
-        // Enhanced move ordering
+        // Move ordering
         long totalOrderingHits = ttMoveHits + killerMoveHits + historyMoveHits + captureOrderingHits;
         if (totalOrderingHits > 0) {
             sb.append(String.format("\nMove Ordering: %,d hits (%.1f%% first move success)\n",
@@ -489,100 +506,48 @@ public class SearchStatistics {
             if (historyMoveHits > 0) sb.append(String.format("  History: %,d\n", historyMoveHits));
         }
 
-        // History Heuristic specific
-        if (historyHeuristicUpdates > 0) {
-            sb.append(String.format("\nHistory Heuristic:\n"));
-            sb.append(String.format("  Updates: %,d, Cutoffs: %,d (%.1f%% effectiveness)\n",
-                    historyHeuristicUpdates, historyHeuristicCutoffs,
-                    getHistoryHeuristicEffectiveness() * 100));
-
-            if (quietMovesEvaluated > 0) {
-                sb.append(String.format("  Quiet moves: %,d, History first moves: %,d (%.1f%%)\n",
-                        quietMovesEvaluated, firstMoveWasHistoryMove,
-                        100.0 * firstMoveWasHistoryMove / quietMovesEvaluated));
-            }
-
-            // Get current history stats from HistoryHeuristic instance
-            try {
-                MoveOrdering ordering = Minimax.getMoveOrdering();
-                if (ordering != null && ordering.getHistoryHeuristic() != null) {
-                    String histStats = ordering.getHistoryHeuristic().getStatistics();
-                    String bestHistory = ordering.getHistoryHeuristic().getBestHistoryMove();
-                    sb.append(String.format("  Current: %s\n", histStats));
-                    sb.append(String.format("  Best: %s\n", bestHistory));
-                }
-            } catch (Exception e) {
-                // Silent fail
-            }
-        }
-
-        // Quiescence stats
-        if (qNodeCount > 0) {
-            sb.append(String.format("\nQuiescence:\n"));
-            sb.append(String.format("  Stand-pat: %,d (%.1f%%)\n",
-                    standPatCutoffs, 100.0 * standPatCutoffs / qNodeCount));
-            sb.append(String.format("  Delta pruning: %,d (%.1f%%)\n",
-                    deltaPruningCutoffs, 100.0 * deltaPruningCutoffs / qNodeCount));
-        }
-
         // Overall efficiency
-        sb.append(String.format("\nEfficiency Score: %.1f/100 (Enhanced: %.1f/100)\n",
-                getSearchEfficiency(), getEnhancedSearchEfficiency()));
+        sb.append(String.format("\nEfficiency Score: %.1f/100\n", getEnhancedSearchEfficiency()));
 
         return sb.toString();
     }
 
     /**
-     * Get comprehensive statistics summary (original method)
-     */
-    public String getSummary() {
-        return getEnhancedSummary();
-    }
-
-    /**
-     * Get brief one-line summary with history info
+     * Brief one-line summary with null-move info
      */
     public String getBriefSummary() {
-        return String.format("Nodes: %,d, Time: %,dms, NPS: %.1fk, TT: %.1f%%, Cuts: %.1f%%, 1st: %.1f%%, Hist: %,d, Eff: %.1f",
+        return String.format("Nodes: %,d, Time: %,dms, NPS: %.1fk, TT: %.1f%%, Cuts: %.1f%%, NM: %,d/%.1f%%, Eff: %.1f",
                 getTotalNodes(), totalSearchTime, getNodesPerSecond() / 1000,
-                getTTHitRate() * 100, getCutoffRate() * 100, getFirstMoveSuccessRate() * 100,
-                historyHeuristicUpdates, getEnhancedSearchEfficiency());
+                getTTHitRate() * 100, getCutoffRate() * 100,
+                nullMovePrunes, getNullMoveSuccessRate() * 100,
+                getEnhancedSearchEfficiency());
     }
 
     /**
-     * Export enhanced statistics as CSV for analysis
+     * Standard toString für kompatibilität
      */
-    public String toEnhancedCSV() {
-        return String.format("%d,%d,%d,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%.1f\n",
+    @Override
+    public String toString() {
+        return getComprehensiveSummary();
+    }
+
+    /**
+     * Export comprehensive statistics as CSV for analysis
+     */
+    public String toCSV() {
+        return String.format("%d,%d,%d,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d,%.1f\n",
                 nodeCount, qNodeCount, maxDepthReached, totalSearchTime,
                 ttHits + ttMisses, getTTHitRate(), getCutoffRate(),
                 getAverageBranchingFactor(), getFirstMoveSuccessRate(),
-                getHistoryHeuristicEffectiveness(), historyHeuristicUpdates,
-                historyHeuristicCutoffs, getEnhancedSearchEfficiency());
+                getNullMoveSuccessRate(), nullMoveAttempts, nullMovePrunes,
+                nullMoveNodesSkipped, getEnhancedSearchEfficiency());
     }
 
     /**
-     * Get enhanced CSV header for export
-     */
-    public static String getEnhancedCSVHeader() {
-        return "nodes,qnodes,depth,time_ms,tt_probes,tt_hit_rate,cutoff_rate,branching_factor," +
-                "first_move_rate,history_effectiveness,history_updates,history_cutoffs,efficiency\n";
-    }
-
-    /**
-     * Export original statistics as CSV for analysis
-     */
-    public String toCSV() {
-        return String.format("%d,%d,%d,%d,%d,%.3f,%.3f,%.3f,%.1f\n",
-                nodeCount, qNodeCount, maxDepthReached, totalSearchTime,
-                ttHits + ttMisses, getTTHitRate(), getCutoffRate(),
-                getAverageBranchingFactor(), getSearchEfficiency());
-    }
-
-    /**
-     * Get CSV header for export (original)
+     * Get CSV header for export
      */
     public static String getCSVHeader() {
-        return "nodes,qnodes,depth,time_ms,tt_probes,tt_hit_rate,cutoff_rate,branching_factor,efficiency\n";
+        return "nodes,qnodes,depth,time_ms,tt_probes,tt_hit_rate,cutoff_rate,branching_factor," +
+                "first_move_rate,null_move_rate,null_attempts,null_prunes,null_nodes_saved,efficiency\n";
     }
 }

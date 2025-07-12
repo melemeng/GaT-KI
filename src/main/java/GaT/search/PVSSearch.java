@@ -2,6 +2,7 @@ package GaT.search;
 
 import GaT.model.GameState;
 import GaT.model.Move;
+import GaT.model.SearchConfig;
 import GaT.model.TTEntry;
 import GaT.search.MoveGenerator;
 
@@ -65,6 +66,64 @@ public class PVSSearch {
             }
         } else {
             statistics.incrementTTMisses();
+        }
+
+        // *** NEUE NULL-MOVE PRUNING SEKTION ***
+        // Null-Move Pruning (nur für Non-PV nodes und Beta-Cutoff Suche)
+        if (!isPVNode && depth >= SearchConfig.NULL_MOVE_MIN_DEPTH &&
+                beta != Integer.MAX_VALUE && canApplyNullMove(state, depth)) {
+
+            // *** ERWEITERTE STATISTIK-AUFZEICHNUNG ***
+            statistics.recordNullMoveAttempt(depth);
+
+            // Null-Move State erstellen
+            GameState nullMoveState = state.copy();
+            nullMoveState.redToMove = !state.redToMove;
+
+            // *** ADAPTIVE REDUCTION VERWENDEN ***
+            int reduction = getNullMoveReduction(state, depth);
+            int reducedDepth = depth - 1 - reduction;
+
+            // Geschätzte Knoten für Statistik
+            long estimatedNodes = (long) Math.pow(4, Math.max(0, reducedDepth));
+
+            // Reduzierte Suche durchführen
+            int nullMoveScore = search(nullMoveState, reducedDepth, -beta, -beta + 1,
+                    !maximizingPlayer, false);
+
+            // Fail-High Detection mit verbesserter Statistik
+            if ((maximizingPlayer && nullMoveScore >= beta) ||
+                    (!maximizingPlayer && nullMoveScore <= alpha)) {
+
+                // *** ERFOLGREICHE PRUNE AUFZEICHNEN ***
+                statistics.recordNullMovePrune(depth, estimatedNodes);
+
+                // Verification bei kritischen Positionen
+                if (depth >= SearchConfig.NULL_MOVE_VERIFICATION_DEPTH &&
+                        Math.abs(nullMoveScore) < 2000 && isTacticalPosition(state)) {
+
+                    statistics.recordNullMoveVerification(false); // Start verification
+
+                    // Verification Search mit reduzierter Tiefe
+                    int verifyDepth = Math.max(1, depth - reduction - 1);
+                    int verifyScore = search(state, verifyDepth, alpha, beta,
+                            maximizingPlayer, false);
+
+                    if ((maximizingPlayer && verifyScore >= beta) ||
+                            (!maximizingPlayer && verifyScore <= alpha)) {
+                        statistics.recordNullMoveVerification(true); // Verification successful
+                        return maximizingPlayer ? beta : alpha;
+                    } else {
+                        statistics.recordNullMoveFailure(); // Verification failed
+                    }
+                } else {
+                    // Direkter Cutoff bei eindeutigen Positionen
+                    return maximizingPlayer ? beta : alpha;
+                }
+            } else {
+                // *** FEHLGESCHLAGENE PRUNE AUFZEICHNEN ***
+                statistics.recordNullMoveFailure();
+            }
         }
 
         // Terminal conditions
@@ -222,6 +281,63 @@ public class PVSSearch {
             statistics.incrementTTMisses();
         }
 
+        // *** NEUE NULL-MOVE PRUNING SEKTION ***
+        if (!isPVNode && depth >= SearchConfig.NULL_MOVE_MIN_DEPTH &&
+                beta != Integer.MAX_VALUE && canApplyNullMove(state, depth)) {
+
+            // *** ERWEITERTE STATISTIK-AUFZEICHNUNG ***
+            statistics.recordNullMoveAttempt(depth);
+
+            // Null-Move State erstellen
+            GameState nullMoveState = state.copy();
+            nullMoveState.redToMove = !state.redToMove;
+
+            // *** ADAPTIVE REDUCTION VERWENDEN ***
+            int reduction = getNullMoveReduction(state, depth);
+            int reducedDepth = depth - 1 - reduction;
+
+            // Geschätzte Knoten für Statistik
+            long estimatedNodes = (long) Math.pow(4, Math.max(0, reducedDepth));
+
+            // Reduzierte Suche durchführen
+            int nullMoveScore = search(nullMoveState, reducedDepth, -beta, -beta + 1,
+                    !maximizingPlayer, false);
+
+            // Fail-High Detection mit verbesserter Statistik
+            if ((maximizingPlayer && nullMoveScore >= beta) ||
+                    (!maximizingPlayer && nullMoveScore <= alpha)) {
+
+                // *** ERFOLGREICHE PRUNE AUFZEICHNEN ***
+                statistics.recordNullMovePrune(depth, estimatedNodes);
+
+                // Verification bei kritischen Positionen
+                if (depth >= SearchConfig.NULL_MOVE_VERIFICATION_DEPTH &&
+                        Math.abs(nullMoveScore) < 2000 && isTacticalPosition(state)) {
+
+                    statistics.recordNullMoveVerification(false); // Start verification
+
+                    // Verification Search mit reduzierter Tiefe
+                    int verifyDepth = Math.max(1, depth - reduction - 1);
+                    int verifyScore = search(state, verifyDepth, alpha, beta,
+                            maximizingPlayer, false);
+
+                    if ((maximizingPlayer && verifyScore >= beta) ||
+                            (!maximizingPlayer && verifyScore <= alpha)) {
+                        statistics.recordNullMoveVerification(true); // Verification successful
+                        return maximizingPlayer ? beta : alpha;
+                    } else {
+                        statistics.recordNullMoveFailure(); // Verification failed
+                    }
+                } else {
+                    // Direkter Cutoff bei eindeutigen Positionen
+                    return maximizingPlayer ? beta : alpha;
+                }
+            } else {
+                // *** FEHLGESCHLAGENE PRUNE AUFZEICHNEN ***
+                statistics.recordNullMoveFailure();
+            }
+        }
+
         // Terminal conditions
         if (Minimax.isGameOver(state)) {
             statistics.incrementLeafNodeCount();
@@ -343,8 +459,18 @@ public class PVSSearch {
             }
 
             storeTTEntry(hash, minEval, depth, originalAlpha, beta, bestMove);
+
+            // Estimate time saved by null-move pruning
+            if (statistics.getNullMoveNodesSkipped() > 0) {
+                long avgTimePerNode = statistics.getTotalSearchTime() > 0 ?
+                        statistics.getTotalSearchTime() * 1000000 / statistics.getTotalNodes() : 1000;
+                statistics.estimateTimeSaved(avgTimePerNode);
+            }
+
             return minEval;
         }
+
+
     }
 
     // === ENHANCED MOVE ORDERING FOR PV NODES ===
@@ -409,6 +535,43 @@ public class PVSSearch {
         return score;
     }
 
+    /**
+     * Prüft, ob Null-Move Pruning angewendet werden kann
+     * @param state Current game state
+     * @param depth Current search depth
+     * @return true wenn Null-Move sicher anwendbar ist
+     */
+    private static boolean canApplyNullMove(GameState state, int depth) {
+        // Null-Move global deaktiviert
+        if (!SearchConfig.NULL_MOVE_ENABLED) {
+            return false;
+        }
+
+        // Minimale Tiefe nicht erreicht
+        if (depth < SearchConfig.NULL_MOVE_MIN_DEPTH) {
+            return false;
+        }
+
+        // Wächter im Schach - kein Null-Move!
+        if (Minimax.isInCheck(state)) {
+            return false;
+        }
+
+        // Kein Material für sinnvolle Züge (kritisch in Guard & Towers)
+        if (!Minimax.hasNonPawnMaterial(state)) {
+            return false;
+        }
+
+        // Endspiel-Vorsicht: Bei sehr wenig Material kann Null-Move gefährlich sein
+        if (Minimax.isEndgame(state) && getTotalMaterial(state) <= 4) {
+            return false;
+        }
+
+        return true;
+    }
+
+
+
     // === HELPER METHODS ===
 
     /**
@@ -459,5 +622,129 @@ public class PVSSearch {
      */
     public static void orderMovesAdvanced(List<Move> moves, GameState state, int depth, TTEntry entry) {
         orderMovesForPV(moves, state, depth, entry);
+    }
+
+
+    /**
+     * Hilfsmethode: Gesamtmaterial für Null-Move Entscheidung
+     */
+    private static int getTotalMaterial(GameState state) {
+        int total = 0;
+        for (int i = 0; i < 49; i++) {
+            total += state.redStackHeights[i] + state.blueStackHeights[i];
+        }
+        // Wächter zählen jeweils als 1
+        total += (state.redGuard != 0 ? 1 : 0) + (state.blueGuard != 0 ? 1 : 0);
+        return total;
+    }
+
+
+    /**
+     * Erweiterte Null-Move Reduction basierend auf Position und Tiefe
+     * Diese Methode gehört als private static method in PVSSearch.java
+     */
+    private static int getNullMoveReduction(GameState state, int depth) {
+        int baseReduction = SearchConfig.NULL_MOVE_REDUCTION;
+
+        // === SPIELPHASEN-ANPASSUNG ===
+
+        // Vorsichtiger im Endspiel (weniger aggressive Reduction)
+        if (Minimax.isEndgame(state)) {
+            return Math.max(1, baseReduction - 1);
+        }
+
+        // === TIEFENABHÄNGIGE ANPASSUNG ===
+
+        // Aggressiver bei großer Tiefe (mehr Reduction möglich)
+        if (depth >= 10) {
+            return baseReduction + 1;
+        }
+
+        // === GUARD & TOWERS SPEZIFISCHE ANPASSUNGEN ===
+
+        // Weniger Reduction bei taktischen Positionen
+        if (isTacticalPosition(state)) {
+            return Math.max(1, baseReduction - 1);
+        }
+
+        // Mehr Reduction bei ruhigen Positionen
+        if (isQuietPosition(state)) {
+            return baseReduction + 1;
+        }
+
+        return baseReduction;
+    }
+
+    /**
+     * Prüft ob Position taktisch ist (vorsichtigere Null-Move Behandlung)
+     */
+    private static boolean isTacticalPosition(GameState state) {
+        boolean isRed = state.redToMove;
+
+        // Wächter nah beieinander = taktisch
+        if (state.redGuard != 0 && state.blueGuard != 0) {
+            int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
+            int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
+            int distance = manhattanDistance(redGuardPos, blueGuardPos);
+
+            if (distance <= 3) {
+                return true;  // Wächter-Kampf möglich
+            }
+        }
+
+        // Hohe Türme in der Nähe des gegnerischen Wächters
+        long enemyGuard = isRed ? state.blueGuard : state.redGuard;
+        if (enemyGuard != 0) {
+            int enemyGuardPos = Long.numberOfTrailingZeros(enemyGuard);
+            long ownTowers = isRed ? state.redTowers : state.blueTowers;
+            int[] ownHeights = isRed ? state.redStackHeights : state.blueStackHeights;
+
+            for (int i = 0; i < 49; i++) {
+                if ((ownTowers & GameState.bit(i)) != 0 && ownHeights[i] >= 3) {
+                    int distance = manhattanDistance(i, enemyGuardPos);
+                    if (distance <= ownHeights[i] + 1) {
+                        return true;  // Eroberung möglich
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Prüft ob Position ruhig ist (aggressive Null-Move Behandlung)
+     */
+    private static boolean isQuietPosition(GameState state) {
+        // Keine direkten Bedrohungen
+        if (isTacticalPosition(state)) {
+            return false;
+        }
+
+        // Wenige hohe Türme = ruhiger
+        boolean isRed = state.redToMove;
+        long ownTowers = isRed ? state.redTowers : state.blueTowers;
+        int[] ownHeights = isRed ? state.redStackHeights : state.blueStackHeights;
+
+        int highTowers = 0;
+        for (int i = 0; i < 49; i++) {
+            if ((ownTowers & GameState.bit(i)) != 0 && ownHeights[i] >= 4) {
+                highTowers++;
+            }
+        }
+
+        return highTowers <= 1;  // Maximal 1 hoher Turm = ruhig
+    }
+
+    /**
+     * Manhattan-Distanz zwischen zwei Positionen
+     */
+    private static int manhattanDistance(int from, int to) {
+        int fromRank = GameState.rank(from);
+        int fromFile = GameState.file(from);
+        int toRank = GameState.rank(to);
+        int toFile = GameState.file(to);
+
+        return Math.abs(fromRank - toRank) + Math.abs(fromFile - toFile);
     }
 }

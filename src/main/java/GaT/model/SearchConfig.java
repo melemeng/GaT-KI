@@ -25,10 +25,15 @@ public class SearchConfig {
     public static final int TT_EVICTION_THRESHOLD = 1_500_000;
 
     // === PRUNING PARAMETERS ===
-    public static final int NULL_MOVE_MIN_DEPTH = 3;
     public static final int FUTILITY_MAX_DEPTH = 3;
     public static final int LMR_MIN_DEPTH = 3;
     public static final int LMR_MIN_MOVE_COUNT = 4;
+
+    // Null-Move Konfiguration hinzufügen
+    public static final boolean NULL_MOVE_ENABLED = true;
+    public static final int NULL_MOVE_MIN_DEPTH = 3;
+    public static final int NULL_MOVE_REDUCTION = 2;
+    public static final int NULL_MOVE_VERIFICATION_DEPTH = 4;
 
     // === PRUNING MARGINS ===
     public static final int[] REVERSE_FUTILITY_MARGINS = {0, 120, 240, 360};
