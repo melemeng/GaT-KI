@@ -130,18 +130,19 @@ public class GameClient {
             QuiescenceSearch.setRemainingTime(timeLeft);
             TacticalEvaluator.setRemainingTime(timeLeft);
 
+            // ENHANCED: Set QuiescenceSearch to use enhanced MoveOrdering
+            QuiescenceSearch.setMoveOrdering(Minimax.getMoveOrdering());
+
             // Get aggressive time allocation
             long timeForMove = timeManager.calculateTimeForMove(state);
-
-            // PHASE 1 FIX: Conservative time allocation with safety buffer
-            long safeTimeForMove = Math.min(timeForMove, timeLeft / 6); // Never more than 1/6 of remaining
+            long safeTimeForMove = Math.min(timeForMove, timeLeft / 6);
 
             System.out.println("🧠 ULTRA-AGGRESSIVE AI Analysis:");
             System.out.printf("   ⏰ Time allocated: %dms (%.1f%% of remaining)%n",
                     timeForMove, 100.0 * timeForMove / timeLeft);
             System.out.printf("   🛡️ Safety time: %dms (%.1f%% of remaining)%n",
                     safeTimeForMove, 100.0 * safeTimeForMove / timeLeft);
-            System.out.println("   🎯 Strategy: PVS + Quiescence (ULTIMATE)");
+            System.out.println("   🎯 Strategy: PVS + Quiescence + History Heuristic (ULTIMATE)");
             System.out.println("   📊 Evaluator: TacticalEvaluator");
             System.out.println("   🎮 Phase: " + timeManager.getCurrentPhase());
 
@@ -149,8 +150,6 @@ public class GameClient {
             analyzePosition(state);
 
             long searchStartTime = System.currentTimeMillis();
-
-            // PHASE 1 FIX: Enhanced exception handling with multi-level fallback
             Move bestMove = null;
 
             try {
@@ -202,19 +201,8 @@ public class GameClient {
                 }
             }
 
-            // Enhanced logging
-            System.out.printf("   ✅ Search completed in: %dms (%.1f%% of allocated)%n",
-                    searchTime, 100.0 * searchTime / safeTimeForMove);
-
-            // Time efficiency analysis
-            double efficiency = (double)searchTime / safeTimeForMove;
-            if (efficiency < 0.5) {
-                System.out.println("   ⚡ Could have used more time");
-            } else if (efficiency > 0.9) {
-                System.out.println("   ⏳ Excellent time utilization");
-            } else {
-                System.out.println("   ✅ Good time utilization");
-            }
+            // ENHANCED: Show comprehensive statistics including history
+            //SearchStatistics.getHistoryHeuristicAnalysis(searchTime, safeTimeForMove, bestMove);
 
             return bestMove.toString();
 
@@ -224,7 +212,6 @@ public class GameClient {
             return getEmergencyFallback(board);
         }
     }
-
     /**
      * PHASE 1 NEW: Quick evaluation fallback method
      */

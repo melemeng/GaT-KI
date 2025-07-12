@@ -10,14 +10,15 @@ import GaT.evaluation.Evaluator;
 import java.util.List;
 
 /**
- * PHASE 2 FIXED: TimedMinimax - Conservative Time Prediction
+ * ENHANCED TIMED MINIMAX - WITH HISTORY HEURISTIC INTEGRATION
  *
- * PHASE 2 FIXES:
- * ✅ 1. Much more conservative time prediction (70% statt 85%)
- * ✅ 2. Higher growth factors for safer depth estimation
- * ✅ 3. Earlier timeout checks (90% statt 95%)
- * ✅ 4. Better abort logic (95% statt 98%)
- * ✅ 5. Enhanced emergency fallback
+ * ENHANCEMENTS:
+ * ✅ Integrates new HistoryHeuristic system
+ * ✅ Updates both legacy and new history on cutoffs
+ * ✅ Enhanced time management
+ * ✅ Better move ordering integration
+ * ✅ Comprehensive statistics
+ * ✅ Optimized for single-threaded performance
  */
 public class TimedMinimax {
 
@@ -48,7 +49,7 @@ public class TimedMinimax {
         return findBestMoveFixed(state, maxDepth, timeMillis, strategy);
     }
 
-    // === CORE FIXED SEARCH ===
+    // === CORE ENHANCED SEARCH ===
 
     private static Move findBestMoveFixed(GameState state, int maxDepth, long timeMillis, SearchConfig.SearchStrategy strategy) {
         if (state == null) {
@@ -62,8 +63,8 @@ public class TimedMinimax {
 
         currentStrategy = strategy;
 
-        // Initialize search
-        initializeSearchFixed(timeMillis);
+        // Initialize search with enhanced features
+        initializeSearchEnhanced(state, timeMillis);
 
         List<Move> legalMoves = MoveGenerator.generateAllMoves(state);
         if (legalMoves.isEmpty()) {
@@ -71,14 +72,15 @@ public class TimedMinimax {
             return null;
         }
 
-        Move bestMove = legalMoves.getFirst(); // Emergency fallback
+        Move bestMove = legalMoves.get(0); // Emergency fallback
         Move lastCompletedMove = bestMove;
         int bestScore = Integer.MIN_VALUE;
         int bestDepth = 0;
         long totalNodes = 0;
 
-        System.out.println("=== ULTRA-AGGRESSIVE SEARCH WITH " + strategy + " ===");
-        System.out.printf("Time: %dms | Legal moves: %d%n", timeMillis, legalMoves.size());
+        System.out.println("=== ENHANCED SEARCH WITH " + strategy + " & HISTORY HEURISTIC ===");
+        System.out.printf("Time: %dms | Legal moves: %d | History entries: %s%n",
+                timeMillis, legalMoves.size(), moveOrdering.getHistoryHeuristic().getStatistics());
 
         // === ITERATIVE DEEPENING ===
         for (int depth = 1; depth <= maxDepth && !searchAborted; depth++) {
@@ -87,7 +89,7 @@ public class TimedMinimax {
             long qNodesBefore = statistics.getQNodeCount();
 
             try {
-                SearchResult result = performRealSearch(state, depth, legalMoves);
+                SearchResult result = performEnhancedSearch(state, depth, legalMoves);
 
                 if (result != null && result.move != null) {
                     lastCompletedMove = result.move;
@@ -105,98 +107,104 @@ public class TimedMinimax {
                     System.out.printf("✅ Depth %d: %s (score: %+d, time: %dms, nodes: %,d, q-nodes: %,d, nps: %.0f)%n",
                             depth, bestMove, result.score, depthTime, depthNodes, depthQNodes, nps);
 
-                    // FIXED: Only terminate for TRUE checkmate, not just "good" positions
+                    // Only terminate for TRUE checkmate
                     if (Math.abs(result.score) >= CHECKMATE_THRESHOLD && depth >= MIN_SEARCH_DEPTH) {
                         System.out.println("♔ Checkmate found after depth " + depth + ", terminating");
                         break;
                     }
 
-                    // PHASE 2 FIX: More conservative time management
-                    if (!shouldContinueSearchConservative(depthTime, timeMillis, depth, totalNodes)) {
-                        System.out.println("⏱ Time management: Stopping search (conservative prediction)");
+                    // Enhanced time management
+                    if (!shouldContinueSearchEnhanced(depthTime, timeMillis, depth, totalNodes)) {
+                        System.out.println("⏱ Enhanced time management: Stopping search");
                         break;
                     }
                 } else {
                     System.out.printf("⚠️ Depth %d failed, using last good move%n", depth);
-                    bestMove = lastCompletedMove; // Use last successful search
+                    bestMove = lastCompletedMove;
                     break;
                 }
 
             } catch (Exception e) {
                 System.err.printf("❌ Error at depth %d: %s, using last good move%n", depth, e.getMessage());
-                bestMove = lastCompletedMove; // Use last successful search
+                bestMove = lastCompletedMove;
                 break;
             }
         }
 
-        // === FINAL STATISTICS ===
+        // === ENHANCED FINAL STATISTICS ===
         long totalTime = System.currentTimeMillis() - startTime;
         double timeUsagePercent = (double)totalTime / timeMillis * 100;
 
-        System.out.println("=== SEARCH COMPLETE ===");
+        System.out.println("=== ENHANCED SEARCH COMPLETE ===");
         System.out.printf("Best move: %s | Score: %+d | Depth: %d | Time: %dms (%.1f%% of allocated)%n",
                 bestMove, bestScore, bestDepth, totalTime, timeUsagePercent);
         System.out.printf("Total nodes: %,d (regular: %,d, quiescence: %,d) | NPS: %,.0f%n",
                 totalNodes, statistics.getNodeCount(), statistics.getQNodeCount(),
                 totalTime > 0 ? (double)totalNodes * 1000 / totalTime : 0);
 
+        // Show enhanced move ordering statistics
+        System.out.println("📊 " + moveOrdering.getStatistics());
+        System.out.println("🔄 Best history move: " + moveOrdering.getHistoryHeuristic().getBestHistoryMove());
+
         return bestMove;
     }
 
-    // === PHASE 2 FIX: CONSERVATIVE TIME MANAGEMENT ===
+    // === ENHANCED TIME MANAGEMENT ===
 
-    private static boolean shouldContinueSearchConservative(long lastDepthTime, long totalTimeLimit,
-                                                            int currentDepth, long totalNodes) {
+    private static boolean shouldContinueSearchEnhanced(long lastDepthTime, long totalTimeLimit,
+                                                        int currentDepth, long totalNodes) {
         long elapsed = System.currentTimeMillis() - startTime;
         long remaining = totalTimeLimit - elapsed;
 
-        // FIXED: Always search to minimum depth regardless of time
+        // Always search to minimum depth regardless of time
         if (currentDepth < MIN_SEARCH_DEPTH && remaining > 100) {
             return true;
         }
 
-        // PHASE 2 FIX: More conservative - only continue if we have lots of time
-        if (remaining > totalTimeLimit * 0.5) { // More than 50% time remaining
+        // Enhanced conservative approach - more time for history to build up
+        if (remaining > totalTimeLimit * 0.6) { // More than 60% time remaining
             System.out.printf("  ⚡ Plenty of time left (%.1f%%), continuing to depth %d%n",
                     (double)remaining/totalTimeLimit*100, currentDepth + 1);
             return true;
         }
 
-        // PHASE 2 FIX: Conservative growth prediction
+        // Enhanced growth prediction based on node count and history effectiveness
         double growthFactor;
         if (currentDepth <= 4) {
-            growthFactor = 3.0;  // Conservative for early depths (was 2.0)
+            growthFactor = 2.8;  // Slightly less conservative early (history building)
         } else if (currentDepth <= 6) {
-            growthFactor = 3.5;  // More conservative for mid depths (was 2.5)
+            growthFactor = 3.2;  // Moderate for mid depths
         } else if (currentDepth <= 8) {
-            growthFactor = 4.0;  // Very conservative for deep searches (was 3.0)
+            growthFactor = 3.8;  // Conservative for deep searches
         } else {
-            growthFactor = 5.0;  // Extremely conservative for very deep (was 4.0)
+            growthFactor = 4.5;  // Very conservative for very deep
         }
 
-        // Adjust based on complexity
-        if (totalNodes > 1000000) {
-            growthFactor *= 1.3; // Even more conservative for complex positions
+        // Adjust based on search efficiency (good move ordering = less nodes)
+        if (totalNodes < 500000) {
+            growthFactor *= 0.9; // Efficient search, slightly more optimistic
+        } else if (totalNodes > 2000000) {
+            growthFactor *= 1.2; // Inefficient search, more conservative
         }
 
         long estimatedNextTime = (long)(lastDepthTime * growthFactor);
 
-        // PHASE 2 FIX: Use only 70% of remaining time (much more conservative than 85%)
-        boolean canComplete = estimatedNextTime < remaining * 0.70;
+        // Use 75% of remaining time (slightly less conservative with good move ordering)
+        boolean canComplete = estimatedNextTime < remaining * 0.75;
 
         if (!canComplete) {
-            System.out.printf("  ⏱ Next depth %d estimated %dms > 70%% of remaining %dms%n",
+            System.out.printf("  ⏱ Next depth %d estimated %dms > 75%% of remaining %dms%n",
                     currentDepth + 1, estimatedNextTime, remaining);
         }
 
         return canComplete;
     }
 
-    // === SEARCH IMPLEMENTATION ===
+    // === ENHANCED SEARCH IMPLEMENTATION ===
 
-    private static SearchResult performRealSearch(GameState state, int depth, List<Move> legalMoves) {
-        // Order moves
-        orderMoves(legalMoves, state, depth);
+    private static SearchResult performEnhancedSearch(GameState state, int depth, List<Move> legalMoves) {
+        // Enhanced move ordering
+        orderMovesEnhanced(legalMoves, state, depth);
 
         Move bestMove = null;
         boolean isRed = state.redToMove;
@@ -205,9 +213,9 @@ public class TimedMinimax {
         int alpha = Integer.MIN_VALUE;
         int beta = Integer.MAX_VALUE;
 
-        // PHASE 2 FIX: Set timeout checker for SearchEngine - more conservative
+        // Set enhanced timeout checker
         searchEngine.setTimeoutChecker(() -> searchAborted ||
-                System.currentTimeMillis() - startTime >= timeLimitMillis * 90 / 100); // 90% statt 95%
+                System.currentTimeMillis() - startTime >= timeLimitMillis * 92 / 100); // 92% threshold
 
         try {
             int moveCount = 0;
@@ -218,7 +226,7 @@ public class TimedMinimax {
                 GameState copy = state.copy();
                 copy.applyMove(move);
 
-                // Use SearchEngine with proper strategy
+                // Search with enhanced engine
                 int score = searchEngine.search(copy, depth - 1, alpha, beta, !isRed, currentStrategy);
 
                 if ((isRed && score > bestScore) || (!isRed && score < bestScore) || bestMove == null) {
@@ -231,15 +239,18 @@ public class TimedMinimax {
                     } else {
                         beta = Math.min(beta, score);
                     }
+
+                    // Update history heuristics on best move
+                    updateHistoryHeuristics(move, state, depth, score);
                 }
 
-                // FIXED: Only log truly exceptional moves
+                // Log exceptional moves
                 if (Math.abs(score) >= CHECKMATE_THRESHOLD) {
                     System.out.printf("  ♔ Checkmate move found: %s (score: %+d)%n", move, score);
                 }
 
-                // Time check every few moves
-                if (moveCount % 5 == 0 && shouldAbortSearch()) {
+                // Periodic time checks
+                if (moveCount % 3 == 0 && shouldAbortSearch()) {
                     System.out.println("  ⏱ Time limit approaching, completing current depth");
                     break;
                 }
@@ -251,9 +262,9 @@ public class TimedMinimax {
         return bestMove != null ? new SearchResult(bestMove, bestScore) : null;
     }
 
-    // === HELPER METHODS ===
+    // === ENHANCED HELPER METHODS ===
 
-    private static void initializeSearchFixed(long timeMillis) {
+    private static void initializeSearchEnhanced(GameState state, long timeMillis) {
         startTime = System.currentTimeMillis();
         timeLimitMillis = timeMillis;
         searchAborted = false;
@@ -263,31 +274,38 @@ public class TimedMinimax {
         statistics.startSearch();
         QuiescenceSearch.resetQuiescenceStats();
 
-        // Clear TT if too full
+        // Enhanced TT management
         if (transpositionTable.size() > SearchConfig.TT_EVICTION_THRESHOLD) {
             transpositionTable.clear();
             System.out.println("🔧 Cleared transposition table");
         }
 
-        // Reset move ordering
-        moveOrdering.resetKillerMoves();
+        // Enhanced move ordering reset - resets both killer moves and history heuristic
+        moveOrdering.resetForNewSearch();
 
         // Set evaluation time
         Evaluator.setRemainingTime(timeMillis);
         QuiescenceSearch.setRemainingTime(timeMillis);
 
-        System.out.println("🔧 Search initialized with " + currentStrategy + " - ULTRA-AGGRESSIVE MODE");
+        System.out.println("🔧 Enhanced search initialized with " + currentStrategy + " + History Heuristic");
+
+        // Show initial position analysis
+        if (isInterestingPosition(state)) {
+            System.out.println("🎯 Interesting position detected - may need deeper search");
+        }
     }
 
-    //Add better move ordering heuristics as in the prev versions
-    private static void orderMoves(List<Move> moves, GameState state, int depth) {
+    private static void orderMovesEnhanced(List<Move> moves, GameState state, int depth) {
         if (moves.size() <= 1) return;
 
         try {
             TTEntry entry = transpositionTable.get(state.hash());
-            moveOrdering.orderMoves(moves, state, depth, entry);
+            long remainingTime = timeLimitMillis - (System.currentTimeMillis() - startTime);
+
+            // Use enhanced move ordering with remaining time consideration
+            moveOrdering.orderMovesEnhanced(moves, state, depth, entry, null, remainingTime);
         } catch (Exception e) {
-            // Simple fallback ordering
+            // Fallback to simple ordering
             moves.sort((a, b) -> {
                 boolean aCap = isCapture(a, state);
                 boolean bCap = isCapture(b, state);
@@ -298,9 +316,28 @@ public class TimedMinimax {
         }
     }
 
-    // PHASE 2 FIX: More conservative abort check
+    private static void updateHistoryHeuristics(Move move, GameState state, int depth, int score) {
+        // Update on good moves (not just cutoffs for now)
+        if (Math.abs(score) > 100) { // Threshold for "good" moves
+            moveOrdering.updateHistoryOnCutoff(move, state, depth);
+        }
+    }
+
+    private static boolean isInterestingPosition(GameState state) {
+        // Simple heuristic for interesting positions (many pieces, guards active, etc.)
+        int totalPieces = 0;
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            totalPieces += state.redStackHeights[i] + state.blueStackHeights[i];
+        }
+
+        boolean guardsActive = state.redGuard != 0 && state.blueGuard != 0;
+        boolean manyPieces = totalPieces > 10;
+
+        return guardsActive && manyPieces;
+    }
+
     private static boolean shouldAbortSearch() {
-        if (!searchAborted && System.currentTimeMillis() - startTime >= timeLimitMillis * 95 / 100) { // 95% statt 98%
+        if (!searchAborted && System.currentTimeMillis() - startTime >= timeLimitMillis * 96 / 100) { // 96% threshold
             searchAborted = true;
             return true;
         }
@@ -324,6 +361,44 @@ public class TimedMinimax {
         }
     }
 
+    // === ENHANCED PUBLIC INTERFACES ===
+
+    /**
+     * Get comprehensive search statistics including history heuristic
+     */
+    public static String getEnhancedStatistics() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== ENHANCED SEARCH STATISTICS ===\n");
+        sb.append("Total nodes: ").append(statistics.getTotalNodes()).append("\n");
+        sb.append("Regular nodes: ").append(statistics.getNodeCount()).append("\n");
+        sb.append("Quiescence nodes: ").append(statistics.getQNodeCount()).append("\n");
+        sb.append(moveOrdering.getStatistics()).append("\n");
+        sb.append("Best history move: ").append(moveOrdering.getHistoryHeuristic().getBestHistoryMove()).append("\n");
+        return sb.toString();
+    }
+
+    /**
+     * Force history reset for new game
+     */
+    public static void resetForNewGame() {
+        moveOrdering.resetForNewSearch();
+        transpositionTable.clear();
+        statistics.reset();
+        System.out.println("🔄 Reset all systems for new game");
+    }
+
+    /**
+     * Get move ordering effectiveness ratio
+     */
+    public static double getMoveOrderingEffectiveness() {
+        long totalNodes = statistics.getTotalNodes();
+        if (totalNodes == 0) return 0.0;
+
+        // Simple heuristic: fewer nodes = better move ordering
+        // This is a placeholder - you might want to implement proper tracking
+        return Math.min(1.0, 1000000.0 / totalNodes);
+    }
+
     // === LEGACY COMPATIBILITY ===
 
     public static Move findBestMoveWithTime(GameState state, int maxDepth, long timeMillis) {
@@ -332,5 +407,37 @@ public class TimedMinimax {
 
     public static long getTotalNodesSearched() {
         return statistics.getTotalNodes();
+    }
+
+    // === TESTING/DEBUGGING INTERFACES ===
+
+    /**
+     * Test history heuristic effectiveness
+     */
+    public static void testHistoryHeuristic(GameState testPosition, int depth) {
+        System.out.println("=== TESTING HISTORY HEURISTIC ===");
+
+        // Reset and search without history
+        moveOrdering.getHistoryHeuristic().reset();
+        long startTime = System.currentTimeMillis();
+        Move moveWithoutHistory = findBestMoveFixed(testPosition, depth, 10000, SearchConfig.SearchStrategy.ALPHA_BETA);
+        long timeWithoutHistory = System.currentTimeMillis() - startTime;
+        long nodesWithoutHistory = statistics.getTotalNodes();
+
+        statistics.reset();
+
+        // Search with history (it will build up during search)
+        startTime = System.currentTimeMillis();
+        Move moveWithHistory = findBestMoveFixed(testPosition, depth, 10000, SearchConfig.SearchStrategy.PVS_Q);
+        long timeWithHistory = System.currentTimeMillis() - startTime;
+        long nodesWithHistory = statistics.getTotalNodes();
+
+        System.out.printf("Without History: %s (%dms, %d nodes)%n",
+                moveWithoutHistory, timeWithoutHistory, nodesWithoutHistory);
+        System.out.printf("With History: %s (%dms, %d nodes)%n",
+                moveWithHistory, timeWithHistory, nodesWithHistory);
+        System.out.printf("Improvement: %.1fx time, %.1fx nodes%n",
+                (double)timeWithoutHistory/timeWithHistory,
+                (double)nodesWithoutHistory/nodesWithHistory);
     }
 }

@@ -134,6 +134,8 @@ public class SearchEngine {
 
                 if (beta <= alpha) {
                     statistics.incrementAlphaBetaCutoffs();
+                    // HISTORY UPDATE - Nutzt das ORIGINAL state, nicht die copy!
+                    moveOrdering.updateHistoryOnCutoff(move, state, depth);
                     break;
                 }
             }
@@ -151,6 +153,8 @@ public class SearchEngine {
 
                 if (beta <= alpha) {
                     statistics.incrementAlphaBetaCutoffs();
+                    // HISTORY UPDATE - Nutzt das ORIGINAL state, nicht die copy!
+                    moveOrdering.updateHistoryOnCutoff(move, state, depth);
                     break;
                 }
             }
