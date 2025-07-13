@@ -7,25 +7,56 @@ import GaT.model.Move;
 import java.util.List;
 
 /**
- * POSITIONAL EVALUATION COMPONENT
- * Handles guard advancement, central control, piece coordination, and strategic positioning
+ * ENHANCED POSITIONAL EVALUATION COMPONENT - AGGRESSIVE PARAMETERS
+ *
+ * ENHANCEMENTS:
+ * ✅ Aggressive parameter values for stronger play
+ * ✅ Enhanced central control with tower height awareness
+ * ✅ Improved guard advancement with castle approach bonus
+ * ✅ Enhanced piece coordination with tower chain detection
+ * ✅ Endgame-specific guard activity evaluation
+ * ✅ Turm & Wächter specific strategic concepts
  */
 public class PositionalEval {
 
-    // === POSITIONAL CONSTANTS ===
-    private static final int GUARD_ADVANCEMENT_BONUS = 40;
-    private static final int CENTRAL_CONTROL_BONUS = 25;
-    private static final int MOBILITY_BONUS = 15;
-    private static final int DEVELOPMENT_BONUS = 30;
-    private static final int COORDINATION_BONUS = 20;
+    // === AGGRESSIVE POSITIONAL CONSTANTS ===
+    private static final int GUARD_ADVANCEMENT_BONUS = 50;     // Was 40 -> +25%
+    private static final int CENTRAL_CONTROL_BONUS = 50;       // Was 25 -> +100%
+    private static final int MOBILITY_BONUS = 30;              // Was 15 -> +100%
+    private static final int DEVELOPMENT_BONUS = 40;           // Was 30 -> +33%
+    private static final int COORDINATION_BONUS = 35;          // Was 20 -> +75%
 
-    // === STRATEGIC SQUARES ===
+    // === NEW: TURM & WÄCHTER SPECIFIC BONUSES ===
+    private static final int TOWER_HEIGHT_BONUS = 25;          // NEU! Pro Höhe im Zentrum
+    private static final int GUARD_CASTLE_APPROACH = 60;       // NEU! Wächter nähert sich Schloss
+    private static final int DEFENSIVE_FORMATION_BONUS = 30;   // NEU! Türme schützen Wächter
+    private static final int ENDGAME_GUARD_ACTIVITY = 80;      // NEU! Wächter-Aktivität im Endspiel
+
+    // === ERWEITERTE STRATEGISCHE QUADRATE ===
     private static final int[] CENTRAL_SQUARES = {
-            GameState.getIndex(2, 3), // D3
-            GameState.getIndex(3, 3), // D4
-            GameState.getIndex(4, 3)  // D5
+            GameState.getIndex(2, 3), GameState.getIndex(3, 3), GameState.getIndex(4, 3), // D3, D4, D5
+            GameState.getIndex(3, 2), GameState.getIndex(3, 4)  // C4, E4
     };
 
+    private static final int[] ADVANCED_SQUARES = {
+            GameState.getIndex(1, 3), GameState.getIndex(5, 3),  // D2, D6 (vordere Linien)
+            GameState.getIndex(2, 2), GameState.getIndex(2, 4),  // C3, E3
+            GameState.getIndex(4, 2), GameState.getIndex(4, 4)   // C5, E5
+    };
+
+    private static final int[] CASTLE_APPROACH_SQUARES_RED = {
+            GameState.getIndex(1, 3), GameState.getIndex(0, 3),  // D2, D1 (rotes Ziel)
+            GameState.getIndex(1, 2), GameState.getIndex(1, 4),  // C2, E2
+            GameState.getIndex(0, 2), GameState.getIndex(0, 4)   // C1, E1
+    };
+
+    private static final int[] CASTLE_APPROACH_SQUARES_BLUE = {
+            GameState.getIndex(5, 3), GameState.getIndex(6, 3),  // D6, D7 (blaues Ziel)
+            GameState.getIndex(5, 2), GameState.getIndex(5, 4),  // C6, E6
+            GameState.getIndex(6, 2), GameState.getIndex(6, 4)   // C7, E7
+    };
+
+    // === Legacy strategic squares (for compatibility) ===
     private static final int[] STRATEGIC_SQUARES = {
             GameState.getIndex(3, 3),  // D4 - Center
             GameState.getIndex(2, 3), GameState.getIndex(4, 3),  // D3, D5
@@ -36,18 +67,18 @@ public class PositionalEval {
     };
 
     /**
-     * COMPREHENSIVE POSITIONAL EVALUATION
+     * COMPREHENSIVE POSITIONAL EVALUATION - ENHANCED
      */
     public int evaluatePositional(GameState state) {
         int positionalScore = 0;
 
-        // Guard advancement (40% weight)
+        // Guard advancement (40% weight) - enhanced with castle approach
         positionalScore += evaluateGuardAdvancement(state) * 40 / 100;
 
-        // Central control (25% weight)
+        // Central control (25% weight) - enhanced with tower height
         positionalScore += evaluateCentralControl(state) * 25 / 100;
 
-        // Piece coordination (20% weight)
+        // Piece coordination (20% weight) - enhanced with defensive formations
         positionalScore += evaluatePieceCoordination(state) * 20 / 100;
 
         // Mobility and development (15% weight)
@@ -60,33 +91,70 @@ public class PositionalEval {
      * ADVANCED POSITIONAL EVALUATION - For deep analysis
      */
     public int evaluatePositionalAdvanced(GameState state) {
-        // Falls nicht vorhanden, hinzufügen:
-        return evaluatePositional(state);
+        // Enhanced evaluation with additional factors
+        int score = evaluatePositional(state);
+
+        // Add endgame-specific evaluations
+        if (isEndgame(state)) {
+            score += evaluateEndgamePositional(state);
+        }
+
+        return score;
     }
 
-    // === GUARD ADVANCEMENT EVALUATION ===
+    // === ENHANCED GUARD ADVANCEMENT ===
 
     /**
-     * Evaluate guard advancement toward enemy castle
+     * Enhanced guard advancement with endgame awareness
      */
     public int evaluateGuardAdvancement(GameState state) {
         int advancementScore = 0;
 
-        // Red guard advancement
+        // Roten Wächter bewerten
         if (state.redGuard != 0) {
-            advancementScore += evaluateGuardAdvancementForSide(state, true);
+            int guardPos = Long.numberOfTrailingZeros(state.redGuard);
+            advancementScore += evaluateGuardAdvancementForColor(guardPos, true, state);
         }
 
-        // Blue guard advancement
+        // Blauen Wächter bewerten
         if (state.blueGuard != 0) {
-            advancementScore -= evaluateGuardAdvancementForSide(state, false);
+            int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
+            advancementScore -= evaluateGuardAdvancementForColor(guardPos, false, state);
         }
 
         return advancementScore;
     }
 
+    private int evaluateGuardAdvancementForColor(int guardPos, boolean isRed, GameState state) {
+        int bonus = 0;
+        int rank = GameState.rank(guardPos);
+        int file = GameState.file(guardPos);
 
+        // Basis-Vorstoß-Bonus
+        int targetRank = isRed ? 0 : 6; // Gegnerisches Schloss
+        int rankDistance = Math.abs(rank - targetRank);
+        bonus += (7 - rankDistance) * GUARD_ADVANCEMENT_BONUS;
 
+        // File-Distanz zum D-File (Schloss steht auf D1/D7)
+        int fileDistance = Math.abs(file - 3);
+        bonus += (4 - fileDistance) * GUARD_CASTLE_APPROACH;
+
+        // Endspiel-Bonus: Wächter wird wichtiger
+        if (isEndgame(state)) {
+            bonus += ENDGAME_GUARD_ACTIVITY;
+
+            // Extra Bonus für direkte Schlossnähe im Endspiel
+            if (rankDistance <= 2 && fileDistance <= 1) {
+                bonus += ENDGAME_GUARD_ACTIVITY / 2;
+            }
+        }
+
+        return bonus;
+    }
+
+    /**
+     * Fast guard advancement evaluation (compatibility)
+     */
     public int evaluateGuardAdvancementFast(GameState state) {
         int advancementScore = 0;
 
@@ -94,110 +162,64 @@ public class PositionalEval {
         if (state.redGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.redGuard);
             int rank = GameState.rank(guardPos);
-            advancementScore += (6 - rank) * 80; // Simple rank bonus
+            advancementScore += (6 - rank) * GUARD_ADVANCEMENT_BONUS; // Enhanced bonus
         }
 
         // Blue guard
         if (state.blueGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
             int rank = GameState.rank(guardPos);
-            advancementScore -= rank * 80; // Simple rank bonus
+            advancementScore -= rank * GUARD_ADVANCEMENT_BONUS; // Enhanced bonus
         }
 
         return advancementScore;
     }
 
-    /**
-     * Detailed guard advancement evaluation for one side
-     */
-    private int evaluateGuardAdvancementForSide(GameState state, boolean isRed) {
-        long guardBit = isRed ? state.redGuard : state.blueGuard;
-        if (guardBit == 0) return 0;
-
-        int guardPos = Long.numberOfTrailingZeros(guardBit);
-        int rank = GameState.rank(guardPos);
-        int file = GameState.file(guardPos);
-
-        // Distance to enemy castle
-        int targetRank = isRed ? 0 : 6; // D1 for red, D7 for blue
-        int targetFile = 3; // D-file
-
-        int rankDistance = Math.abs(rank - targetRank);
-        int fileDistance = Math.abs(file - targetFile);
-        int totalDistance = rankDistance + fileDistance;
-
-        // Base advancement score (closer = better)
-        int advancementScore = (12 - totalDistance) * GUARD_ADVANCEMENT_BONUS;
-
-        // Bonus for being on the correct file (D-file)
-        if (file == 3) {
-            advancementScore += 150;
-        }
-
-        // Bonus for advanced positions
-        if (isRed && rank <= 2) {
-            advancementScore += (2 - rank) * 200; // Deep penetration bonus
-        } else if (!isRed && rank >= 4) {
-            advancementScore += (rank - 4) * 200;
-        }
-
-        // Path evaluation - is the path to castle clear?
-        advancementScore += evaluatePathToCastle(state, guardPos, isRed);
-
-        return advancementScore;
-    }
+    // === ENHANCED CENTRAL CONTROL ===
 
     /**
-     * Evaluate path to enemy castle
-     */
-    private int evaluatePathToCastle(GameState state, int guardPos, boolean isRed) {
-        int pathScore = 0;
-        int targetSquare = isRed ? GameState.getIndex(0, 3) : GameState.getIndex(6, 3);
-
-        // Simple path evaluation - count obstacles
-        int[] path = calculateShortestPath(guardPos, targetSquare);
-        int obstacles = 0;
-
-        for (int square : path) {
-            if (isOccupied(square, state)) {
-                if (isEnemyPiece(square, state, isRed)) {
-                    obstacles += 2; // Enemy pieces are bigger obstacles
-                } else {
-                    obstacles += 1; // Own pieces block path
-                }
-            }
-        }
-
-        // Fewer obstacles = better path
-        pathScore = Math.max(0, (10 - obstacles) * 25);
-
-        return pathScore;
-    }
-
-    // === CENTRAL CONTROL EVALUATION ===
-
-    /**
-     * Evaluate control of central squares
+     * Enhanced central control with tower height awareness
      */
     public int evaluateCentralControl(GameState state) {
         int centralScore = 0;
 
+        // Zentrale Quadrate
         for (int square : CENTRAL_SQUARES) {
-            int control = evaluateSquareControl(state, square);
-            centralScore += control * CENTRAL_CONTROL_BONUS;
+            centralScore += evaluateSquareControl(state, square, CENTRAL_CONTROL_BONUS);
+        }
+
+        // Erweiterte strategische Quadrate
+        for (int square : ADVANCED_SQUARES) {
+            centralScore += evaluateSquareControl(state, square, CENTRAL_CONTROL_BONUS / 2);
         }
 
         return centralScore;
     }
 
+    private int evaluateSquareControl(GameState state, int square, int baseBonus) {
+        int redHeight = state.redStackHeights[square];
+        int blueHeight = state.blueStackHeights[square];
+
+        if (redHeight > 0) {
+            // Hohe Türme im Zentrum sind exponentiell wertvoller
+            return baseBonus + (redHeight * TOWER_HEIGHT_BONUS);
+        }
+
+        if (blueHeight > 0) {
+            return -(baseBonus + (blueHeight * TOWER_HEIGHT_BONUS));
+        }
+
+        return 0;
+    }
+
     /**
-     * Evaluate control of strategic squares
+     * Legacy strategic control evaluation (compatibility)
      */
     public int evaluateStrategicControl(GameState state) {
         int strategicScore = 0;
 
         for (int square : STRATEGIC_SQUARES) {
-            int control = evaluateSquareControl(state, square);
+            int control = evaluateSquareControlLegacy(state, square);
             strategicScore += control * (CENTRAL_CONTROL_BONUS / 2);
         }
 
@@ -205,9 +227,9 @@ public class PositionalEval {
     }
 
     /**
-     * Evaluate who controls a specific square
+     * Legacy square control evaluation
      */
-    private int evaluateSquareControl(GameState state, int square) {
+    private int evaluateSquareControlLegacy(GameState state, int square) {
         int redControl = 0;
         int blueControl = 0;
 
@@ -231,72 +253,74 @@ public class PositionalEval {
         return redControl - blueControl;
     }
 
-    // === PIECE COORDINATION EVALUATION ===
+    // === ENHANCED PIECE COORDINATION ===
 
     /**
-     * Evaluate piece coordination and connectivity
+     * Enhanced coordination with tower chain detection
      */
     public int evaluatePieceCoordination(GameState state) {
         int coordinationScore = 0;
 
-        // Count connected pieces
-        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-            if (state.redStackHeights[i] > 0) {
-                coordinationScore += countAdjacentFriendly(state, i, true) * COORDINATION_BONUS;
-            }
-            if (state.blueStackHeights[i] > 0) {
-                coordinationScore -= countAdjacentFriendly(state, i, false) * COORDINATION_BONUS;
-            }
-        }
+        // Türme, die sich gegenseitig unterstützen können
+        coordinationScore += evaluateTowerCoordination(state, true);  // Rot
+        coordinationScore -= evaluateTowerCoordination(state, false); // Blau
 
-        // Guard support evaluation
-        coordinationScore += evaluateGuardSupport(state);
+        // Wächter-Schutz durch Türme
+        coordinationScore += evaluateGuardProtection(state, true);
+        coordinationScore -= evaluateGuardProtection(state, false);
 
         return coordinationScore;
     }
 
-    /**
-     * Evaluate support for guards
-     */
-    private int evaluateGuardSupport(GameState state) {
-        int supportScore = 0;
+    private int evaluateTowerCoordination(GameState state, boolean isRed) {
+        int bonus = 0;
 
-        // Red guard support
-        if (state.redGuard != 0) {
-            int guardPos = Long.numberOfTrailingZeros(state.redGuard);
-            int supporters = countAdjacentFriendly(state, guardPos, true);
-            supportScore += supporters * 100; // Guard support is very valuable
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            int height = isRed ? state.redStackHeights[i] : state.blueStackHeights[i];
+            if (height == 0) continue;
+
+            // Zähle unterstützende Türme in derselben Reihe/Spalte
+            int supporters = countSupportingTowers(state, i, isRed);
+            if (supporters > 0) {
+                bonus += supporters * COORDINATION_BONUS;
+
+                // Bonus für hohe Türme mit Unterstützung
+                bonus += height * supporters * 5;
+            }
         }
 
-        // Blue guard support
-        if (state.blueGuard != 0) {
-            int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
-            int supporters = countAdjacentFriendly(state, guardPos, false);
-            supportScore -= supporters * 100;
-        }
-
-        return supportScore;
+        return bonus;
     }
 
-    // === MOBILITY AND DEVELOPMENT ===
+    private int evaluateGuardProtection(GameState state, boolean isRed) {
+        long guardBit = isRed ? state.redGuard : state.blueGuard;
+        if (guardBit == 0) return 0;
+
+        int guardPos = Long.numberOfTrailingZeros(guardBit);
+        int protectors = countProtectingTowers(state, guardPos, isRed);
+
+        return protectors * DEFENSIVE_FORMATION_BONUS;
+    }
+
+    // === ENHANCED MOBILITY AND DEVELOPMENT ===
 
     /**
-     * Evaluate mobility and piece development
+     * Enhanced mobility and development evaluation
      */
     public int evaluateMobilityAndDevelopment(GameState state) {
         int mobilityScore = 0;
 
-        // Piece mobility
+        // Enhanced piece mobility
         mobilityScore += evaluatePieceMobility(state);
 
-        // Development evaluation
+        // Enhanced development evaluation
         mobilityScore += evaluateDevelopment(state);
 
         return mobilityScore;
     }
 
     /**
-     * Evaluate piece mobility
+     * Enhanced piece mobility evaluation
      */
     private int evaluatePieceMobility(GameState state) {
         int mobilityScore = 0;
@@ -305,7 +329,7 @@ public class PositionalEval {
         List<Move> moves = MoveGenerator.generateAllMoves(state);
         int moveCount = moves.size();
 
-        // More moves = better mobility
+        // More moves = better mobility (enhanced bonus)
         mobilityScore = moveCount * MOBILITY_BONUS;
 
         // Adjust for turn
@@ -317,7 +341,7 @@ public class PositionalEval {
     }
 
     /**
-     * Evaluate piece development
+     * Enhanced development evaluation
      */
     public int evaluateDevelopment(GameState state) {
         int developmentScore = 0;
@@ -338,78 +362,25 @@ public class PositionalEval {
         return developmentScore;
     }
 
-    // === ADVANCED POSITIONAL CONCEPTS ===
+    // === ENDGAME SPECIFIC EVALUATIONS ===
 
     /**
-     * Evaluate outpost squares (pieces in advanced positions)
+     * Enhanced endgame positional evaluation
      */
-    public int evaluateOutposts(GameState state) {
-        int outpostScore = 0;
+    private int evaluateEndgamePositional(GameState state) {
+        int endgameScore = 0;
 
-        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-            int rank = GameState.rank(i);
+        // Guard activity becomes crucial
+        endgameScore += evaluateGuardActivity(state);
 
-            // Red outposts (pieces deep in blue territory)
-            if (state.redStackHeights[i] > 0 && rank <= 2) {
-                outpostScore += (2 - rank) * 50 * state.redStackHeights[i];
-            }
+        // King activity (guard centralization)
+        endgameScore += evaluateKingActivity(state);
 
-            // Blue outposts (pieces deep in red territory)
-            if (state.blueStackHeights[i] > 0 && rank >= 4) {
-                outpostScore -= (rank - 4) * 50 * state.blueStackHeights[i];
-            }
-        }
-
-        return outpostScore;
+        return endgameScore;
     }
 
     /**
-     * Evaluate pawn structure equivalent (tower formations)
-     */
-    public int evaluatePawnStructure(GameState state) {
-        int structureScore = 0;
-
-        // Evaluate tower chains and formations
-        for (int file = 0; file < 7; file++) {
-            structureScore += evaluateFileStructure(state, file);
-        }
-
-        return structureScore;
-    }
-
-    /**
-     * Evaluate tower structure on a file
-     */
-    private int evaluateFileStructure(GameState state, int file) {
-        int fileScore = 0;
-
-        // Count red and blue pieces on this file
-        int redPieces = 0;
-        int bluePieces = 0;
-
-        for (int rank = 0; rank < 7; rank++) {
-            int square = GameState.getIndex(rank, file);
-            if (state.redStackHeights[square] > 0) redPieces++;
-            if (state.blueStackHeights[square] > 0) bluePieces++;
-        }
-
-        // Bonus for controlling files
-        if (redPieces > 0 && bluePieces == 0) {
-            fileScore += 25; // Red controls file
-        } else if (bluePieces > 0 && redPieces == 0) {
-            fileScore -= 25; // Blue controls file
-        }
-
-        // Central files are more valuable
-        if (file >= 2 && file <= 4) {
-            fileScore *= 2;
-        }
-
-        return fileScore;
-    }
-
-    /**
-     * Evaluate guard activity and positioning
+     * Enhanced guard activity evaluation
      */
     public int evaluateGuardActivity(GameState state) {
         int activityScore = 0;
@@ -428,7 +399,7 @@ public class PositionalEval {
     }
 
     /**
-     * Evaluate king activity (adapted from chess)
+     * Enhanced king activity (adapted for guards)
      */
     public int evaluateKingActivity(GameState state) {
         // In Guard & Towers, this evaluates guard activity in endgame
@@ -449,7 +420,7 @@ public class PositionalEval {
         int rank = GameState.rank(guardPos);
 
         int centralityScore = 6 - Math.abs(file - 3) - Math.abs(rank - 3);
-        activity += centralityScore * 10;
+        activity += centralityScore * 15; // Enhanced from 10
 
         // Mobility - count legal guard moves
         int[] directions = {-1, 1, -7, 7};
@@ -458,11 +429,81 @@ public class PositionalEval {
             if (GameState.isOnBoard(target) &&
                     !isRankWrap(guardPos, target, dir) &&
                     !isOccupiedByFriendly(target, state, isRed)) {
-                activity += 15;
+                activity += 20; // Enhanced from 15
             }
         }
 
         return activity;
+    }
+
+    // === ADVANCED POSITIONAL CONCEPTS ===
+
+    /**
+     * Enhanced outpost evaluation
+     */
+    public int evaluateOutposts(GameState state) {
+        int outpostScore = 0;
+
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            int rank = GameState.rank(i);
+
+            // Red outposts (pieces deep in blue territory)
+            if (state.redStackHeights[i] > 0 && rank <= 2) {
+                outpostScore += (2 - rank) * 60 * state.redStackHeights[i]; // Enhanced from 50
+            }
+
+            // Blue outposts (pieces deep in red territory)
+            if (state.blueStackHeights[i] > 0 && rank >= 4) {
+                outpostScore -= (rank - 4) * 60 * state.blueStackHeights[i]; // Enhanced from 50
+            }
+        }
+
+        return outpostScore;
+    }
+
+    /**
+     * Enhanced pawn structure equivalent (tower formations)
+     */
+    public int evaluatePawnStructure(GameState state) {
+        int structureScore = 0;
+
+        // Evaluate tower chains and formations
+        for (int file = 0; file < 7; file++) {
+            structureScore += evaluateFileStructure(state, file);
+        }
+
+        return structureScore;
+    }
+
+    /**
+     * Enhanced file structure evaluation
+     */
+    private int evaluateFileStructure(GameState state, int file) {
+        int fileScore = 0;
+
+        // Count red and blue pieces on this file
+        int redPieces = 0;
+        int bluePieces = 0;
+
+        for (int rank = 0; rank < 7; rank++) {
+            int square = GameState.getIndex(rank, file);
+            if (state.redStackHeights[square] > 0) redPieces++;
+            if (state.blueStackHeights[square] > 0) bluePieces++;
+        }
+
+        // Enhanced bonus for controlling files
+        if (redPieces > 0 && bluePieces == 0) {
+            fileScore += 35; // Enhanced from 25
+        } else if (bluePieces > 0 && redPieces == 0) {
+            fileScore -= 35; // Enhanced from 25
+        }
+
+        // Central files are more valuable
+        if (file >= 2 && file <= 4) {
+            fileScore *= 2;
+        }
+
+        return fileScore;
     }
 
     // === HELPER METHODS ===
@@ -482,6 +523,47 @@ public class PositionalEval {
         }
 
         return false;
+    }
+
+    private int countSupportingTowers(GameState state, int square, boolean isRed) {
+        int supporters = 0;
+        int rank = GameState.rank(square);
+        int file = GameState.file(square);
+
+        // Prüfe Reihe und Spalte
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            if (i == square) continue;
+
+            int iRank = GameState.rank(i);
+            int iFile = GameState.file(i);
+
+            // Gleiche Reihe oder Spalte?
+            if (iRank != rank && iFile != file) continue;
+
+            int height = isRed ? state.redStackHeights[i] : state.blueStackHeights[i];
+            if (height > 0) {
+                supporters++;
+            }
+        }
+
+        return supporters;
+    }
+
+    private int countProtectingTowers(GameState state, int guardPos, boolean isRed) {
+        int protectors = 0;
+
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            int height = isRed ? state.redStackHeights[i] : state.blueStackHeights[i];
+            if (height == 0) continue;
+
+            // Kann Turm den Wächter erreichen?
+            int distance = calculateManhattanDistance(i, guardPos);
+            if (distance <= height && canReachStraight(i, guardPos)) {
+                protectors++;
+            }
+        }
+
+        return protectors;
     }
 
     /**
@@ -512,8 +594,6 @@ public class PositionalEval {
      */
     private int[] calculateShortestPath(int from, int to) {
         // Simple implementation - just the direct line
-        // TODO: Implement proper pathfinding for complex scenarios
-
         int rankDiff = GameState.rank(to) - GameState.rank(from);
         int fileDiff = GameState.file(to) - GameState.file(from);
 
@@ -568,6 +648,24 @@ public class PositionalEval {
 
     // === UTILITY METHODS ===
 
+    private boolean isEndgame(GameState state) {
+        int totalMaterial = 0;
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            totalMaterial += state.redStackHeights[i] + state.blueStackHeights[i];
+        }
+        return totalMaterial <= 8; // Endspiel wenn <= 8 Türme insgesamt
+    }
+
+    private boolean canReachStraight(int from, int to) {
+        return GameState.rank(from) == GameState.rank(to) ||
+                GameState.file(from) == GameState.file(to);
+    }
+
+    private int calculateManhattanDistance(int from, int to) {
+        return Math.abs(GameState.rank(from) - GameState.rank(to)) +
+                Math.abs(GameState.file(from) - GameState.file(to));
+    }
+
     private boolean isOccupied(int square, GameState state) {
         return ((state.redTowers | state.blueTowers | state.redGuard | state.blueGuard)
                 & GameState.bit(square)) != 0;
@@ -616,17 +714,93 @@ public class PositionalEval {
         return true;
     }
 
-    private int calculateManhattanDistance(int from, int to) {
-        int rankDiff = Math.abs(GameState.rank(from) - GameState.rank(to));
-        int fileDiff = Math.abs(GameState.file(from) - GameState.file(to));
-        return rankDiff + fileDiff;
+    /**
+     * Evaluate path to enemy castle (legacy compatibility)
+     */
+    private int evaluatePathToCastle(GameState state, int guardPos, boolean isRed) {
+        int pathScore = 0;
+        int targetSquare = isRed ? GameState.getIndex(0, 3) : GameState.getIndex(6, 3);
+
+        // Simple path evaluation - count obstacles
+        int[] path = calculateShortestPath(guardPos, targetSquare);
+        int obstacles = 0;
+
+        for (int square : path) {
+            if (isOccupied(square, state)) {
+                if (isEnemyPiece(square, state, isRed)) {
+                    obstacles += 2; // Enemy pieces are bigger obstacles
+                } else {
+                    obstacles += 1; // Own pieces block path
+                }
+            }
+        }
+
+        // Fewer obstacles = better path
+        pathScore = Math.max(0, (10 - obstacles) * 25);
+
+        return pathScore;
     }
 
-    private boolean isEndgame(GameState state) {
-        int totalMaterial = 0;
-        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-            totalMaterial += state.redStackHeights[i] + state.blueStackHeights[i];
+    /**
+     * Legacy guard advancement evaluation (for compatibility)
+     */
+    private int evaluateGuardAdvancementForSide(GameState state, boolean isRed) {
+        long guardBit = isRed ? state.redGuard : state.blueGuard;
+        if (guardBit == 0) return 0;
+
+        int guardPos = Long.numberOfTrailingZeros(guardBit);
+        int rank = GameState.rank(guardPos);
+        int file = GameState.file(guardPos);
+
+        // Distance to enemy castle
+        int targetRank = isRed ? 0 : 6; // D1 for red, D7 for blue
+        int targetFile = 3; // D-file
+
+        int rankDistance = Math.abs(rank - targetRank);
+        int fileDistance = Math.abs(file - targetFile);
+        int totalDistance = rankDistance + fileDistance;
+
+        // Base advancement score (closer = better)
+        int advancementScore = (12 - totalDistance) * GUARD_ADVANCEMENT_BONUS;
+
+        // Bonus for being on the correct file (D-file)
+        if (file == 3) {
+            advancementScore += 150;
         }
-        return totalMaterial <= 8;
+
+        // Bonus for advanced positions
+        if (isRed && rank <= 2) {
+            advancementScore += (2 - rank) * 200; // Deep penetration bonus
+        } else if (!isRed && rank >= 4) {
+            advancementScore += (rank - 4) * 200;
+        }
+
+        // Path evaluation - is the path to castle clear?
+        advancementScore += evaluatePathToCastle(state, guardPos, isRed);
+
+        return advancementScore;
+    }
+
+    /**
+     * Legacy guard support evaluation (for compatibility)
+     */
+    private int evaluateGuardSupport(GameState state) {
+        int supportScore = 0;
+
+        // Red guard support
+        if (state.redGuard != 0) {
+            int guardPos = Long.numberOfTrailingZeros(state.redGuard);
+            int supporters = countAdjacentFriendly(state, guardPos, true);
+            supportScore += supporters * 100; // Guard support is very valuable
+        }
+
+        // Blue guard support
+        if (state.blueGuard != 0) {
+            int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
+            int supporters = countAdjacentFriendly(state, guardPos, false);
+            supportScore -= supporters * 100;
+        }
+
+        return supportScore;
     }
 }

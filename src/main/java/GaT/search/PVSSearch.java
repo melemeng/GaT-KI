@@ -10,16 +10,14 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 /**
- * ENHANCED PRINCIPAL VARIATION SEARCH - WITH LMR AND OPTIMIZED STRUCTURE
+ * FIXED PRINCIPAL VARIATION SEARCH - COMPATIBLE WITH SIMPLIFIED MOVE ORDERING
  *
- * ENHANCEMENTS:
- * ✅ History Heuristic integration for better move ordering
- * ✅ Null-Move Pruning with verification
- * ✅ Late-Move Reductions (LMR)
- * ✅ Graceful timeout handling
- * ✅ Enhanced statistics tracking
- * ✅ Optimized structure without code duplication
- * ✅ Proper cutoff handling with history updates
+ * FIXES:
+ * ✅ Removed dependencies on HistoryHeuristic (now simplified in MoveOrdering)
+ * ✅ Compatible with simplified moveOrdering.updateHistory() method
+ * ✅ Uses simplified move scoring without HistoryHeuristic.isQuietMove()
+ * ✅ Maintains all LMR and PVS optimizations
+ * ✅ Fixed null pointer errors from HistoryHeuristic
  */
 public class PVSSearch {
 
@@ -40,7 +38,7 @@ public class PVSSearch {
     // === MAIN PVS INTERFACE ===
 
     /**
-     * Standard PVS without Quiescence - ENHANCED WITH LMR
+     * Standard PVS without Quiescence - FIXED FOR SIMPLIFIED MOVE ORDERING
      */
     public static int search(GameState state, int depth, int alpha, int beta,
                              boolean maximizingPlayer, boolean isPVNode) {
@@ -93,7 +91,7 @@ public class PVSSearch {
     }
 
     /**
-     * PVS with Quiescence Search Integration - ENHANCED WITH LMR
+     * PVS with Quiescence Search Integration - FIXED FOR SIMPLIFIED MOVE ORDERING
      */
     public static int searchWithQuiescence(GameState state, int depth, int alpha, int beta,
                                            boolean maximizingPlayer, boolean isPVNode) {
@@ -226,12 +224,8 @@ public class PVSSearch {
         List<Move> moves = MoveGenerator.generateAllMoves(state);
         statistics.addMovesGenerated(moves.size());
 
-        // Enhanced move ordering for PV vs Non-PV nodes
-        if (isPVNode) {
-            orderMovesForPV(moves, state, depth, entry);
-        } else {
-            moveOrdering.orderMoves(moves, state, depth, entry);
-        }
+        // FIXED: Use simplified move ordering
+        moveOrdering.orderMoves(moves, state, depth, entry);
 
         Move bestMove = null;
         int originalAlpha = alpha;
@@ -263,9 +257,10 @@ public class PVSSearch {
                 if (beta <= alpha) {
                     statistics.incrementAlphaBetaCutoffs();
 
+                    // FIXED: Use simplified history update
                     if (!Minimax.isCapture(move, state)) {
                         moveOrdering.storeKillerMove(move, depth);
-                        moveOrdering.updateHistoryOnCutoff(move, state, depth);
+                        moveOrdering.updateHistory(move, depth, state);
                     }
                     break;
                 }
@@ -300,9 +295,10 @@ public class PVSSearch {
                 if (beta <= alpha) {
                     statistics.incrementAlphaBetaCutoffs();
 
+                    // FIXED: Use simplified history update
                     if (!Minimax.isCapture(move, state)) {
                         moveOrdering.storeKillerMove(move, depth);
-                        moveOrdering.updateHistoryOnCutoff(move, state, depth);
+                        moveOrdering.updateHistory(move, depth, state);
                     }
                     break;
                 }
@@ -583,55 +579,14 @@ public class PVSSearch {
         return Math.abs(fromRank - toRank) + Math.abs(fromFile - toFile);
     }
 
-    // === MOVE ORDERING ===
+    // === FIXED MOVE SCORING (NO HISTORYHEURISTIC DEPENDENCY) ===
 
-    private static void orderMovesForPV(List<Move> moves, GameState state, int depth, TTEntry entry) {
-        // TT Move has highest priority
-        if (entry != null && entry.bestMove != null) {
-            for (int i = 0; i < moves.size(); i++) {
-                if (moves.get(i).equals(entry.bestMove)) {
-                    Move ttMove = moves.remove(i);
-                    moves.add(0, ttMove);
-                    break;
-                }
-            }
-        }
-
-        // Enhanced move ordering for PV nodes
-        if (moves.size() > 1) {
-            int startIndex = (entry != null && entry.bestMove != null) ? 1 : 0;
-            List<Move> restMoves = moves.subList(startIndex, moves.size());
-
-            restMoves.sort((a, b) -> {
-                int scoreA = scoreMoveForPVEnhanced(state, a, depth);
-                int scoreB = scoreMoveForPVEnhanced(state, b, depth);
-                return Integer.compare(scoreB, scoreA);
-            });
-        }
-    }
-
-    private static int scoreMoveForPVEnhanced(GameState state, Move move, int depth) {
-        int score = Minimax.scoreMove(state, move);
-
-        if (!Minimax.isCapture(move, state)) {
-            if (moveOrdering.getHistoryHeuristic().isQuietMove(move, state)) {
-                boolean isRedMove = state.redToMove;
-                score += moveOrdering.getHistoryHeuristic().getScore(move, isRedMove);
-            }
-
-            score += move.to * 2;
-            score += move.amountMoved * 5;
-
-            int targetFile = GameState.file(move.to);
-            int targetRank = GameState.rank(move.to);
-            int centrality = Math.abs(targetFile - 3) + Math.abs(targetRank - 3);
-            score += (6 - centrality) * 3;
-
-            long hash = state.hash();
-            score += (int)(hash % 20) - 10;
-        }
-
-        return score;
+    /**
+     * FIXED: Simplified move scoring without HistoryHeuristic dependency
+     */
+    private static int scoreMoveForPVSimplified(GameState state, Move move, int depth) {
+        // Use the unified scoreMove from MoveOrdering
+        return moveOrdering.scoreMove(move, state, depth, null);
     }
 
     private static void storeTTEntry(long hash, int score, int depth, int originalAlpha, int beta, Move bestMove) {
@@ -665,7 +620,10 @@ public class PVSSearch {
 
     // === LEGACY COMPATIBILITY ===
 
+    /**
+     * FIXED: Legacy compatibility method - uses simplified move ordering
+     */
     public static void orderMovesAdvanced(List<Move> moves, GameState state, int depth, TTEntry entry) {
-        orderMovesForPV(moves, state, depth, entry);
+        moveOrdering.orderMoves(moves, state, depth, entry);
     }
 }

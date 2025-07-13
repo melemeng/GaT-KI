@@ -21,22 +21,35 @@ import java.util.List;
  */
 public class Evaluator {
 
-    // === BALANCED EVALUATION CONSTANTS ===
+    // === AGGRESSIVE EVALUATION CONSTANTS ===
     private static final int TOWER_BASE_VALUE = 100;
     private static final int GUARD_BASE_VALUE = 50;
-    private static final int CASTLE_REACH_SCORE = 5000;  // Reduced from 10000
-    private static final int GUARD_CAPTURE_SCORE = 4000; // Reduced from 8000
+    private static final int CASTLE_REACH_SCORE = 5000;
+    private static final int GUARD_CAPTURE_SCORE = 4000;
 
-    // === REASONABLE BONUSES ===
-    private static final int GUARD_ADVANCEMENT_BONUS = 25;  // Was 60
-    private static final int CENTRAL_BONUS = 15;            // Was 40
-    private static final int MOBILITY_BONUS = 8;            // Was 15
-    private static final int COORDINATION_BONUS = 12;       // Was 25
-    private static final int THREAT_BONUS = 30;             // Was 100
+    // === AGGRESSIVE BONUSES (deutlich erhöht) ===
+    private static final int GUARD_ADVANCEMENT_BONUS = 50;  // War 25 -> +100%
+    private static final int CENTRAL_BONUS = 50;            // War 15 -> +233%
+    private static final int MOBILITY_BONUS = 30;           // War 8 -> +275%
+    private static final int COORDINATION_BONUS = 40;       // War 12 -> +233%
+    private static final int THREAT_BONUS = 80;             // War 30 -> +167%
+    private static final int CLUSTER_BONUS = 40;            // NEU! Koordinierte Türme
+
+    // === ZUSÄTZLICHE AGGRESSIVE BONUSES ===
+    private static final int TOWER_CHAIN_BONUS = 60;        // NEU! Sich sehende Türme
+    private static final int GUARD_MOBILITY_ENDGAME = 100;  // NEU! Wächter-Aktivität im Endspiel
+    private static final int CASTLE_APPROACH_BONUS = 25;    // NEU! Pro Feld näher zum Schloss
+    // Was 100
 
     // === STRATEGIC SQUARES ===
     private static final int[] CENTRAL_SQUARES = {
-            GameState.getIndex(2, 3), GameState.getIndex(3, 3), GameState.getIndex(4, 3) // D3, D4, D5
+            GameState.getIndex(2, 3), GameState.getIndex(3, 3), GameState.getIndex(4, 3), // D3, D4, D5
+            GameState.getIndex(3, 2), GameState.getIndex(3, 4)  // C4, E4 (auch zentral!)
+    };
+    private static final int[] ADVANCED_SQUARES = {
+            GameState.getIndex(1, 3), GameState.getIndex(5, 3),  // D2, D6 (vorgeschobene Positionen)
+            GameState.getIndex(2, 2), GameState.getIndex(2, 4),  // C3, E3
+            GameState.getIndex(4, 2), GameState.getIndex(4, 4)   // C5, E5
     };
 
     // === CASTLE POSITIONS ===

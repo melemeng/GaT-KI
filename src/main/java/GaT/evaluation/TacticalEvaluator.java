@@ -7,41 +7,203 @@ import GaT.search.MoveGenerator;
 import java.util.List;
 
 /**
- * TACTICAL EVALUATOR - Complete Implementation
+ * TACTICAL EVALUATOR - Complete Enhanced Implementation
  *
  * Provides tactical pattern recognition and evaluation for Guards and Towers.
  * This is a lightweight evaluator that focuses on tactical features only.
  * It does NOT extend Evaluator to avoid circular dependencies.
+ *
+ * ENHANCEMENTS:
+ * ✅ Added Cluster Bonus for coordinated towers
+ * ✅ Enhanced tower chain detection
+ * ✅ Improved guard protection evaluation
+ * ✅ Turm & Wächter specific tactical patterns
  */
 public class TacticalEvaluator {
 
-    // === CONSTANTS ===
+    // === ENHANCED CONSTANTS ===
     private static final int FORK_BONUS = 150;
     private static final int PIN_BONUS = 120;
     private static final int TOWER_CHAIN_BONUS = 80;
     private static final int FORCING_MOVE_BONUS = 60;
     private static final int DISCOVERY_BONUS = 100;
 
+    // === NEW: CLUSTER BONUSES ===
+    private static final int CLUSTER_BONUS = 40;               // Coordinated towers
+    private static final int TOWER_COORDINATION_BONUS = 60;    // Towers that can see each other
+    private static final int GUARD_PROTECTION_CLUSTER = 30;    // Guard protected by tower cluster
+
     // === MAIN EVALUATION ===
 
     /**
-     * Evaluate tactical features of the position
+     * Evaluate tactical features of the position - ENHANCED with Cluster Bonus
      */
     public int evaluateTactical(GameState state) {
         if (state == null) return 0;
 
         int tacticalScore = 0;
 
-        // Pattern detection
+        // Original pattern detection
         tacticalScore += detectForks(state);
         tacticalScore += detectPins(state);
         tacticalScore += detectTowerChains(state);
         tacticalScore += evaluateForcingMoves(state);
 
+        // NEW: Cluster-Bonus (very important for Turm & Wächter!)
+        tacticalScore += evaluateClusterBonus(state);
+
         return tacticalScore;
     }
 
-    // === FORK DETECTION ===
+    // === NEW: CLUSTER BONUS IMPLEMENTATION ===
+
+    /**
+     * Evaluate cluster bonuses for coordinated towers
+     * In Turm & Wächter coordinated towers are exponentially more powerful!
+     */
+    public int evaluateClusterBonus(GameState state) {
+        if (state == null) return 0;
+
+        int clusterScore = 0;
+
+        // Check red clusters
+        clusterScore += evaluateColorCluster(state, true);
+
+        // Check blue clusters
+        clusterScore -= evaluateColorCluster(state, false);
+
+        return clusterScore;
+    }
+
+    /**
+     * Evaluate cluster for one color
+     */
+    private int evaluateColorCluster(GameState state, boolean isRed) {
+        int bonus = 0;
+
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            int height = isRed ? state.redStackHeights[i] : state.blueStackHeights[i];
+            if (height == 0) continue;
+
+            // Check sight lines to other own towers
+            int connectedTowers = countConnectedTowers(state, i, isRed);
+
+            if (connectedTowers >= 1) {
+                // Basic bonus for connection
+                bonus += TOWER_COORDINATION_BONUS;
+
+                // Height bonus: High towers in chains are extremely valuable
+                bonus += height * connectedTowers * 15;
+
+                // Centrality bonus for clusters
+                if (isCentralSquare(i)) {
+                    bonus += CLUSTER_BONUS;
+                }
+
+                // Special bonus: Clusters with 3+ towers (rare but powerful)
+                if (connectedTowers >= 2) {
+                    bonus += CLUSTER_BONUS * 2;
+                }
+            }
+
+            // Guard protection through tower cluster
+            if (isGuardProtectedByCluster(state, i, isRed)) {
+                bonus += GUARD_PROTECTION_CLUSTER;
+            }
+        }
+
+        return bonus;
+    }
+
+    /**
+     * Count connected towers (that can "see" each other)
+     */
+    private int countConnectedTowers(GameState state, int square, boolean isRed) {
+        int connected = 0;
+        int height = isRed ? state.redStackHeights[square] : state.blueStackHeights[square];
+
+        // Check all 4 directions (orthogonal)
+        int[] directions = {-1, 1, -7, 7}; // Left, Right, Up, Down
+
+        for (int dir : directions) {
+            for (int dist = 1; dist <= height; dist++) {
+                int target = square + dir * dist;
+
+                // Boundary check
+                if (!isValidSquare(target, square, dir)) break;
+
+                // Blockade check
+                if (hasBlockingPiece(state, square, target)) break;
+
+                // Own tower found?
+                int targetHeight = isRed ? state.redStackHeights[target] : state.blueStackHeights[target];
+                if (targetHeight > 0) {
+                    connected++;
+                    break; // Only nearest tower in this direction counts
+                }
+            }
+        }
+
+        return connected;
+    }
+
+    /**
+     * Check if guard is protected by tower cluster
+     */
+    private boolean isGuardProtectedByCluster(GameState state, int towerSquare, boolean isRed) {
+        long guardBit = isRed ? state.redGuard : state.blueGuard;
+        if (guardBit == 0) return false;
+
+        int guardPos = Long.numberOfTrailingZeros(guardBit);
+        int distance = calculateManhattanDistance(towerSquare, guardPos);
+
+        // Can tower reach guard?
+        int towerHeight = isRed ? state.redStackHeights[towerSquare] : state.blueStackHeights[towerSquare];
+
+        return distance <= towerHeight && canReachSquare(state, towerSquare, guardPos, towerHeight);
+    }
+
+    // === ENHANCED HELPER METHODS ===
+
+    private boolean isValidSquare(int target, int from, int direction) {
+        if (target < 0 || target >= GameState.NUM_SQUARES) return false;
+
+        int fromFile = GameState.file(from);
+        int targetFile = GameState.file(target);
+
+        // Horizontal movement: same rank
+        if (Math.abs(direction) == 1) {
+            return GameState.rank(from) == GameState.rank(target);
+        }
+        // Vertical movement: same file
+        else {
+            return fromFile == targetFile;
+        }
+    }
+
+    private boolean hasBlockingPiece(GameState state, int from, int to) {
+        // Simplified blockade check
+        // For full implementation, check complete path
+        int direction = getDirection(from, to);
+        if (direction == 0) return false;
+
+        int current = from + direction;
+        while (current != to && GameState.isOnBoard(current)) {
+            if (state.redStackHeights[current] > 0 || state.blueStackHeights[current] > 0) {
+                return true;
+            }
+            current += direction;
+        }
+        return false;
+    }
+
+    private boolean isCentralSquare(int square) {
+        int file = GameState.file(square);
+        int rank = GameState.rank(square);
+        return file >= 2 && file <= 4 && rank >= 2 && rank <= 4;
+    }
+
+    // === ORIGINAL FORK DETECTION ===
 
     /**
      * Detect fork opportunities (attacking 2+ targets)

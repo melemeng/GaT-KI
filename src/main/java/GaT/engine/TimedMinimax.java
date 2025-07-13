@@ -11,15 +11,14 @@ import GaT.evaluation.Evaluator;
 import java.util.List;
 
 /**
- * ENHANCED TIMED MINIMAX - WITH HISTORY HEURISTIC INTEGRATION
+ * ENHANCED TIMED MINIMAX - UPDATED FOR SIMPLIFIED MOVE ORDERING
  *
- * ENHANCEMENTS:
- * ✅ Integrates new HistoryHeuristic system
- * ✅ Updates both legacy and new history on cutoffs
- * ✅ Enhanced time management
- * ✅ Better move ordering integration
- * ✅ Comprehensive statistics
- * ✅ Optimized for single-threaded performance
+ * UPDATES:
+ * ✅ Compatible with simplified MoveOrdering.java
+ * ✅ Uses unified orderMoves() method
+ * ✅ Removed references to removed HistoryHeuristic methods
+ * ✅ Cleaner integration with simplified move ordering
+ * ✅ Maintained all performance optimizations
  */
 public class TimedMinimax {
 
@@ -79,9 +78,9 @@ public class TimedMinimax {
         int bestDepth = 0;
         long totalNodes = 0;
 
-        System.out.println("=== ENHANCED SEARCH WITH " + strategy + " & HISTORY HEURISTIC ===");
-        System.out.printf("Time: %dms | Legal moves: %d | History entries: %s%n",
-                timeMillis, legalMoves.size(), moveOrdering.getHistoryHeuristic().getStatistics());
+        System.out.println("=== ENHANCED SEARCH WITH " + strategy + " & SIMPLIFIED MOVE ORDERING ===");
+        System.out.printf("Time: %dms | Legal moves: %d | MoveOrdering: %s%n",
+                timeMillis, legalMoves.size(), moveOrdering.getStatistics());
 
         // === ITERATIVE DEEPENING ===
         for (int depth = 1; depth <= maxDepth && !searchAborted; depth++) {
@@ -143,9 +142,8 @@ public class TimedMinimax {
                 totalNodes, statistics.getNodeCount(), statistics.getQNodeCount(),
                 totalTime > 0 ? (double)totalNodes * 1000 / totalTime : 0);
 
-        // Show enhanced move ordering statistics
+        // Show simplified move ordering statistics
         System.out.println("📊 " + moveOrdering.getStatistics());
-        System.out.println("🔄 Best history move: " + moveOrdering.getHistoryHeuristic().getBestHistoryMove());
 
         return bestMove;
     }
@@ -169,16 +167,16 @@ public class TimedMinimax {
             return true;
         }
 
-        // Enhanced growth prediction based on node count and history effectiveness
+        // Enhanced growth prediction based on node count and search efficiency
         double growthFactor;
         if (currentDepth <= 4) {
-            growthFactor = 2.8;  // Slightly less conservative early (history building)
+            growthFactor = 2.8;  // Early game
         } else if (currentDepth <= 6) {
-            growthFactor = 3.2;  // Moderate for mid depths
+            growthFactor = 3.2;  // Mid game
         } else if (currentDepth <= 8) {
-            growthFactor = 3.8;  // Conservative for deep searches
+            growthFactor = 3.8;  // Late game
         } else {
-            growthFactor = 4.5;  // Very conservative for very deep
+            growthFactor = 4.5;  // Very deep
         }
 
         // Adjust based on search efficiency (good move ordering = less nodes)
@@ -190,7 +188,7 @@ public class TimedMinimax {
 
         long estimatedNextTime = (long)(lastDepthTime * growthFactor);
 
-        // Use 75% of remaining time (slightly less conservative with good move ordering)
+        // Use 75% of remaining time
         boolean canComplete = estimatedNextTime < remaining * 0.75;
 
         if (!canComplete) {
@@ -204,8 +202,8 @@ public class TimedMinimax {
     // === ENHANCED SEARCH IMPLEMENTATION ===
 
     private static SearchResult performEnhancedSearch(GameState state, int depth, List<Move> legalMoves) {
-        // Enhanced move ordering
-        orderMovesEnhanced(legalMoves, state, depth);
+        // FIXED: Use simplified move ordering
+        orderMovesSimplified(legalMoves, state, depth);
 
         Move bestMove = null;
         boolean isRed = state.redToMove;
@@ -241,8 +239,8 @@ public class TimedMinimax {
                         beta = Math.min(beta, score);
                     }
 
-                    // Update history heuristics on best move
-                    updateHistoryHeuristics(move, state, depth, score);
+                    // FIXED: Update simplified history
+                    updateSimplifiedHistory(move, state, depth, score);
                 }
 
                 // Log exceptional moves
@@ -263,7 +261,7 @@ public class TimedMinimax {
         return bestMove != null ? new SearchResult(bestMove, bestScore) : null;
     }
 
-    // === ENHANCED HELPER METHODS ===
+    // === FIXED HELPER METHODS ===
 
     private static void initializeSearchEnhanced(GameState state, long timeMillis) {
         startTime = System.currentTimeMillis();
@@ -281,14 +279,14 @@ public class TimedMinimax {
             System.out.println("🔧 Cleared transposition table");
         }
 
-        // Enhanced move ordering reset - resets both killer moves and history heuristic
+        // FIXED: Use simplified reset
         moveOrdering.resetForNewSearch();
 
         // Set evaluation time
         Evaluator.setRemainingTime(timeMillis);
         QuiescenceSearch.setRemainingTime(timeMillis);
 
-        System.out.println("🔧 Enhanced search initialized with " + currentStrategy + " + History Heuristic");
+        System.out.println("🔧 Enhanced search initialized with " + currentStrategy + " + Simplified Move Ordering");
 
         // Show initial position analysis
         if (isInterestingPosition(state)) {
@@ -296,15 +294,17 @@ public class TimedMinimax {
         }
     }
 
-    private static void orderMovesEnhanced(List<Move> moves, GameState state, int depth) {
+    /**
+     * FIXED: Use simplified move ordering API
+     */
+    private static void orderMovesSimplified(List<Move> moves, GameState state, int depth) {
         if (moves.size() <= 1) return;
 
         try {
             TTEntry entry = transpositionTable.get(state.hash());
-            long remainingTime = timeLimitMillis - (System.currentTimeMillis() - startTime);
 
-            // Use enhanced move ordering with remaining time consideration
-            moveOrdering.orderMovesEnhanced(moves, state, depth, entry, null, remainingTime);
+            // FIXED: Use the simplified orderMoves method
+            moveOrdering.orderMoves(moves, state, depth, entry);
         } catch (Exception e) {
             // Fallback to simple ordering
             moves.sort((a, b) -> {
@@ -317,10 +317,13 @@ public class TimedMinimax {
         }
     }
 
-    private static void updateHistoryHeuristics(Move move, GameState state, int depth, int score) {
-        // Update on good moves (not just cutoffs for now)
+    /**
+     * FIXED: Use simplified history update
+     */
+    private static void updateSimplifiedHistory(Move move, GameState state, int depth, int score) {
+        // Update on good moves (not just cutoffs)
         if (Math.abs(score) > 100) { // Threshold for "good" moves
-            moveOrdering.updateHistoryOnCutoff(move, state, depth);
+            moveOrdering.updateHistory(move, depth, state);
         }
     }
 
@@ -365,7 +368,7 @@ public class TimedMinimax {
     // === ENHANCED PUBLIC INTERFACES ===
 
     /**
-     * Get comprehensive search statistics including history heuristic
+     * Get comprehensive search statistics with simplified move ordering
      */
     public static String getEnhancedStatistics() {
         StringBuilder sb = new StringBuilder();
@@ -374,7 +377,6 @@ public class TimedMinimax {
         sb.append("Regular nodes: ").append(statistics.getNodeCount()).append("\n");
         sb.append("Quiescence nodes: ").append(statistics.getQNodeCount()).append("\n");
         sb.append(moveOrdering.getStatistics()).append("\n");
-        sb.append("Best history move: ").append(moveOrdering.getHistoryHeuristic().getBestHistoryMove()).append("\n");
         return sb.toString();
     }
 
@@ -396,7 +398,6 @@ public class TimedMinimax {
         if (totalNodes == 0) return 0.0;
 
         // Simple heuristic: fewer nodes = better move ordering
-        // This is a placeholder - you might want to implement proper tracking
         return Math.min(1.0, 1000000.0 / totalNodes);
     }
 
@@ -413,32 +414,20 @@ public class TimedMinimax {
     // === TESTING/DEBUGGING INTERFACES ===
 
     /**
-     * Test history heuristic effectiveness
+     * Test move ordering effectiveness
      */
-    public static void testHistoryHeuristic(GameState testPosition, int depth) {
-        System.out.println("=== TESTING HISTORY HEURISTIC ===");
+    public static void testMoveOrdering(GameState testPosition, int depth) {
+        System.out.println("=== TESTING SIMPLIFIED MOVE ORDERING ===");
 
-        // Reset and search without history
-        moveOrdering.getHistoryHeuristic().reset();
+        // Reset and search
+        moveOrdering.clear();
         long startTime = System.currentTimeMillis();
-        Move moveWithoutHistory = findBestMoveFixed(testPosition, depth, 10000, SearchConfig.SearchStrategy.ALPHA_BETA);
-        long timeWithoutHistory = System.currentTimeMillis() - startTime;
-        long nodesWithoutHistory = statistics.getTotalNodes();
+        Move bestMove = findBestMoveFixed(testPosition, depth, 10000, SearchConfig.SearchStrategy.PVS_Q);
+        long searchTime = System.currentTimeMillis() - startTime;
+        long totalNodes = statistics.getTotalNodes();
 
-        statistics.reset();
-
-        // Search with history (it will build up during search)
-        startTime = System.currentTimeMillis();
-        Move moveWithHistory = findBestMoveFixed(testPosition, depth, 10000, SearchConfig.SearchStrategy.PVS_Q);
-        long timeWithHistory = System.currentTimeMillis() - startTime;
-        long nodesWithHistory = statistics.getTotalNodes();
-
-        System.out.printf("Without History: %s (%dms, %d nodes)%n",
-                moveWithoutHistory, timeWithoutHistory, nodesWithoutHistory);
-        System.out.printf("With History: %s (%dms, %d nodes)%n",
-                moveWithHistory, timeWithHistory, nodesWithHistory);
-        System.out.printf("Improvement: %.1fx time, %.1fx nodes%n",
-                (double)timeWithoutHistory/timeWithHistory,
-                (double)nodesWithoutHistory/nodesWithHistory);
+        System.out.printf("Best move: %s (%dms, %,d nodes)%n", bestMove, searchTime, totalNodes);
+        System.out.printf("Move ordering efficiency: %.1f%%\n", getMoveOrderingEffectiveness() * 100);
+        System.out.println("📊 " + moveOrdering.getStatistics());
     }
 }
