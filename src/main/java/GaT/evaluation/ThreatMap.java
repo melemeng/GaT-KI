@@ -3,14 +3,19 @@ package GaT.evaluation;
 import GaT.model.GameState;
 import GaT.model.Move;
 import GaT.search.MoveGenerator;
+import static GaT.evaluation.EvaluationParameters.*;
 
 import java.util.*;
 
 /**
- * THREAT MAP - Lightweight Threat Detection
+ * ✅ FIXED THREAT MAP - Moderate Threat Analysis
  *
- * Efficient threat analysis that integrates with existing evaluation modules.
- * Focuses on immediate and 2-move threats for optimal performance.
+ * 🚨 PREVIOUS PROBLEMS SOLVED:
+ * ❌ No parameter standardization → ✅ NOW uses EvaluationParameters for threat values
+ * ❌ Potential performance issues → ✅ NOW optimized with moderate limits
+ * ❌ Could contribute to evaluation imbalance → ✅ NOW provides balanced threat assessment
+ *
+ * PRINCIPLE: Efficient threat analysis that integrates with material-dominant evaluation
  */
 public class ThreatMap {
 
@@ -43,9 +48,9 @@ public class ThreatMap {
     private final List<Threat>[] redThreats = new List[49];
     private final List<Threat>[] blueThreats = new List[49];
 
-    // Threat values
-    private static final int GUARD_THREAT_VALUE = 1000;
-    private static final int TOWER_THREAT_VALUE = 100;
+    // ✅ FIXED: Moderate threat values based on EvaluationParameters
+    private static final int GUARD_THREAT_VALUE = GUARD_CAPTURE_SCORE / 5;  // 800 instead of overwhelming values
+    private static final int TOWER_THREAT_VALUE = TOWER_BASE_VALUE;         // 100 per tower height
 
     public ThreatMap() {
         // Initialize threat arrays
@@ -56,7 +61,7 @@ public class ThreatMap {
     }
 
     /**
-     * Build threat map for current position - OPTIMIZED
+     * ✅ FIXED: Build threat map for current position - Optimized with moderate limits
      */
     public void buildThreatMap(GameState state) {
         clearThreats();
@@ -64,7 +69,7 @@ public class ThreatMap {
         // Immediate threats only (for performance)
         analyzeImmediateThreats(state);
 
-        // 2-move threats only in critical positions
+        // ✅ FIXED: 2-move threats only in critical positions (moderate analysis)
         if (isCriticalPosition(state)) {
             analyzeDelayedThreats(state);
         }
@@ -81,7 +86,7 @@ public class ThreatMap {
     }
 
     /**
-     * Analyze immediate threats - FAST
+     * ✅ FIXED: Analyze immediate threats - Moderate assessment
      */
     private void analyzeImmediateThreats(GameState state) {
         // Red's immediate threats
@@ -101,7 +106,11 @@ public class ThreatMap {
 
         List<Move> moves = MoveGenerator.generateAllMoves(simState);
 
+        // ✅ FIXED: Limit move analysis for performance (moderate limit)
+        int analyzed = 0;
         for (Move move : moves) {
+            if (analyzed++ >= 25) break; // Moderate limit for performance
+
             // Check what this move threatens
             int targetValue = evaluateMoveTarget(state, move, isRed);
 
@@ -115,12 +124,12 @@ public class ThreatMap {
     }
 
     /**
-     * Analyze 2-move threats - LIMITED
+     * ✅ FIXED: Analyze 2-move threats - Limited and moderate
      */
     private void analyzeDelayedThreats(GameState state) {
-        // Only analyze first 10 moves to avoid timeout
-        analyzeDelayedThreatsForSide(state, true, 10);
-        analyzeDelayedThreatsForSide(state, false, 10);
+        // ✅ FIXED: Only analyze first 8 moves to avoid timeout (reduced from 10)
+        analyzeDelayedThreatsForSide(state, true, 8);
+        analyzeDelayedThreatsForSide(state, false, 8);
     }
 
     private void analyzeDelayedThreatsForSide(GameState state, boolean isRed, int limit) {
@@ -139,10 +148,15 @@ public class ThreatMap {
 
             List<Move> secondMoves = MoveGenerator.generateAllMoves(afterFirst);
 
+            // ✅ FIXED: Limit second moves too for performance
+            int secondAnalyzed = 0;
             for (Move move2 : secondMoves) {
+                if (secondAnalyzed++ >= 8) break;
+
                 int targetValue = evaluateMoveTarget(afterFirst, move2, isRed);
 
-                if (targetValue > TOWER_THREAT_VALUE * 2) { // Only significant threats
+                // ✅ FIXED: Only significant threats (moderate threshold)
+                if (targetValue > TOWER_THREAT_VALUE) { // 100+ points
                     List<Threat>[] threats = isRed ? redThreats : blueThreats;
                     threats[move2.to].add(new Threat(
                             move2.to, move1.from, ThreatType.DELAYED, 2, targetValue
@@ -153,28 +167,28 @@ public class ThreatMap {
     }
 
     /**
-     * Evaluate what a move threatens
+     * ✅ FIXED: Evaluate move target with moderate threat values
      */
     private int evaluateMoveTarget(GameState state, Move move, boolean byRed) {
         int targetSquare = move.to;
         int value = 0;
 
-        // Check if threatens enemy guard
+        // ✅ FIXED: Check if threatens enemy guard (moderate value)
         long enemyGuard = byRed ? state.blueGuard : state.redGuard;
         if (enemyGuard != 0 && targetSquare == Long.numberOfTrailingZeros(enemyGuard)) {
-            return GUARD_THREAT_VALUE;
+            return GUARD_THREAT_VALUE; // 800, not overwhelming
         }
 
-        // Check if threatens enemy piece
+        // ✅ FIXED: Check if threatens enemy piece (moderate values)
         if (byRed) {
-            value = state.blueStackHeights[targetSquare] * TOWER_THREAT_VALUE;
+            value = state.blueStackHeights[targetSquare] * TOWER_THREAT_VALUE; // 100 per height
         } else {
             value = state.redStackHeights[targetSquare] * TOWER_THREAT_VALUE;
         }
 
-        // Check if threatens castle entry
+        // ✅ FIXED: Check if threatens castle entry (moderate value)
         if (threatensCastle(state, move, byRed)) {
-            value = Math.max(value, GUARD_THREAT_VALUE / 2);
+            value = Math.max(value, GUARD_THREAT_VALUE / 2); // 400 points
         }
 
         return value;
@@ -190,45 +204,49 @@ public class ThreatMap {
     }
 
     /**
-     * Calculate threat score for evaluation - FAST
+     * ✅ FIXED: Calculate threat score for evaluation - Moderate values
      */
     public int calculateThreatScore(GameState state) {
         int threatScore = 0;
 
-        // Evaluate threats to important squares only
+        // ✅ FIXED: Evaluate threats to important squares only (performance optimization)
         for (int i = 0; i < 49; i++) {
-            // Skip empty squares
+            // Skip empty squares for performance
             if (state.redStackHeights[i] == 0 && state.blueStackHeights[i] == 0) {
-                continue;
+                // Check if guards are here
+                if ((state.redGuard & GameState.bit(i)) == 0 &&
+                        (state.blueGuard & GameState.bit(i)) == 0) {
+                    continue;
+                }
             }
 
-            // Red threats
+            // ✅ FIXED: Red threats with moderate values
             for (Threat threat : redThreats[i]) {
                 int value = threat.threatValue;
-                if (threat.type == ThreatType.DELAYED) value /= 2;
-                threatScore += value;
+                if (threat.type == ThreatType.DELAYED) value /= 2; // Delayed threats worth half
+                threatScore += value / 10; // Scale down to avoid overwhelming evaluation
             }
 
-            // Blue threats
+            // ✅ FIXED: Blue threats with moderate values
             for (Threat threat : blueThreats[i]) {
                 int value = threat.threatValue;
                 if (threat.type == ThreatType.DELAYED) value /= 2;
-                threatScore -= value;
+                threatScore -= value / 10; // Scale down
             }
         }
 
-        // Special handling for guard threats
+        // ✅ FIXED: Moderate special handling for guard threats
         if (state.redGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.redGuard);
             if (!blueThreats[guardPos].isEmpty()) {
-                threatScore -= 300; // Extra penalty for threatened guard
+                threatScore -= 50; // Moderate penalty (was 300!)
             }
         }
 
         if (state.blueGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
             if (!redThreats[guardPos].isEmpty()) {
-                threatScore += 300;
+                threatScore += 50; // Moderate bonus
             }
         }
 
@@ -239,6 +257,8 @@ public class ThreatMap {
      * Check if any immediate threats exist to a square
      */
     public boolean hasImmediateThreat(int square, boolean byRed) {
+        if (square < 0 || square >= 49) return false;
+
         List<Threat>[] threats = byRed ? redThreats : blueThreats;
         for (Threat threat : threats[square]) {
             if (threat.type == ThreatType.IMMEDIATE) {
@@ -248,28 +268,34 @@ public class ThreatMap {
         return false;
     }
 
-    // === HELPER METHODS ===
+    // === ✅ FIXED HELPER METHODS WITH MODERATE CRITERIA ===
 
+    /**
+     * ✅ FIXED: Critical position detection with moderate criteria
+     */
     private boolean isCriticalPosition(GameState state) {
-        // Guards advanced
+        // ✅ FIXED: Guards moderately advanced
         if (state.redGuard != 0) {
             int rank = GameState.rank(Long.numberOfTrailingZeros(state.redGuard));
-            if (rank <= 2) return true;
+            if (rank <= 3) return true; // Moderately advanced (was 2)
         }
         if (state.blueGuard != 0) {
             int rank = GameState.rank(Long.numberOfTrailingZeros(state.blueGuard));
-            if (rank >= 4) return true;
+            if (rank >= 3) return true; // Moderately advanced (was 4)
         }
 
-        // Low material
+        // ✅ FIXED: Moderate material threshold
         int totalMaterial = 0;
         for (int i = 0; i < 49; i++) {
             totalMaterial += state.redStackHeights[i] + state.blueStackHeights[i];
         }
 
-        return totalMaterial <= 10;
+        return totalMaterial <= 12; // Moderate threshold (was 10)
     }
 
+    /**
+     * ✅ FIXED: Castle threat detection with moderate criteria
+     */
     private boolean threatensCastle(GameState state, Move move, boolean byRed) {
         // Check if guard move threatens castle
         long guardBit = byRed ? state.redGuard : state.blueGuard;
@@ -277,9 +303,102 @@ public class ThreatMap {
             return false;
         }
 
-        int targetCastle = byRed ? GameState.getIndex(0, 3) : GameState.getIndex(6, 3);
-        int distance = Math.abs(GameState.rank(move.to) - GameState.rank(targetCastle));
+        int targetCastle = byRed ? BLUE_CASTLE_INDEX : RED_CASTLE_INDEX;
+        int distance = Math.abs(GameState.rank(move.to) - GameState.rank(targetCastle)) +
+                Math.abs(GameState.file(move.to) - GameState.file(targetCastle));
 
-        return distance <= 1;
+        return distance <= 2; // Moderate threat range (was 1)
+    }
+
+    // === ADDITIONAL UTILITY METHODS ===
+
+    /**
+     * ✅ Get total threat count for a side (moderate assessment)
+     */
+    public int getThreatCount(boolean isRed) {
+        int count = 0;
+        List<Threat>[] threats = isRed ? redThreats : blueThreats;
+
+        for (int i = 0; i < 49; i++) {
+            count += threats[i].size();
+        }
+
+        return count;
+    }
+
+    /**
+     * ✅ Get highest value threat for a side (moderate assessment)
+     */
+    public int getHighestThreatValue(boolean isRed) {
+        int maxValue = 0;
+        List<Threat>[] threats = isRed ? redThreats : blueThreats;
+
+        for (int i = 0; i < 49; i++) {
+            for (Threat threat : threats[i]) {
+                maxValue = Math.max(maxValue, threat.threatValue);
+            }
+        }
+
+        return maxValue;
+    }
+
+    /**
+     * ✅ Check if guard is under multiple threats (moderate assessment)
+     */
+    public boolean isGuardUnderMultipleThreats(GameState state, boolean isRed) {
+        long guardBit = isRed ? state.redGuard : state.blueGuard;
+        if (guardBit == 0) return false;
+
+        int guardPos = Long.numberOfTrailingZeros(guardBit);
+        List<Threat>[] enemyThreats = isRed ? blueThreats : redThreats;
+
+        return enemyThreats[guardPos].size() >= 2;
+    }
+
+    /**
+     * ✅ Get threat density in area around square (moderate assessment)
+     */
+    public int getThreatDensity(GameState state, int centerSquare, boolean byRed, int radius) {
+        int density = 0;
+        List<Threat>[] threats = byRed ? redThreats : blueThreats;
+
+        int centerRank = GameState.rank(centerSquare);
+        int centerFile = GameState.file(centerSquare);
+
+        for (int i = 0; i < 49; i++) {
+            int rank = GameState.rank(i);
+            int file = GameState.file(i);
+
+            int distance = Math.abs(rank - centerRank) + Math.abs(file - centerFile);
+            if (distance <= radius) {
+                density += threats[i].size();
+            }
+        }
+
+        return density;
+    }
+
+    /**
+     * ✅ Debug method to print threat summary
+     */
+    public void printThreatSummary(GameState state) {
+        System.out.println("=== ✅ FIXED THREAT MAP SUMMARY ===");
+        System.out.println("Red threats: " + getThreatCount(true));
+        System.out.println("Blue threats: " + getThreatCount(false));
+        System.out.println("Red max threat value: " + getHighestThreatValue(true));
+        System.out.println("Blue max threat value: " + getHighestThreatValue(false));
+
+        // Guard threat status
+        if (state.redGuard != 0) {
+            boolean multipleThreats = isGuardUnderMultipleThreats(state, true);
+            System.out.println("Red guard under multiple threats: " + multipleThreats);
+        }
+
+        if (state.blueGuard != 0) {
+            boolean multipleThreats = isGuardUnderMultipleThreats(state, false);
+            System.out.println("Blue guard under multiple threats: " + multipleThreats);
+        }
+
+        System.out.println("Threat score contribution: " + calculateThreatScore(state));
     }
 }

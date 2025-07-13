@@ -3,41 +3,22 @@ package GaT.evaluation;
 import GaT.model.GameState;
 import GaT.model.Move;
 import GaT.search.MoveGenerator;
+import static GaT.evaluation.EvaluationParameters.*;
 
 import java.util.List;
 
 /**
- * ENHANCED SAFETY EVALUATION COMPONENT
+ * ✅ FIXED SAFETY EVALUATION COMPONENT - Reasonable Penalties
  *
- * ✅ Enhanced for aggressive coordinated play
- * ✅ Better threat detection for cluster formations
- * ✅ Improved guard protection evaluation
- * ✅ Enhanced escape route analysis
- * ✅ Coordination-aware safety assessment
+ * 🚨 PREVIOUS DISASTER SOLVED:
+ * ❌ Guard danger penalty was 800 points! → ✅ NOW 120 from EvaluationParameters
+ * ❌ Massive local penalties (350, 400, 200) → ✅ NOW moderate from centralized params
+ * ❌ Safety bonuses were overwhelming → ✅ NOW balanced with material evaluation
+ * ❌ Parameter chaos → ✅ NOW uses only EvaluationParameters
  *
- * Handles guard safety, threat analysis, and defensive evaluation.
- * Integrates with ThreatMap for advanced threat detection.
+ * PRINCIPLE: Safety evaluation provides important warnings but doesn't dominate material
  */
 public class SafetyEval {
-
-    // === ✅ ENHANCED SAFETY CONSTANTS ===
-    private static final int GUARD_DANGER_PENALTY = 800;           // Erhöht von 600
-    private static final int GUARD_PROTECTION_BONUS = 200;         // Erhöht von 150
-    private static final int ESCAPE_ROUTE_BONUS = 100;             // Erhöht von 80
-    private static final int DEFENDER_BONUS = 70;                  // Erhöht von 50
-    private static final int PIN_PENALTY = 350;                    // Erhöht von 250
-    private static final int FORK_PENALTY = 400;                   // Erhöht von 300
-    private static final int OVERLOADED_DEFENDER_PENALTY = 200;    // Erhöht von 150
-
-    // === ✅ NEW: COORDINATION-AWARE SAFETY BONUSES ===
-    private static final int CLUSTER_PROTECTION_BONUS = 120;       // NEU! Schutz durch Turm-Cluster
-    private static final int COORDINATED_DEFENSE_BONUS = 80;       // NEU! Koordinierte Verteidigung
-    private static final int GUARD_ESCORT_SAFETY = 150;            // NEU! Wächter-Begleitung
-    private static final int EMERGENCY_SUPPORT_BONUS = 100;        // NEU! Notfall-Unterstützung
-
-    // === CASTLE INDICES ===
-    private static final int RED_CASTLE_INDEX = GameState.getIndex(6, 3); // D7
-    private static final int BLUE_CASTLE_INDEX = GameState.getIndex(0, 3); // D1
 
     // === THREAT MAP (passed from ModularEvaluator) ===
     private ThreatMap threatMap = null;
@@ -50,50 +31,50 @@ public class SafetyEval {
     }
 
     /**
-     * ✅ ENHANCED COMPREHENSIVE GUARD SAFETY EVALUATION
+     * ✅ FIXED COMPREHENSIVE GUARD SAFETY EVALUATION - Reasonable penalties
      */
     public int evaluateGuardSafety(GameState state) {
         int safetyScore = 0;
 
-        // Enhanced basic danger assessment
+        // ✅ FIXED: Basic danger assessment with reasonable penalties
         safetyScore += evaluateGuardSafetyBasic(state);
 
-        // Enhanced escape route analysis
-        safetyScore += evaluateEnhancedEscapeRoutes(state);
+        // ✅ FIXED: Moderate escape route analysis
+        safetyScore += evaluateModerateEscapeRoutes(state);
 
-        // Enhanced protection and support evaluation
-        safetyScore += evaluateEnhancedGuardProtection(state);
+        // ✅ FIXED: Moderate protection and support evaluation
+        safetyScore += evaluateModerateGuardProtection(state);
 
-        // Enhanced tactical vulnerabilities
-        safetyScore += evaluateEnhancedTacticalVulnerabilities(state);
+        // ✅ FIXED: Moderate tactical vulnerabilities
+        safetyScore += evaluateModerateTacticalVulnerabilities(state);
 
-        // ✅ NEW: Coordination-aware safety
-        safetyScore += evaluateCoordinationSafety(state);
+        // ✅ FIXED: Moderate coordination-aware safety
+        safetyScore += evaluateModerateCoordinationSafety(state);
 
         return safetyScore;
     }
 
     /**
-     * ✅ ENHANCED BASIC GUARD SAFETY - More aggressive threat detection
+     * ✅ FIXED BASIC GUARD SAFETY - Reasonable threat detection
      */
     public int evaluateGuardSafetyBasic(GameState state) {
         int safetyScore = 0;
 
-        // Enhanced immediate danger check
+        // ✅ FIXED: Reasonable immediate danger check (120 instead of 800!)
         if (isGuardInDanger(state, true)) {
-            safetyScore -= GUARD_DANGER_PENALTY;
+            safetyScore -= Safety.GUARD_DANGER_PENALTY;  // 120 from EvaluationParameters
 
-            // ✅ Additional penalty if guard is isolated
+            // ✅ FIXED: Moderate additional penalty if guard is isolated
             if (isGuardIsolated(state, true)) {
-                safetyScore -= GUARD_DANGER_PENALTY / 2;
+                safetyScore -= Safety.ISOLATED_PENALTY;  // 25 from EvaluationParameters
             }
         }
 
         if (isGuardInDanger(state, false)) {
-            safetyScore += GUARD_DANGER_PENALTY;
+            safetyScore += Safety.GUARD_DANGER_PENALTY;
 
             if (isGuardIsolated(state, false)) {
-                safetyScore += GUARD_DANGER_PENALTY / 2;
+                safetyScore += Safety.ISOLATED_PENALTY;
             }
         }
 
@@ -101,15 +82,15 @@ public class SafetyEval {
     }
 
     /**
-     * ADVANCED GUARD SAFETY - Deep analysis
+     * ADVANCED GUARD SAFETY - Full analysis with moderate penalties
      */
     public int evaluateGuardSafetyAdvanced(GameState state) {
-        // Full safety evaluation with all enhancements
+        // Full safety evaluation with all moderate enhancements
         return evaluateGuardSafety(state);
     }
 
     /**
-     * ✅ Enhanced guard danger detection with cluster awareness
+     * ✅ FIXED: Guard danger detection with reasonable assessment
      */
     public boolean isGuardInDanger(GameState state, boolean checkRed) {
         long guardBit = checkRed ? state.redGuard : state.blueGuard;
@@ -117,19 +98,19 @@ public class SafetyEval {
 
         int guardPos = Long.numberOfTrailingZeros(guardBit);
 
-        // Check with threat map if available (enhanced)
+        // Check with threat map if available
         if (threatMap != null && threatMap.hasImmediateThreat(guardPos, !checkRed)) {
             return true;
         }
 
-        // Enhanced fallback to traditional check
+        // ✅ FIXED: Reasonable fallback to traditional check
         GameState simState = state.copy();
         simState.redToMove = !checkRed;
         List<Move> enemyMoves = MoveGenerator.generateAllMoves(simState);
 
         for (Move move : enemyMoves) {
             if (move.to == guardPos) {
-                // ✅ Check if attack is actually dangerous (not easily defended)
+                // ✅ FIXED: Check if attack is actually dangerous (not easily defended)
                 if (!canDefendAgainst(state, move, checkRed)) {
                     return true;
                 }
@@ -140,18 +121,18 @@ public class SafetyEval {
     }
 
     /**
-     * Count total threats in position - enhanced
+     * ✅ FIXED: Count total threats with moderate assessment
      */
     public int countThreats(GameState state) {
         int threats = 0;
 
-        // Enhanced threat counting with coordination awareness
+        // ✅ FIXED: Moderate threat counting with coordination awareness
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
             if (state.redStackHeights[i] > 0) {
                 if (isSquareUnderAttack(state, i, false)) {
                     int threatValue = state.redStackHeights[i];
 
-                    // ✅ Reduced threat value if piece is well-supported
+                    // ✅ FIXED: Moderate threat reduction if piece is well-supported
                     int support = countSupportingPieces(state, i, true);
                     if (support >= 2) {
                         threatValue /= 2; // Well-supported pieces are less threatened
@@ -177,93 +158,93 @@ public class SafetyEval {
         return threats;
     }
 
-    // === ✅ NEW: COORDINATION-AWARE SAFETY EVALUATION ===
+    // === ✅ FIXED COORDINATION-AWARE SAFETY (MODERATE) ===
 
     /**
-     * ✅ Evaluate safety through piece coordination
+     * ✅ FIXED: Moderate safety through piece coordination
      */
-    private int evaluateCoordinationSafety(GameState state) {
+    private int evaluateModerateCoordinationSafety(GameState state) {
         int coordinationSafety = 0;
 
         // Red guard coordination safety
         if (state.redGuard != 0) {
-            coordinationSafety += evaluateGuardCoordinationSafety(state, true);
+            coordinationSafety += evaluateModerateGuardCoordinationSafety(state, true);
         }
 
         // Blue guard coordination safety
         if (state.blueGuard != 0) {
-            coordinationSafety -= evaluateGuardCoordinationSafety(state, false);
+            coordinationSafety -= evaluateModerateGuardCoordinationSafety(state, false);
         }
 
         return coordinationSafety;
     }
 
     /**
-     * ✅ Evaluate guard safety through coordination
+     * ✅ FIXED: Moderate guard safety through coordination
      */
-    private int evaluateGuardCoordinationSafety(GameState state, boolean isRed) {
+    private int evaluateModerateGuardCoordinationSafety(GameState state, boolean isRed) {
         long guardBit = isRed ? state.redGuard : state.blueGuard;
         if (guardBit == 0) return 0;
 
         int guardPos = Long.numberOfTrailingZeros(guardBit);
         int safety = 0;
 
-        // ✅ Cluster protection bonus
+        // ✅ FIXED: Moderate cluster protection bonus from EvaluationParameters
         int nearbyTowers = countNearbyTowers(state, guardPos, isRed, 2);
         if (nearbyTowers >= 2) {
-            safety += CLUSTER_PROTECTION_BONUS;
+            safety += Safety.CLUSTER_PROTECTION_BONUS;  // 25 from EvaluationParameters
 
-            // Extra bonus for 3+ towers
+            // Extra bonus for 3+ towers (moderate)
             if (nearbyTowers >= 3) {
-                safety += CLUSTER_PROTECTION_BONUS / 2;
+                safety += Safety.CLUSTER_PROTECTION_BONUS / 2;  // 12-13 extra
             }
         }
 
-        // ✅ Coordinated defense bonus
+        // ✅ FIXED: Moderate coordinated defense bonus from EvaluationParameters
         int coordinatedDefenders = countCoordinatedDefenders(state, guardPos, isRed);
-        safety += coordinatedDefenders * COORDINATED_DEFENSE_BONUS;
+        safety += coordinatedDefenders * Safety.COORDINATED_DEFENSE_BONUS;  // 20 per defender
 
-        // ✅ Guard escort safety
+        // ✅ FIXED: Moderate guard escort safety from EvaluationParameters
         if (hasCloseEscort(state, guardPos, isRed)) {
-            safety += GUARD_ESCORT_SAFETY;
+            safety += Safety.GUARD_ESCORT_SAFETY;  // 35 from EvaluationParameters
         }
 
-        // ✅ Emergency support availability
+        // ✅ FIXED: Moderate emergency support from EvaluationParameters
         if (hasEmergencySupport(state, guardPos, isRed)) {
-            safety += EMERGENCY_SUPPORT_BONUS;
+            safety += Safety.EMERGENCY_SUPPORT_BONUS;  // 25 from EvaluationParameters
         }
 
         return safety;
     }
 
-    // === ✅ ENHANCED ESCAPE ROUTE ANALYSIS ===
+    // === ✅ FIXED ESCAPE ROUTE ANALYSIS (MODERATE) ===
 
-    private int evaluateEnhancedEscapeRoutes(GameState state) {
+    private int evaluateModerateEscapeRoutes(GameState state) {
         int escapeScore = 0;
 
-        // Enhanced red guard escape routes
+        // ✅ FIXED: Moderate red guard escape routes
         if (state.redGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.redGuard);
-            int escapeRoutes = countEnhancedEscapeSquares(state, guardPos, true);
-            escapeScore += escapeRoutes * ESCAPE_ROUTE_BONUS;
+            int escapeRoutes = countModerateEscapeSquares(state, guardPos, true);
+            escapeScore += escapeRoutes * Safety.ESCAPE_ROUTE_BONUS;  // 15 per route
 
-            // ✅ Bonus for quality of escape routes
-            escapeScore += evaluateEscapeRouteQuality(state, guardPos, true);
+            // ✅ FIXED: Moderate bonus for quality of escape routes
+            escapeScore += evaluateModerateEscapeRouteQuality(state, guardPos, true);
         }
 
-        // Enhanced blue guard escape routes
+        // ✅ FIXED: Moderate blue guard escape routes
         if (state.blueGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
-            int escapeRoutes = countEnhancedEscapeSquares(state, guardPos, false);
-            escapeScore -= escapeRoutes * ESCAPE_ROUTE_BONUS;
+            int escapeRoutes = countModerateEscapeSquares(state, guardPos, false);
+            escapeScore -= escapeRoutes * Safety.ESCAPE_ROUTE_BONUS;
 
-            escapeScore -= evaluateEscapeRouteQuality(state, guardPos, false);
+            escapeScore -= evaluateModerateEscapeRouteQuality(state, guardPos, false);
         }
 
         return escapeScore;
     }
 
-    private int countEnhancedEscapeSquares(GameState state, int guardPos, boolean isRed) {
+    private int countModerateEscapeSquares(GameState state, int guardPos, boolean isRed) {
         int escapeRoutes = 0;
         int[] directions = {-1, 1, -7, 7}; // left, right, up, down
 
@@ -286,9 +267,9 @@ public class SafetyEval {
     }
 
     /**
-     * ✅ Evaluate quality of escape routes
+     * ✅ FIXED: Moderate evaluation of escape route quality
      */
-    private int evaluateEscapeRouteQuality(GameState state, int guardPos, boolean isRed) {
+    private int evaluateModerateEscapeRouteQuality(GameState state, int guardPos, boolean isRed) {
         int quality = 0;
         int[] directions = {-1, 1, -7, 7};
 
@@ -301,13 +282,13 @@ public class SafetyEval {
                     state.blueStackHeights[escapeSquare] == 0;
 
             if (isEmpty && !isSquareUnderAttack(state, escapeSquare, !isRed)) {
-                // ✅ Higher quality if escape square is protected
+                // ✅ FIXED: Moderate quality for protected escape squares
                 int protection = countSupportingPieces(state, escapeSquare, isRed);
-                quality += protection * 30;
+                quality += protection * (Safety.ESCAPE_ROUTE_BONUS / 2);  // ~7 per protector
 
-                // ✅ Higher quality if escape leads toward own pieces
+                // ✅ FIXED: Moderate quality if escape leads toward own pieces
                 if (leadsTowardSupport(state, escapeSquare, isRed)) {
-                    quality += 50;
+                    quality += Safety.ESCAPE_ROUTE_BONUS;  // 15 points
                 }
             }
         }
@@ -315,86 +296,86 @@ public class SafetyEval {
         return quality;
     }
 
-    // === ✅ ENHANCED GUARD PROTECTION ===
+    // === ✅ FIXED GUARD PROTECTION (MODERATE) ===
 
-    private int evaluateEnhancedGuardProtection(GameState state) {
+    private int evaluateModerateGuardProtection(GameState state) {
         int protectionScore = 0;
 
-        // Enhanced red guard protection
+        // ✅ FIXED: Moderate red guard protection
         if (state.redGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.redGuard);
-            int protectors = countEnhancedGuardProtectors(state, guardPos, true);
-            protectionScore += protectors * DEFENDER_BONUS;
+            int protectors = countModerateGuardProtectors(state, guardPos, true);
+            protectionScore += protectors * Safety.DEFENDER_BONUS;  // 20 per protector
         }
 
-        // Enhanced blue guard protection
+        // ✅ FIXED: Moderate blue guard protection
         if (state.blueGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
-            int protectors = countEnhancedGuardProtectors(state, guardPos, false);
-            protectionScore -= protectors * DEFENDER_BONUS;
+            int protectors = countModerateGuardProtectors(state, guardPos, false);
+            protectionScore -= protectors * Safety.DEFENDER_BONUS;
         }
 
         return protectionScore;
     }
 
-    private int countEnhancedGuardProtectors(GameState state, int guardPos, boolean isRed) {
+    private int countModerateGuardProtectors(GameState state, int guardPos, boolean isRed) {
         int protectors = 0;
 
-        // Enhanced protection counting
+        // ✅ FIXED: Moderate protection counting
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
             if ((isRed && state.redStackHeights[i] > 0) ||
                     (!isRed && state.blueStackHeights[i] > 0)) {
 
-                if (canProtectSquareEnhanced(state, i, guardPos, isRed)) {
+                if (canProtectSquareModerate(state, i, guardPos, isRed)) {
                     protectors++;
 
-                    // ✅ Extra credit for close protectors
+                    // ✅ FIXED: Moderate extra credit for close protectors
                     int distance = calculateManhattanDistance(i, guardPos);
                     if (distance <= 1) {
-                        protectors++; // Double count adjacent protectors
+                        protectors++; // Double count adjacent protectors (still moderate)
                     }
                 }
             }
         }
 
-        return protectors;
+        return Math.min(protectors, 4); // Cap at 4 to avoid excessive bonuses
     }
 
-    // === ✅ ENHANCED TACTICAL VULNERABILITIES ===
+    // === ✅ FIXED TACTICAL VULNERABILITIES (MODERATE) ===
 
-    private int evaluateEnhancedTacticalVulnerabilities(GameState state) {
+    private int evaluateModerateTacticalVulnerabilities(GameState state) {
         int vulnerabilityScore = 0;
 
-        // Enhanced pin detection
-        vulnerabilityScore += evaluateEnhancedPins(state);
+        // ✅ FIXED: Moderate pin detection
+        vulnerabilityScore += evaluateModeratePins(state);
 
-        // Enhanced fork detection
-        vulnerabilityScore += evaluateEnhancedForks(state);
+        // ✅ FIXED: Moderate fork detection
+        vulnerabilityScore += evaluateModerateForks(state);
 
-        // Enhanced overloaded defenders
-        vulnerabilityScore += evaluateEnhancedOverloadedDefenders(state);
+        // ✅ FIXED: Moderate overloaded defenders
+        vulnerabilityScore += evaluateModerateOverloadedDefenders(state);
 
         return vulnerabilityScore;
     }
 
     /**
-     * ✅ Enhanced pin detection with coordination awareness
+     * ✅ FIXED: Moderate pin detection from EvaluationParameters
      */
-    private int evaluateEnhancedPins(GameState state) {
+    private int evaluateModeratePins(GameState state) {
         int pinScore = 0;
 
-        // Enhanced pin detection for red pieces
+        // ✅ FIXED: Moderate pin detection for red pieces
         if (state.redGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.redGuard);
 
             for (int i = 0; i < GameState.NUM_SQUARES; i++) {
                 if (state.redStackHeights[i] > 0 && isPiecePinned(state, i, guardPos, true)) {
-                    int penalty = PIN_PENALTY;
+                    int penalty = Safety.PIN_PENALTY;  // 60 from EvaluationParameters
 
-                    // ✅ Reduced penalty if piece has support
+                    // ✅ FIXED: Moderate penalty reduction if piece has support
                     int support = countSupportingPieces(state, i, true);
                     if (support >= 2) {
-                        penalty /= 2;
+                        penalty /= 2;  // 30 if well supported
                     }
 
                     pinScore -= penalty;
@@ -402,13 +383,13 @@ public class SafetyEval {
             }
         }
 
-        // Enhanced pin detection for blue pieces
+        // ✅ FIXED: Moderate pin detection for blue pieces
         if (state.blueGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
 
             for (int i = 0; i < GameState.NUM_SQUARES; i++) {
                 if (state.blueStackHeights[i] > 0 && isPiecePinned(state, i, guardPos, false)) {
-                    int penalty = PIN_PENALTY;
+                    int penalty = Safety.PIN_PENALTY;
 
                     int support = countSupportingPieces(state, i, false);
                     if (support >= 2) {
@@ -424,24 +405,24 @@ public class SafetyEval {
     }
 
     /**
-     * ✅ Enhanced fork evaluation
+     * ✅ FIXED: Moderate fork evaluation from EvaluationParameters
      */
-    private int evaluateEnhancedForks(GameState state) {
+    private int evaluateModerateForks(GameState state) {
         int forkScore = 0;
 
-        // Enhanced fork threat evaluation
+        // ✅ FIXED: Moderate fork threat evaluation
         GameState testState = state.copy();
         testState.redToMove = true;
         List<Move> redMoves = MoveGenerator.generateAllMoves(testState);
 
         for (Move move : redMoves) {
-            int threats = countThreatsFromSquareEnhanced(state, move.to, move.amountMoved, true);
+            int threats = countThreatsFromSquareModerate(state, move.to, move.amountMoved, true);
             if (threats >= 2) {
-                int bonus = FORK_PENALTY;
+                int bonus = Safety.FORK_PENALTY;  // 80 from EvaluationParameters
 
-                // ✅ Enhanced bonus if targets are poorly defended
+                // ✅ FIXED: Moderate bonus if targets are poorly defended
                 if (targetsArePoorlyDefended(state, move, true)) {
-                    bonus += FORK_PENALTY / 2;
+                    bonus += Safety.FORK_PENALTY / 2;  // 40 extra
                 }
 
                 forkScore += bonus;
@@ -452,12 +433,12 @@ public class SafetyEval {
         List<Move> blueMoves = MoveGenerator.generateAllMoves(testState);
 
         for (Move move : blueMoves) {
-            int threats = countThreatsFromSquareEnhanced(state, move.to, move.amountMoved, false);
+            int threats = countThreatsFromSquareModerate(state, move.to, move.amountMoved, false);
             if (threats >= 2) {
-                int bonus = FORK_PENALTY;
+                int bonus = Safety.FORK_PENALTY;
 
                 if (targetsArePoorlyDefended(state, move, false)) {
-                    bonus += FORK_PENALTY / 2;
+                    bonus += Safety.FORK_PENALTY / 2;
                 }
 
                 forkScore -= bonus;
@@ -468,19 +449,19 @@ public class SafetyEval {
     }
 
     /**
-     * ✅ Enhanced overloaded defender evaluation
+     * ✅ FIXED: Moderate overloaded defender evaluation from EvaluationParameters
      */
-    private int evaluateEnhancedOverloadedDefenders(GameState state) {
+    private int evaluateModerateOverloadedDefenders(GameState state) {
         int overloadScore = 0;
 
-        // Enhanced overload detection
+        // ✅ FIXED: Moderate overload detection
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
             if (state.redStackHeights[i] > 0) {
-                int defendedTargets = countDefendedTargetsEnhanced(state, i, true);
+                int defendedTargets = countDefendedTargetsModerate(state, i, true);
                 if (defendedTargets >= 2) {
-                    int penalty = OVERLOADED_DEFENDER_PENALTY * (defendedTargets - 1);
+                    int penalty = Safety.OVERLOADED_DEFENDER_PENALTY * (defendedTargets - 1);  // 50 base
 
-                    // ✅ Reduced penalty if defender has backup
+                    // ✅ FIXED: Moderate penalty reduction if defender has backup
                     if (hasBackupDefender(state, i, true)) {
                         penalty /= 2;
                     }
@@ -489,9 +470,9 @@ public class SafetyEval {
                 }
             }
             if (state.blueStackHeights[i] > 0) {
-                int defendedTargets = countDefendedTargetsEnhanced(state, i, false);
+                int defendedTargets = countDefendedTargetsModerate(state, i, false);
                 if (defendedTargets >= 2) {
-                    int penalty = OVERLOADED_DEFENDER_PENALTY * (defendedTargets - 1);
+                    int penalty = Safety.OVERLOADED_DEFENDER_PENALTY * (defendedTargets - 1);
 
                     if (hasBackupDefender(state, i, false)) {
                         penalty /= 2;
@@ -505,7 +486,7 @@ public class SafetyEval {
         return overloadScore;
     }
 
-    // === ✅ NEW ENHANCED HELPER METHODS ===
+    // === ✅ FIXED HELPER METHODS (MODERATE ASSESSMENTS) ===
 
     /**
      * ✅ Check if guard is isolated (no nearby support)
@@ -519,7 +500,7 @@ public class SafetyEval {
     }
 
     /**
-     * ✅ Check if attack can be defended against
+     * ✅ FIXED: Moderate check if attack can be defended against
      */
     private boolean canDefendAgainst(GameState state, Move attack, boolean defendingRed) {
         // Simple check: can we block, capture attacker, or move guard safely
@@ -537,11 +518,11 @@ public class SafetyEval {
         }
 
         // Can guard move to safety?
-        return countEnhancedEscapeSquares(state, targetSquare, defendingRed) > 0;
+        return countModerateEscapeSquares(state, targetSquare, defendingRed) > 0;
     }
 
     /**
-     * ✅ Count nearby towers within radius
+     * ✅ Count nearby towers within radius (moderate range)
      */
     private int countNearbyTowers(GameState state, int center, boolean isRed, int radius) {
         int count = 0;
@@ -558,11 +539,11 @@ public class SafetyEval {
             }
         }
 
-        return count;
+        return Math.min(count, 5); // Cap to avoid excessive bonuses
     }
 
     /**
-     * ✅ Count coordinated defenders
+     * ✅ Count coordinated defenders (moderate assessment)
      */
     private int countCoordinatedDefenders(GameState state, int guardPos, boolean isRed) {
         int defenders = 0;
@@ -571,7 +552,7 @@ public class SafetyEval {
             int height = isRed ? state.redStackHeights[i] : state.blueStackHeights[i];
             if (height > 0) {
                 // Can this piece both reach guard and support other pieces?
-                if (canProtectSquareEnhanced(state, i, guardPos, isRed)) {
+                if (canProtectSquareModerate(state, i, guardPos, isRed)) {
                     int otherSupport = countSupportingPieces(state, i, isRed);
                     if (otherSupport > 0) {
                         defenders++;
@@ -580,7 +561,7 @@ public class SafetyEval {
             }
         }
 
-        return defenders;
+        return Math.min(defenders, 3); // Cap to avoid excessive bonuses
     }
 
     /**
@@ -604,7 +585,7 @@ public class SafetyEval {
     }
 
     /**
-     * ✅ Check if emergency support is available
+     * ✅ Check if emergency support is available (moderate range)
      */
     private boolean hasEmergencySupport(GameState state, int guardPos, boolean isRed) {
         // Check if pieces can quickly move to support guard
@@ -612,7 +593,7 @@ public class SafetyEval {
             int height = isRed ? state.redStackHeights[i] : state.blueStackHeights[i];
             if (height > 0) {
                 int distance = calculateManhattanDistance(i, guardPos);
-                if (distance <= height && distance <= 3) { // Can reach in one move, within 3 squares
+                if (distance <= height && distance <= 2) { // Can reach in one move, within 2 squares
                     return true;
                 }
             }
@@ -640,15 +621,15 @@ public class SafetyEval {
     }
 
     /**
-     * ✅ Enhanced square protection check
+     * ✅ FIXED: Moderate square protection check
      */
-    private boolean canProtectSquareEnhanced(GameState state, int piecePos, int targetSquare, boolean isRed) {
+    private boolean canProtectSquareModerate(GameState state, int piecePos, int targetSquare, boolean isRed) {
         if (piecePos == targetSquare) return false;
 
         int movementRange = isRed ? state.redStackHeights[piecePos] : state.blueStackHeights[piecePos];
         if (movementRange <= 0) return false;
 
-        // Enhanced protection: can reach target or adjacent squares
+        // Moderate protection: can reach target or adjacent squares
         int[] directions = {-1, 1, -7, 7};
         for (int dir : directions) {
             int protectionSquare = targetSquare + dir;
@@ -667,7 +648,7 @@ public class SafetyEval {
     }
 
     /**
-     * ✅ Count supporting pieces for a square
+     * ✅ Count supporting pieces for a square (moderate count)
      */
     private int countSupportingPieces(GameState state, int target, boolean isRed) {
         int supporters = 0;
@@ -680,6 +661,7 @@ public class SafetyEval {
                 int distance = calculateManhattanDistance(i, target);
                 if (distance <= height && isOnSameLine(i, target) && isPathClear(state, i, target)) {
                     supporters++;
+                    if (supporters >= 3) break; // Cap for performance
                 }
             }
         }
@@ -688,9 +670,9 @@ public class SafetyEval {
     }
 
     /**
-     * ✅ Enhanced threat counting from square
+     * ✅ FIXED: Moderate threat counting from square
      */
-    private int countThreatsFromSquareEnhanced(GameState state, int square, int moveRange, boolean byRed) {
+    private int countThreatsFromSquareModerate(GameState state, int square, int moveRange, boolean byRed) {
         int threats = 0;
         int[] directions = {-1, 1, -7, 7};
 
@@ -723,11 +705,11 @@ public class SafetyEval {
             }
         }
 
-        return threats;
+        return Math.min(threats, 4); // Cap threats to avoid excessive values
     }
 
     /**
-     * ✅ Check if fork targets are poorly defended
+     * ✅ Check if fork targets are poorly defended (moderate assessment)
      */
     private boolean targetsArePoorlyDefended(GameState state, Move forkMove, boolean byRed) {
         int poorlyDefendedTargets = 0;
@@ -761,9 +743,9 @@ public class SafetyEval {
     }
 
     /**
-     * ✅ Enhanced defended targets counting
+     * ✅ FIXED: Moderate defended targets counting
      */
-    private int countDefendedTargetsEnhanced(GameState state, int defenderPos, boolean isRed) {
+    private int countDefendedTargetsModerate(GameState state, int defenderPos, boolean isRed) {
         int defendedCount = 0;
         int range = isRed ? state.redStackHeights[defenderPos] : state.blueStackHeights[defenderPos];
 
@@ -771,19 +753,20 @@ public class SafetyEval {
         long guardBit = isRed ? state.redGuard : state.blueGuard;
         if (guardBit != 0) {
             int guardPos = Long.numberOfTrailingZeros(guardBit);
-            if (canProtectSquareEnhanced(state, defenderPos, guardPos, isRed)) {
+            if (canProtectSquareModerate(state, defenderPos, guardPos, isRed)) {
                 defendedCount += 2; // Guard defense counts as 2
             }
         }
 
-        // Check if defending other pieces
+        // Check if defending other pieces (but cap the count)
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
             if (i == defenderPos) continue;
+            if (defendedCount >= 4) break; // Cap to avoid excessive penalties
 
             if ((isRed && state.redStackHeights[i] > 0) ||
                     (!isRed && state.blueStackHeights[i] > 0)) {
 
-                if (canProtectSquareEnhanced(state, defenderPos, i, isRed)) {
+                if (canProtectSquareModerate(state, defenderPos, i, isRed)) {
                     defendedCount++;
                 }
             }
@@ -793,7 +776,7 @@ public class SafetyEval {
     }
 
     /**
-     * ✅ Check if defender has backup
+     * ✅ Check if defender has backup (moderate assessment)
      */
     private boolean hasBackupDefender(GameState state, int defenderPos, boolean isRed) {
         // Check if other pieces can also defend the same targets
@@ -806,7 +789,7 @@ public class SafetyEval {
                 long guardBit = isRed ? state.redGuard : state.blueGuard;
                 if (guardBit != 0) {
                     int guardPos = Long.numberOfTrailingZeros(guardBit);
-                    if (canProtectSquareEnhanced(state, i, guardPos, isRed)) {
+                    if (canProtectSquareModerate(state, i, guardPos, isRed)) {
                         return true;
                     }
                 }
@@ -817,7 +800,7 @@ public class SafetyEval {
     }
 
     /**
-     * ✅ Check if attack can be blocked
+     * ✅ Check if attack can be blocked (moderate assessment)
      */
     private boolean canBlockAttack(GameState state, Move attack, boolean defendingRed) {
         // Simple check: can any piece move to block the attack path
@@ -843,7 +826,7 @@ public class SafetyEval {
         return false;
     }
 
-    // === EXISTING HELPER METHODS ===
+    // === UTILITY METHODS ===
 
     private boolean isSquareUnderAttack(GameState state, int square, boolean byRed) {
         // Use threat map if available
@@ -893,7 +876,7 @@ public class SafetyEval {
         return false;
     }
 
-    // === UTILITY METHODS ===
+    // === MORE UTILITY METHODS ===
 
     private boolean isRankWrap(int from, int to, int direction) {
         int fromRank = GameState.rank(from);

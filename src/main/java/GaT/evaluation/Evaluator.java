@@ -3,71 +3,32 @@ package GaT.evaluation;
 import GaT.model.GameState;
 import GaT.search.MoveGenerator;
 import GaT.model.Move;
-import static GaT.evaluation.SafetyEval.*;
+import static GaT.evaluation.EvaluationParameters.*;
 
 import java.util.List;
 
 /**
- * BASE EVALUATOR - Legacy Compatibility
+ * ✅ FIXED BASE EVALUATOR - Legacy Compatibility with Centralized Parameters
  *
- * ✅ All parameters properly defined
- * ✅ Main evaluation logic moved to ModularEvaluator
- * ✅ This class provides fallback and compatibility
- * ✅ Parameter definitions for reference
+ * 🚨 PREVIOUS PROBLEMS SOLVED:
+ * ❌ Local parameter definitions conflicting → ✅ NOW uses only EvaluationParameters
+ * ❌ Hardcoded aggressive values → ✅ NOW moderate values from centralized params
+ * ❌ Evaluation chaos with other modules → ✅ NOW consistent parameter usage
+ * ❌ Safety penalties were insane (800!) → ✅ NOW reasonable from EvaluationParameters
+ *
+ * PRINCIPLE: Provides legacy compatibility and fallback with material-dominant evaluation
  */
 public class Evaluator {
-
-    // === BASIC EVALUATION CONSTANTS ===
-    private static final int TOWER_BASE_VALUE = 100;
-    private static final int GUARD_BASE_VALUE = 50;
-    private static final int CASTLE_REACH_SCORE = 5000;
-    private static final int GUARD_CAPTURE_SCORE = 4000;
-
-    // === ✅ ALL PARAMETER DEFINITIONS (for reference) ===
-    // Note: These are implemented in the specialized modules!
-
-    // Basic bonuses
-    private static final int GUARD_ADVANCEMENT_BONUS = 50;
-    private static final int CENTRAL_BONUS = 25;
-    private static final int MOBILITY_BONUS = 30;
-    private static final int COORDINATION_BONUS = 60;
-    private static final int THREAT_BONUS = 80;
-
-    // ✅ NEW PARAMETERS (implemented in TacticalEvaluator)
-    private static final int CLUSTER_BONUS = 40;                    // Coordinated towers
-    private static final int EDGE_ACTIVATION_BONUS = 40;           // Außentürme aktivieren
-    private static final int CLUSTER_FORMATION_BONUS = 50;         // Koordinierte Türme
-    private static final int SUPPORTING_ATTACK_BONUS = 35;         // Unterstützte Angriffe
-
-    // ✅ ADDITIONAL PARAMETERS (implemented in PositionalEval)
-    private static final int TOWER_CHAIN_BONUS = 60;               // Sich sehende Türme
-    private static final int GUARD_MOBILITY_ENDGAME = 100;         // Wächter-Aktivität im Endspiel
-    private static final int CASTLE_APPROACH_BONUS = 25;           // Pro Feld näher zum Schloss
-
-    // === STRATEGIC SQUARES ===
-    private static final int[] CENTRAL_SQUARES = {
-            GameState.getIndex(2, 3), GameState.getIndex(3, 3), GameState.getIndex(4, 3), // D3, D4, D5
-            GameState.getIndex(3, 2), GameState.getIndex(3, 4)  // C4, E4
-    };
-    private static final int[] ADVANCED_SQUARES = {
-            GameState.getIndex(1, 3), GameState.getIndex(5, 3),  // D2, D6
-            GameState.getIndex(2, 2), GameState.getIndex(2, 4),  // C3, E3
-            GameState.getIndex(4, 2), GameState.getIndex(4, 4)   // C5, E5
-    };
-
-    // === CASTLE POSITIONS ===
-    private static final int RED_CASTLE = GameState.getIndex(0, 3);  // D1
-    private static final int BLUE_CASTLE = GameState.getIndex(6, 3); // D7
 
     // === TIME-ADAPTIVE EVALUATION ===
     private static volatile long remainingTimeMs = 180000;
     private static volatile boolean emergencyMode = false;
 
     /**
-     * ✅ MAIN EVALUATION - Legacy compatibility
+     * ✅ FIXED: MAIN EVALUATION - Material-dominant with moderate bonuses
      *
      * NOTE: For best performance, use ModularEvaluator which implements
-     * all new parameters (EDGE_ACTIVATION_BONUS, CLUSTER_FORMATION_BONUS, etc.)
+     * all new features with proper phase weights
      */
     public int evaluate(GameState state, int depth) {
         if (state == null) return 0;
@@ -78,7 +39,7 @@ public class Evaluator {
             return terminalScore;
         }
 
-        // === BALANCED EVALUATION STRATEGY ===
+        // === ✅ FIXED: BALANCED EVALUATION STRATEGY with proper material dominance ===
         emergencyMode = remainingTimeMs < 1000;
 
         if (emergencyMode) {
@@ -97,8 +58,8 @@ public class Evaluator {
         if (state.blueGuard == 0) return GUARD_CAPTURE_SCORE + depth;
 
         // Guard reached enemy castle
-        boolean redWins = (state.redGuard & GameState.bit(RED_CASTLE)) != 0;
-        boolean blueWins = (state.blueGuard & GameState.bit(BLUE_CASTLE)) != 0;
+        boolean redWins = (state.redGuard & GameState.bit(BLUE_CASTLE_INDEX)) != 0;
+        boolean blueWins = (state.blueGuard & GameState.bit(RED_CASTLE_INDEX)) != 0;
 
         if (redWins) return CASTLE_REACH_SCORE + depth;
         if (blueWins) return -CASTLE_REACH_SCORE - depth;
@@ -106,47 +67,62 @@ public class Evaluator {
         return 0;
     }
 
-    // === BASIC EVALUATION (Emergency) ===
+    // === ✅ FIXED: BASIC EVALUATION (Emergency) - Material dominates ===
     private int evaluateBasic(GameState state) {
         int eval = 0;
 
-        // Simple material count
-        eval += evaluateMaterialBasic(state);
+        // ✅ FIXED: Simple material count (90% weight)
+        eval += evaluateMaterialBasic(state) * 90 / 100;
 
-        // Basic guard advancement
-        eval += evaluateGuardAdvancementBasic(state);
+        // ✅ FIXED: Basic guard advancement (10% weight) - moderate from EvaluationParameters
+        eval += evaluateGuardAdvancementBasic(state) * 10 / 100;
 
         return eval;
     }
 
-    // === STANDARD EVALUATION ===
+    // === ✅ FIXED: STANDARD EVALUATION - Material still dominates ===
     private int evaluateStandard(GameState state) {
         int eval = 0;
 
-        // Balanced weights
-        eval += evaluateMaterialWithPosition(state) * 60 / 100;     // 60%
-        eval += evaluateGuardAdvancement(state) * 25 / 100;         // 25%
-        eval += evaluateTacticalThreats(state) * 10 / 100;          // 10%
-        eval += evaluateMobility(state) * 5 / 100;                  // 5%
+        // ✅ FIXED: Material with position (70% weight) - material dominates
+        eval += evaluateMaterialWithPosition(state) * 70 / 100;
+
+        // ✅ FIXED: Guard advancement (15% weight) - moderate from EvaluationParameters
+        eval += evaluateGuardAdvancement(state) * 15 / 100;
+
+        // ✅ FIXED: Tactical threats (10% weight) - moderate from EvaluationParameters
+        eval += evaluateTacticalThreats(state) * 10 / 100;
+
+        // ✅ FIXED: Mobility (5% weight) - moderate from EvaluationParameters
+        eval += evaluateMobility(state) * 5 / 100;
 
         return eval;
     }
 
-    // === COMPREHENSIVE EVALUATION ===
+    // === ✅ FIXED: COMPREHENSIVE EVALUATION - Material focus maintained ===
     private int evaluateComprehensive(GameState state) {
         int eval = 0;
 
-        // Comprehensive evaluation
-        eval += evaluateMaterialWithPosition(state) * 50 / 100;     // 50%
-        eval += evaluateGuardAdvancement(state) * 20 / 100;         // 20%
-        eval += evaluateTacticalThreats(state) * 15 / 100;          // 15%
-        eval += evaluateMobility(state) * 10 / 100;                 // 10%
-        eval += evaluatePositionalFactors(state) * 5 / 100;         // 5%
+        // ✅ FIXED: Material with position (60% weight) - still material dominant
+        eval += evaluateMaterialWithPosition(state) * 60 / 100;
+
+        // ✅ FIXED: Guard advancement (20% weight) - moderate from EvaluationParameters
+        eval += evaluateGuardAdvancement(state) * 20 / 100;
+
+        // ✅ FIXED: Tactical threats (10% weight) - moderate from EvaluationParameters
+        eval += evaluateTacticalThreats(state) * 10 / 100;
+
+        // ✅ FIXED: Mobility (5% weight) - moderate from EvaluationParameters
+        eval += evaluateMobility(state) * 5 / 100;
+
+        // ✅ FIXED: Positional factors (5% weight) - moderate from EvaluationParameters
+        eval += evaluatePositionalFactors(state) * 5 / 100;
 
         return eval;
     }
 
-    // === MATERIAL EVALUATION ===
+    // === ✅ FIXED: MATERIAL EVALUATION - Uses centralized parameters ===
+
     private int evaluateMaterialBasic(GameState state) {
         int materialScore = 0;
 
@@ -167,13 +143,13 @@ public class Evaluator {
 
             if (redHeight > 0) {
                 int value = redHeight * TOWER_BASE_VALUE;
-                value += getPositionalBonus(i, redHeight, true);
+                value += getModeratePositionalBonus(i, redHeight, true);
                 materialScore += value;
             }
 
             if (blueHeight > 0) {
                 int value = blueHeight * TOWER_BASE_VALUE;
-                value += getPositionalBonus(i, blueHeight, false);
+                value += getModeratePositionalBonus(i, blueHeight, false);
                 materialScore -= value;
             }
         }
@@ -181,45 +157,46 @@ public class Evaluator {
         return materialScore;
     }
 
-    private int getPositionalBonus(int square, int height, boolean isRed) {
+    private int getModeratePositionalBonus(int square, int height, boolean isRed) {
         int bonus = 0;
         int rank = GameState.rank(square);
         int file = GameState.file(square);
 
-        // Moderate advancement bonus
+        // ✅ FIXED: Moderate advancement bonus from EvaluationParameters
         if (isRed && rank < 4) {
-            bonus += (4 - rank) * 8;
+            bonus += (4 - rank) * Material.ADVANCEMENT_BONUS;  // 8 per rank from EvaluationParameters
         } else if (!isRed && rank > 2) {
-            bonus += (rank - 2) * 8;
+            bonus += (rank - 2) * Material.ADVANCEMENT_BONUS;
         }
 
-        // Central control bonus
+        // ✅ FIXED: Moderate central control bonus from EvaluationParameters
         if (isCentralSquare(square)) {
-            bonus += CENTRAL_BONUS;
+            bonus += Material.CENTRAL_BONUS;  // 12 from EvaluationParameters
         }
 
-        // D-file preference
+        // ✅ FIXED: Moderate D-file preference
         if (file == 3) {
-            bonus += 10;
+            bonus += Material.CENTRAL_BONUS / 2;  // 6 points
         }
 
         return bonus;
     }
 
-    // === GUARD EVALUATION ===
+    // === ✅ FIXED: GUARD EVALUATION - Uses centralized parameters ===
+
     private int evaluateGuardAdvancementBasic(GameState state) {
         int guardScore = 0;
 
         if (state.redGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.redGuard);
             int rank = GameState.rank(guardPos);
-            guardScore += (6 - rank) * GUARD_ADVANCEMENT_BONUS;
+            guardScore += (6 - rank) * Positional.GUARD_ADVANCEMENT_BONUS;  // 15 from EvaluationParameters
         }
 
         if (state.blueGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
             int rank = GameState.rank(guardPos);
-            guardScore -= rank * GUARD_ADVANCEMENT_BONUS;
+            guardScore -= rank * Positional.GUARD_ADVANCEMENT_BONUS;
         }
 
         return guardScore;
@@ -252,18 +229,18 @@ public class Evaluator {
         int file = GameState.file(guardPos);
         int score = 0;
 
-        // Basic advancement
+        // ✅ FIXED: Moderate basic advancement from EvaluationParameters
         int advancement = isRed ? (6 - rank) : rank;
-        score += advancement * GUARD_ADVANCEMENT_BONUS;
+        score += advancement * Positional.GUARD_ADVANCEMENT_BONUS;  // 15 from EvaluationParameters
 
-        // D-file preference
+        // ✅ FIXED: Moderate D-file preference
         int fileDistance = Math.abs(file - 3);
-        score += Math.max(0, 3 - fileDistance) * 15;
+        score += Math.max(0, 3 - fileDistance) * (Positional.GUARD_CASTLE_APPROACH / 2);  // 10 points
 
-        // Distance to enemy castle
-        int targetCastle = isRed ? RED_CASTLE : BLUE_CASTLE;
+        // ✅ FIXED: Moderate distance to enemy castle
+        int targetCastle = isRed ? BLUE_CASTLE_INDEX : RED_CASTLE_INDEX;
         int distance = calculateDistance(guardPos, targetCastle);
-        score += Math.max(0, 10 - distance) * 5;
+        score += Math.max(0, 10 - distance) * (Material.ADVANCEMENT_BONUS / 2);  // 4 per distance
 
         return score;
     }
@@ -272,26 +249,30 @@ public class Evaluator {
         int safetyScore = 0;
 
         if (isGuardInDanger(state, isRed)) {
-            safetyScore -= 150;
+            // ✅ FIXED: Reasonable safety penalty from EvaluationParameters (was 150, still moderate)
+            safetyScore -= Safety.GUARD_DANGER_PENALTY;  // 120 from EvaluationParameters
         } else {
-            // Bonus for safe guards with escape routes
+            // ✅ FIXED: Moderate bonus for safe guards with escape routes
             int escapeRoutes = countGuardEscapeRoutes(state, isRed);
-            safetyScore += Math.min(escapeRoutes * 20, 60);
+            safetyScore += Math.min(escapeRoutes * Safety.ESCAPE_ROUTE_BONUS, 60);  // 15 per route, max 60
         }
 
         return safetyScore;
     }
 
-    // === TACTICAL EVALUATION ===
+    // === ✅ FIXED: TACTICAL EVALUATION - Uses centralized parameters ===
+
     private int evaluateTacticalThreats(GameState state) {
         int threatScore = 0;
 
         try {
             List<Move> moves = MoveGenerator.generateAllMoves(state);
-            for (Move move : moves.subList(0, Math.min(10, moves.size()))) {
+            // ✅ FIXED: Limit analysis for performance
+            for (Move move : moves.subList(0, Math.min(12, moves.size()))) {
                 if (isCapture(move, state)) {
                     int captureValue = getCaptureValue(move, state);
-                    threatScore += state.redToMove ? captureValue / 4 : -captureValue / 4;
+                    // ✅ FIXED: Moderate tactical bonus
+                    threatScore += state.redToMove ? captureValue / 6 : -captureValue / 6;  // Reduced from /4
                 }
             }
         } catch (Exception e) {
@@ -301,28 +282,31 @@ public class Evaluator {
         return threatScore;
     }
 
-    // === MOBILITY EVALUATION ===
+    // === ✅ FIXED: MOBILITY EVALUATION - Uses centralized parameters ===
+
     private int evaluateMobility(GameState state) {
         try {
             List<Move> moves = MoveGenerator.generateAllMoves(state);
-            int mobilityBonus = Math.min(moves.size() * MOBILITY_BONUS / 2, 100);
+            // ✅ FIXED: Moderate mobility bonus from EvaluationParameters
+            int mobilityBonus = Math.min(moves.size() * Positional.MOBILITY_BONUS / 3, 80);  // 8/3 per move, max 80
             return state.redToMove ? mobilityBonus : -mobilityBonus;
         } catch (Exception e) {
             return 0;
         }
     }
 
-    // === POSITIONAL FACTORS ===
+    // === ✅ FIXED: POSITIONAL FACTORS - Uses centralized parameters ===
+
     private int evaluatePositionalFactors(GameState state) {
         int positionalScore = 0;
 
-        // Central control
-        for (int square : CENTRAL_SQUARES) {
+        // ✅ FIXED: Moderate central control from EvaluationParameters
+        for (int square : Positional.CENTRAL_SQUARES) {
             int control = evaluateSquareControl(state, square);
-            positionalScore += control * 5;
+            positionalScore += control * (Positional.CENTRAL_CONTROL_BONUS / 4);  // 4-5 points per control
         }
 
-        // Piece coordination
+        // ✅ FIXED: Moderate piece coordination
         positionalScore += evaluatePieceCoordination(state);
 
         return positionalScore;
@@ -350,13 +334,13 @@ public class Evaluator {
     private int evaluatePieceCoordination(GameState state) {
         int coordinationScore = 0;
 
-        // Count adjacent pieces
+        // ✅ FIXED: Count adjacent pieces with moderate bonus from EvaluationParameters
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
             if (state.redStackHeights[i] > 0) {
-                coordinationScore += countAdjacentFriendly(state, i, true) * COORDINATION_BONUS;
+                coordinationScore += countAdjacentFriendly(state, i, true) * Positional.COORDINATION_BONUS / 2;  // 6 points
             }
             if (state.blueStackHeights[i] > 0) {
-                coordinationScore -= countAdjacentFriendly(state, i, false) * COORDINATION_BONUS;
+                coordinationScore -= countAdjacentFriendly(state, i, false) * Positional.COORDINATION_BONUS / 2;
             }
         }
 
@@ -458,15 +442,15 @@ public class Evaluator {
         boolean isRed = state.redToMove;
 
         if (((isRed ? state.blueGuard : state.redGuard) & toBit) != 0) {
-            return 800;
+            return GUARD_CAPTURE_SCORE / 6;  // Moderate value: ~667
         }
 
         int height = isRed ? state.blueStackHeights[move.to] : state.redStackHeights[move.to];
-        return height * 80;
+        return height * TOWER_BASE_VALUE; // 100 per height
     }
 
     private boolean isCentralSquare(int square) {
-        for (int central : CENTRAL_SQUARES) {
+        for (int central : Positional.CENTRAL_SQUARES) {
             if (square == central) return true;
         }
         return false;
@@ -502,30 +486,30 @@ public class Evaluator {
         return emergencyMode;
     }
 
-    // === ✅ INFORMATION ABOUT NEW PARAMETERS ===
+    // === ✅ FIXED INFORMATION ABOUT PARAMETER USAGE ===
 
     /**
-     * ✅ Parameter Status Information
+     * ✅ FIXED: Parameter Status Information
      *
-     * ALL NEW PARAMETERS ARE NOW IMPLEMENTED:
-     * - EDGE_ACTIVATION_BONUS (40) → TacticalEvaluator.evaluateEdgeActivation()
-     * - CLUSTER_FORMATION_BONUS (50) → TacticalEvaluator.evaluateClusterFormation()
-     * - SUPPORTING_ATTACK_BONUS (35) → TacticalEvaluator.evaluateSupportingAttacks()
-     * - TOWER_CHAIN_BONUS (60) → PositionalEval.evaluateTowerChains()
-     * - GUARD_MOBILITY_ENDGAME (100) → PositionalEval (endgame evaluation)
-     * - CASTLE_APPROACH_BONUS (25) → PositionalEval (guard advancement)
+     * ALL PARAMETERS NOW USE CENTRALIZED EvaluationParameters:
+     * - Material bonuses: Material.* constants (moderate values)
+     * - Positional bonuses: Positional.* constants (moderate values)
+     * - Safety penalties: Safety.* constants (FIXED - was 800, now 120!)
+     * - Tactical bonuses: Tactical.* constants (moderate values)
      *
-     * Use ModularEvaluator for full access to these parameters!
+     * Use ModularEvaluator for full advanced features and proper phase weights!
      */
     public static void printParameterStatus() {
-        System.out.println("✅ PARAMETER STATUS:");
-        System.out.println("   EDGE_ACTIVATION_BONUS: " + EDGE_ACTIVATION_BONUS + " (ACTIVE in TacticalEvaluator)");
-        System.out.println("   CLUSTER_FORMATION_BONUS: " + CLUSTER_FORMATION_BONUS + " (ACTIVE in TacticalEvaluator)");
-        System.out.println("   SUPPORTING_ATTACK_BONUS: " + SUPPORTING_ATTACK_BONUS + " (ACTIVE in TacticalEvaluator)");
-        System.out.println("   TOWER_CHAIN_BONUS: " + TOWER_CHAIN_BONUS + " (ACTIVE in PositionalEval)");
-        System.out.println("   GUARD_MOBILITY_ENDGAME: " + GUARD_MOBILITY_ENDGAME + " (ACTIVE in PositionalEval)");
-        System.out.println("   CASTLE_APPROACH_BONUS: " + CASTLE_APPROACH_BONUS + " (ACTIVE in PositionalEval)");
+        System.out.println("✅ FIXED PARAMETER STATUS:");
+        System.out.println("   All parameters now from EvaluationParameters:");
+        System.out.println("   - Material.ADVANCEMENT_BONUS: " + Material.ADVANCEMENT_BONUS + " (was hardcoded)");
+        System.out.println("   - Material.CENTRAL_BONUS: " + Material.CENTRAL_BONUS + " (was hardcoded)");
+        System.out.println("   - Positional.GUARD_ADVANCEMENT_BONUS: " + Positional.GUARD_ADVANCEMENT_BONUS + " (was hardcoded)");
+        System.out.println("   - Safety.GUARD_DANGER_PENALTY: " + Safety.GUARD_DANGER_PENALTY + " (was 150!)");
+        System.out.println("   - Positional.MOBILITY_BONUS: " + Positional.MOBILITY_BONUS + " (was hardcoded)");
         System.out.println("");
-        System.out.println("🎯 Recommendation: Use ModularEvaluator for best performance!");
+        System.out.println("🎯 All values are now moderate and consistent!");
+        System.out.println("🎯 Material properly dominates: 60-90% weight depending on mode");
+        System.out.println("🎯 Recommendation: Use ModularEvaluator for advanced features!");
     }
 }

@@ -37,6 +37,26 @@ public class GameClient {
     // Use the new tactical evaluator
     private static ModularEvaluator evaluator = new ModularEvaluator();
 
+    private static void validateEvaluation(GameState state) {
+        // Schneller Sanity-Check
+        int materialScore = 0;
+        for (int i = 0; i < 49; i++) {
+            materialScore += (state.redStackHeights[i] - state.blueStackHeights[i]) * 100;
+        }
+
+        int fullScore = evaluator.evaluate(state, 1);
+        int posBonus = fullScore - materialScore;
+
+        System.out.println("🔍 EVAL CHECK: Material=" + materialScore +
+                ", Full=" + fullScore +
+                ", Positional=" + posBonus);
+
+        // WARNUNG wenn Positions-Bonus zu groß
+        if (materialScore != 0 && Math.abs(posBonus) > Math.abs(materialScore)) {
+            System.out.println("⚠️ WARNING: Positional bonus larger than material!");
+        }
+    }
+
     public static void main(String[] args) {
         boolean running = true;
         Network network = new Network();

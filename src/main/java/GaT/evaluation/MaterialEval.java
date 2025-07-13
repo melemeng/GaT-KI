@@ -1,40 +1,20 @@
 package GaT.evaluation;
 
 import GaT.model.GameState;
-import GaT.model.SearchConfig;
+import static GaT.evaluation.EvaluationParameters.*;
 
 /**
- * ENHANCED MATERIAL EVALUATION COMPONENT
+ * ✅ FIXED MATERIAL EVALUATION COMPONENT - Moderate Bonuses
  *
- * ✅ Enhanced with aggressive parameters
- * ✅ Better activity bonuses for coordinated play
- * ✅ Improved outpost evaluation for edge towers
- * ✅ Enhanced piece activity coordination
+ * 🚨 PREVIOUS PROBLEMS SOLVED:
+ * ❌ Aggressive bonuses (25, 30, 40, 50 points) → ✅ NOW moderate from EvaluationParameters
+ * ❌ Local parameter definitions → ✅ NOW uses only EvaluationParameters
+ * ❌ Exponential bonuses that dominate material → ✅ NOW reasonable enhancements
+ * ❌ Parameter chaos → ✅ NOW consistent across all modules
  *
- * Handles all material-related evaluation (piece values, imbalances, activity)
+ * PRINCIPLE: Material evaluation provides base value, bonuses enhance but don't dominate
  */
 public class MaterialEval {
-
-    // === ENHANCED MATERIAL VALUES ===
-    public static final int TOWER_BASE_VALUE = 100;
-    public static final int GUARD_BASE_VALUE = 50;
-
-    // === PHASE-SPECIFIC MULTIPLIERS ===
-    private static final double[] OPENING_MULTIPLIERS = {1.0, 0.9}; // [tower, guard]
-    private static final double[] MIDDLEGAME_MULTIPLIERS = {1.1, 1.0};
-    private static final double[] ENDGAME_MULTIPLIERS = {1.2, 1.5};
-
-    // === ✅ ENHANCED ACTIVITY BONUSES ===
-    private static final int ADVANCEMENT_BONUS = 25;               // Erhöht von 15
-    private static final int CENTRAL_BONUS = 30;                   // Erhöht von 20
-    private static final int CONNECTED_BONUS = 40;                 // Erhöht von 25
-    private static final int MOBILITY_BONUS = 15;                  // Erhöht von 10
-
-    // === ✅ NEW: AGGRESSIVE COORDINATION BONUSES ===
-    private static final int EDGE_TOWER_BONUS = 35;                // NEU! Aktive Randtürme
-    private static final int DEEP_PENETRATION_BONUS = 50;          // NEU! Tiefe Vorstöße
-    private static final int CLUSTER_SUPPORT_BONUS = 30;           // NEU! Turm-Cluster Support
-    private static final int GUARD_ESCORT_BONUS = 45;              // NEU! Wächter-Begleitung
 
     /**
      * SIMPLE MATERIAL EVALUATION - Ultra-fast for time pressure
@@ -42,7 +22,7 @@ public class MaterialEval {
     public int evaluateMaterialSimple(GameState state) {
         int materialScore = 0;
 
-        // Raw piece count difference
+        // Raw piece count difference - pure material
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
             materialScore += (state.redStackHeights[i] - state.blueStackHeights[i]) * TOWER_BASE_VALUE;
         }
@@ -51,7 +31,7 @@ public class MaterialEval {
     }
 
     /**
-     * ✅ ENHANCED BASIC MATERIAL EVALUATION - Now with coordination awareness
+     * ✅ FIXED BASIC MATERIAL EVALUATION - Uses centralized moderate parameters
      */
     public int evaluateMaterialBasic(GameState state) {
         int materialScore = 0;
@@ -62,13 +42,13 @@ public class MaterialEval {
 
             if (redHeight > 0) {
                 int value = redHeight * TOWER_BASE_VALUE;
-                value += getEnhancedPositionalBonus(state, i, redHeight, true);
+                value += getModeratePositionalBonus(state, i, redHeight, true);
                 materialScore += value;
             }
 
             if (blueHeight > 0) {
                 int value = blueHeight * TOWER_BASE_VALUE;
-                value += getEnhancedPositionalBonus(state, i, blueHeight, false);
+                value += getModeratePositionalBonus(state, i, blueHeight, false);
                 materialScore -= value;
             }
         }
@@ -77,7 +57,7 @@ public class MaterialEval {
     }
 
     /**
-     * ✅ ENHANCED MATERIAL WITH ACTIVITY - Better coordination detection
+     * ✅ FIXED MATERIAL WITH ACTIVITY - Moderate coordination bonuses
      */
     public int evaluateMaterialWithActivity(GameState state) {
         int materialScore = 0;
@@ -88,13 +68,13 @@ public class MaterialEval {
 
             if (redHeight > 0) {
                 int value = redHeight * TOWER_BASE_VALUE;
-                value += getAdvancedActivityBonus(state, i, redHeight, true);
+                value += getModerateActivityBonus(state, i, redHeight, true);
                 materialScore += value;
             }
 
             if (blueHeight > 0) {
                 int value = blueHeight * TOWER_BASE_VALUE;
-                value += getAdvancedActivityBonus(state, i, blueHeight, false);
+                value += getModerateActivityBonus(state, i, blueHeight, false);
                 materialScore -= value;
             }
         }
@@ -103,7 +83,7 @@ public class MaterialEval {
     }
 
     /**
-     * ✅ ENHANCED ADVANCED MATERIAL EVALUATION - Full coordination awareness
+     * ✅ FIXED ADVANCED MATERIAL EVALUATION - Phase-aware with moderate bonuses
      */
     public int evaluateMaterialAdvanced(GameState state) {
         int materialScore = 0;
@@ -129,8 +109,8 @@ public class MaterialEval {
             }
         }
 
-        // Add enhanced imbalance evaluation
-        materialScore += evaluateEnhancedMaterialImbalance(state, phase);
+        // Add moderate material imbalance evaluation
+        materialScore += evaluateModerateImbalance(state, phase);
 
         return materialScore;
     }
@@ -148,14 +128,14 @@ public class MaterialEval {
 
             if (redHeight > 0) {
                 int value = redHeight * TOWER_BASE_VALUE;
-                // Enhanced endgame bonuses
-                value += getEnhancedEndgameBonus(state, i, redHeight, true);
+                // Moderate endgame bonuses from EvaluationParameters
+                value += getModerateEndgameBonus(state, i, redHeight, true);
                 materialScore += value;
             }
 
             if (blueHeight > 0) {
                 int value = blueHeight * TOWER_BASE_VALUE;
-                value += getEnhancedEndgameBonus(state, i, blueHeight, false);
+                value += getModerateEndgameBonus(state, i, blueHeight, false);
                 materialScore -= value;
             }
         }
@@ -163,90 +143,87 @@ public class MaterialEval {
         return materialScore;
     }
 
-    // === ✅ ENHANCED POSITIONAL BONUS CALCULATION ===
+    // === ✅ FIXED POSITIONAL BONUS CALCULATION (MODERATE) ===
 
     /**
-     * ✅ Enhanced basic positional bonuses
+     * ✅ FIXED: Moderate positional bonuses from EvaluationParameters
      */
-    private int getEnhancedPositionalBonus(GameState state, int square, int height, boolean isRed) {
+    private int getModeratePositionalBonus(GameState state, int square, int height, boolean isRed) {
         int bonus = 0;
 
-        // Enhanced advancement bonus
+        // ✅ FIXED: Moderate advancement bonus from EvaluationParameters
         int rank = GameState.rank(square);
         if (isRed && rank < 3) {
-            bonus += height * ADVANCEMENT_BONUS;
+            bonus += height * Material.ADVANCEMENT_BONUS;  // 8 per rank, moderate
         } else if (!isRed && rank > 3) {
-            bonus += height * ADVANCEMENT_BONUS;
+            bonus += height * Material.ADVANCEMENT_BONUS;
         }
 
-        // Enhanced central files bonus
+        // ✅ FIXED: Moderate central bonus from EvaluationParameters
         int file = GameState.file(square);
         if (file >= 2 && file <= 4) {
-            bonus += CENTRAL_BONUS;
+            bonus += Material.CENTRAL_BONUS;  // 12 points, moderate
         }
 
-        // ✅ NEW: Edge tower activation bonus
+        // ✅ FIXED: Moderate edge tower bonus from EvaluationParameters
         if (isEdgeFile(file) && canThreatenCenter(state, square, height)) {
-            bonus += EDGE_TOWER_BONUS;
+            bonus += Material.EDGE_TOWER_BONUS;  // 10 points, moderate
         }
 
         return bonus;
     }
 
     /**
-     * ✅ Advanced activity bonuses with coordination
+     * ✅ FIXED: Moderate activity bonuses with coordination
      */
-    private int getAdvancedActivityBonus(GameState state, int square, int height, boolean isRed) {
-        int bonus = getEnhancedPositionalBonus(state, square, height, isRed);
+    private int getModerateActivityBonus(GameState state, int square, int height, boolean isRed) {
+        int bonus = getModeratePositionalBonus(state, square, height, isRed);
 
-        // Enhanced connected pieces bonus
+        // ✅ FIXED: Moderate connected pieces bonus from EvaluationParameters
         if (hasAdjacentFriendly(state, square, isRed)) {
-            bonus += CONNECTED_BONUS;
+            bonus += Material.CONNECTED_BONUS;  // 15 points, moderate
 
-            // ✅ NEW: Cluster support bonus
+            // ✅ FIXED: Moderate cluster support bonus
             int nearbyFriendly = countNearbyFriendly(state, square, isRed, 2);
             if (nearbyFriendly >= 2) {
-                bonus += CLUSTER_SUPPORT_BONUS;
+                bonus += Material.CONNECTED_BONUS;  // Additional 15 points for clusters
             }
         }
 
-        // Enhanced mobility estimation
-        bonus += estimateEnhancedMobility(state, square, height, isRed);
+        // ✅ FIXED: Moderate mobility estimation from EvaluationParameters
+        bonus += estimateModerateMobility(state, square, height, isRed);
 
-        // Enhanced outpost bonus
-        bonus += getEnhancedOutpostBonus(state, square, height, isRed);
+        // ✅ FIXED: Moderate outpost bonus from EvaluationParameters
+        bonus += getModerateOutpostBonus(state, square, height, isRed);
 
-        // ✅ NEW: Guard escort bonus
+        // ✅ FIXED: Moderate guard escort bonus from EvaluationParameters
         if (isEscortingGuard(state, square, height, isRed)) {
-            bonus += GUARD_ESCORT_BONUS;
+            bonus += Material.GUARD_ESCORT_BONUS;  // 15 points, moderate
         }
 
         return bonus;
     }
 
     /**
-     * ✅ Advanced positional bonuses with phase awareness
+     * ✅ FIXED: Advanced positional bonuses with phase awareness but moderate values
      */
     private int getAdvancedPositionalBonus(GameState state, int square, int height, boolean isRed, GamePhase phase) {
-        int bonus = getAdvancedActivityBonus(state, square, height, isRed);
+        int bonus = getModerateActivityBonus(state, square, height, isRed);
 
-        // Phase-specific bonuses
+        // Phase-specific bonuses - all moderate from EvaluationParameters
         switch (phase) {
             case OPENING:
                 bonus += getDevelopmentBonus(square, isRed);
-                // ✅ Enhanced edge activation in opening
+                // Moderate edge activation in opening
                 if (isEdgeFile(GameState.file(square))) {
-                    bonus += EDGE_TOWER_BONUS / 2;
+                    bonus += Material.EDGE_TOWER_BONUS / 2;  // 5 points
                 }
                 break;
             case MIDDLEGAME:
-                bonus += getEnhancedTacticalBonus(state, square, height, isRed);
+                bonus += getModerateTacticalBonus(state, square, height, isRed);
                 break;
             case ENDGAME:
-                bonus += getEnhancedEndgameBonus(state, square, height, isRed);
-                break;
-            case TABLEBASE:
-                bonus += getTablebaseBonus(state, square, height, isRed);
+                bonus += getModerateEndgameBonus(state, square, height, isRed);
                 break;
         }
 
@@ -254,48 +231,48 @@ public class MaterialEval {
     }
 
     /**
-     * ✅ Enhanced endgame-specific bonuses
+     * ✅ FIXED: Moderate endgame-specific bonuses from EvaluationParameters
      */
-    private int getEnhancedEndgameBonus(GameState state, int square, int height, boolean isRed) {
+    private int getModerateEndgameBonus(GameState state, int square, int height, boolean isRed) {
         int bonus = 0;
 
-        // Enhanced distance to enemy guard
+        // ✅ FIXED: Moderate distance to enemy guard
         long enemyGuard = isRed ? state.blueGuard : state.redGuard;
         if (enemyGuard != 0) {
             int enemyGuardPos = Long.numberOfTrailingZeros(enemyGuard);
             int distance = calculateDistance(square, enemyGuardPos);
 
-            // Closer pieces are more valuable (enhanced)
-            bonus += Math.max(0, (7 - distance) * 15); // Erhöht von 10
+            // Closer pieces are more valuable (moderate)
+            bonus += Math.max(0, (7 - distance) * (Material.ADVANCEMENT_BONUS / 2));  // 4 per distance
         }
 
-        // Enhanced support for own guard
+        // ✅ FIXED: Moderate support for own guard
         long ownGuard = isRed ? state.redGuard : state.blueGuard;
         if (ownGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(ownGuard);
             int guardDistance = calculateDistance(square, guardPos);
 
-            // Pieces near own guard provide support (enhanced)
+            // Pieces near own guard provide support (moderate)
             if (guardDistance <= 2) {
-                bonus += 45; // Erhöht von 30
+                bonus += Material.GUARD_ESCORT_BONUS;  // 15 points, moderate
             }
 
-            // ✅ NEW: Deep penetration bonus for advanced guard support
+            // ✅ FIXED: Moderate deep penetration bonus
             int guardRank = GameState.rank(guardPos);
             if ((isRed && guardRank <= 2) || (!isRed && guardRank >= 4)) {
-                bonus += DEEP_PENETRATION_BONUS;
+                bonus += Material.DEEP_PENETRATION_BONUS;  // 20 points, moderate
             }
         }
 
         return bonus;
     }
 
-    // === ✅ NEW ENHANCED EVALUATION METHODS ===
+    // === ✅ FIXED ENHANCED EVALUATION METHODS (MODERATE) ===
 
     /**
-     * ✅ Enhanced material imbalance evaluation
+     * ✅ FIXED: Moderate material imbalance evaluation
      */
-    private int evaluateEnhancedMaterialImbalance(GameState state, GamePhase phase) {
+    private int evaluateModerateImbalance(GameState state, GamePhase phase) {
         int redTotal = getTotalMaterial(state, true);
         int blueTotal = getTotalMaterial(state, false);
         int imbalance = redTotal - blueTotal;
@@ -304,66 +281,66 @@ public class MaterialEval {
             return 0; // Equal material
         }
 
-        // Enhanced imbalance bonuses
+        // ✅ FIXED: Moderate imbalance bonuses
         int imbalanceBonus = 0;
 
         if (phase == GamePhase.ENDGAME) {
-            // In endgame, material advantages are magnified (enhanced)
-            imbalanceBonus = imbalance * 200; // Erhöht von 150
+            // In endgame, material advantages are important but not overwhelming
+            imbalanceBonus = imbalance * TOWER_BASE_VALUE;  // 100 per piece difference
         } else if (phase == GamePhase.MIDDLEGAME) {
-            // In middlegame, material advantage helps in tactics (enhanced)
-            imbalanceBonus = imbalance * 150; // Erhöht von 120
+            // In middlegame, material advantage helps in tactics
+            imbalanceBonus = imbalance * (TOWER_BASE_VALUE * 3 / 4);  // 75 per piece
         } else {
-            // In opening, development matters but material still counts (enhanced)
-            imbalanceBonus = imbalance * 100; // Erhöht von 80
+            // In opening, development matters but material still counts
+            imbalanceBonus = imbalance * (TOWER_BASE_VALUE / 2);  // 50 per piece
         }
 
         return imbalanceBonus;
     }
 
     /**
-     * ✅ Enhanced piece activity evaluation
+     * ✅ FIXED: Moderate piece activity evaluation
      */
     public int evaluatePieceActivity(GameState state) {
         int activityScore = 0;
 
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
             if (state.redStackHeights[i] > 0) {
-                activityScore += evaluateEnhancedPieceActivityAt(state, i, true);
+                activityScore += evaluateModeratePieceActivityAt(state, i, true);
             }
             if (state.blueStackHeights[i] > 0) {
-                activityScore -= evaluateEnhancedPieceActivityAt(state, i, false);
+                activityScore -= evaluateModeratePieceActivityAt(state, i, false);
             }
         }
 
         return activityScore;
     }
 
-    private int evaluateEnhancedPieceActivityAt(GameState state, int square, boolean isRed) {
+    private int evaluateModeratePieceActivityAt(GameState state, int square, boolean isRed) {
         int activity = 0;
         int height = isRed ? state.redStackHeights[square] : state.blueStackHeights[square];
 
-        // Enhanced mobility factor
-        activity += estimateEnhancedMobility(state, square, height, isRed);
+        // ✅ FIXED: Moderate mobility factor from EvaluationParameters
+        activity += estimateModerateMobility(state, square, height, isRed);
 
-        // Enhanced coordination with other pieces
+        // ✅ FIXED: Moderate coordination with other pieces
         if (hasAdjacentFriendly(state, square, isRed)) {
-            activity += 30; // Erhöht von 20
+            activity += Material.CONNECTED_BONUS / 2;  // 7-8 points, moderate
         }
 
-        // Enhanced control of important squares
-        activity += evaluateEnhancedSquareControl(state, square, height, isRed);
+        // ✅ FIXED: Moderate control of important squares
+        activity += evaluateModerateSquareControl(state, square, height, isRed);
 
-        // ✅ NEW: Coordination bonuses
+        // ✅ FIXED: Moderate coordination bonuses
         int supporters = countSupportingPieces(state, square, isRed);
         if (supporters > 0) {
-            activity += supporters * 25;
+            activity += supporters * (Material.CONNECTED_BONUS / 3);  // ~5 points per supporter
         }
 
         return activity;
     }
 
-    // === ✅ NEW HELPER METHODS ===
+    // === ✅ FIXED HELPER METHODS (MODERATE BONUSES) ===
 
     /**
      * ✅ Check if file is edge file
@@ -373,7 +350,7 @@ public class MaterialEval {
     }
 
     /**
-     * ✅ Check if tower can threaten center
+     * ✅ Check if tower can threaten center (moderate range check)
      */
     private boolean canThreatenCenter(GameState state, int square, int height) {
         int[] centralSquares = {
@@ -391,7 +368,7 @@ public class MaterialEval {
     }
 
     /**
-     * ✅ Count nearby friendly pieces
+     * ✅ Count nearby friendly pieces (moderate range)
      */
     private int countNearbyFriendly(GameState state, int square, boolean isRed, int radius) {
         int count = 0;
@@ -412,7 +389,7 @@ public class MaterialEval {
     }
 
     /**
-     * ✅ Check if piece is escorting guard
+     * ✅ Check if piece is escorting guard (moderate distance)
      */
     private boolean isEscortingGuard(GameState state, int square, int height, boolean isRed) {
         long guardBit = isRed ? state.redGuard : state.blueGuard;
@@ -421,14 +398,14 @@ public class MaterialEval {
         int guardPos = Long.numberOfTrailingZeros(guardBit);
         int distance = calculateDistance(square, guardPos);
 
-        // Close escort (adjacent or 1 square away)
+        // Close escort (adjacent or 1-2 squares away)
         return distance <= 2 && distance <= height;
     }
 
     /**
-     * ✅ Enhanced mobility estimation
+     * ✅ FIXED: Moderate mobility estimation from EvaluationParameters
      */
-    private int estimateEnhancedMobility(GameState state, int square, int height, boolean isRed) {
+    private int estimateModerateMobility(GameState state, int square, int height, boolean isRed) {
         int mobility = 0;
         int[] directions = {-1, 1, -7, 7};
 
@@ -442,13 +419,13 @@ public class MaterialEval {
 
                 // Check if path is blocked
                 if (isOccupied(target, state)) {
-                    // Enhanced bonus for threatening enemy pieces
+                    // ✅ FIXED: Moderate bonus for threatening enemy pieces
                     if (isEnemyPiece(target, state, isRed)) {
-                        mobility += MOBILITY_BONUS; // Full bonus for threats
+                        mobility += Material.MOBILITY_BONUS;  // 6 points from EvaluationParameters
                     }
                     break;
                 } else {
-                    mobility += MOBILITY_BONUS / 2; // Half bonus for empty squares
+                    mobility += Material.MOBILITY_BONUS / 2;  // 3 points for empty squares
                 }
             }
         }
@@ -457,26 +434,26 @@ public class MaterialEval {
     }
 
     /**
-     * ✅ Enhanced outpost bonus
+     * ✅ FIXED: Moderate outpost bonus from EvaluationParameters
      */
-    private int getEnhancedOutpostBonus(GameState state, int square, int height, boolean isRed) {
+    private int getModerateOutpostBonus(GameState state, int square, int height, boolean isRed) {
         int rank = GameState.rank(square);
 
         if (isRed && rank <= 2) {
-            // Enhanced deep penetration bonus
-            int bonus = (2 - rank) * 40; // Erhöht von 30
+            // ✅ FIXED: Moderate deep penetration bonus
+            int bonus = (2 - rank) * Material.OUTPOST_BONUS;  // 18 points per rank from EvaluationParameters
 
-            // ✅ Extra bonus if supported
+            // Extra bonus if supported
             if (hasAdjacentFriendly(state, square, isRed)) {
-                bonus += DEEP_PENETRATION_BONUS;
+                bonus += Material.DEEP_PENETRATION_BONUS;  // 20 points from EvaluationParameters
             }
 
             return bonus;
         } else if (!isRed && rank >= 4) {
-            int bonus = (rank - 4) * 40; // Erhöht von 30
+            int bonus = (rank - 4) * Material.OUTPOST_BONUS;
 
             if (hasAdjacentFriendly(state, square, isRed)) {
-                bonus += DEEP_PENETRATION_BONUS;
+                bonus += Material.DEEP_PENETRATION_BONUS;
             }
 
             return bonus;
@@ -486,29 +463,29 @@ public class MaterialEval {
     }
 
     /**
-     * ✅ Enhanced tactical bonus
+     * ✅ FIXED: Moderate tactical bonus from EvaluationParameters
      */
-    private int getEnhancedTacticalBonus(GameState state, int square, int height, boolean isRed) {
+    private int getModerateTacticalBonus(GameState state, int square, int height, boolean isRed) {
         int bonus = 0;
 
-        // Enhanced bonus for pieces that can attack enemy guard
+        // ✅ FIXED: Moderate bonus for pieces that can attack enemy guard
         long enemyGuard = isRed ? state.blueGuard : state.redGuard;
         if (enemyGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(enemyGuard);
             if (canAttack(square, guardPos, height)) {
-                bonus += 150; // Erhöht von 100
+                bonus += Material.DEEP_PENETRATION_BONUS * 2;  // 40 points, moderate
             }
         }
 
-        // ✅ NEW: Bonus for supporting attacks
+        // ✅ FIXED: Moderate bonus for supporting attacks
         int supportedAttacks = countSupportedAttacks(state, square, height, isRed);
-        bonus += supportedAttacks * 25;
+        bonus += supportedAttacks * (Material.CONNECTED_BONUS / 2);  // ~7 points per attack
 
         return bonus;
     }
 
     /**
-     * ✅ Count supported attacks
+     * ✅ Count supported attacks (moderate evaluation)
      */
     private int countSupportedAttacks(GameState state, int square, int height, boolean isRed) {
         int supportedAttacks = 0;
@@ -536,7 +513,7 @@ public class MaterialEval {
     }
 
     /**
-     * ✅ Count supporting pieces for a square
+     * ✅ Count supporting pieces for a square (moderate count)
      */
     private int countSupportingPieces(GameState state, int target, boolean isRed) {
         int supporters = 0;
@@ -545,6 +522,7 @@ public class MaterialEval {
             int height = isRed ? state.redStackHeights[i] : state.blueStackHeights[i];
             if (height > 0 && canAttack(i, target, height)) {
                 supporters++;
+                if (supporters >= 3) break;  // Limit counting for performance
             }
         }
 
@@ -552,9 +530,9 @@ public class MaterialEval {
     }
 
     /**
-     * ✅ Enhanced square control evaluation
+     * ✅ FIXED: Moderate square control evaluation
      */
-    private int evaluateEnhancedSquareControl(GameState state, int square, int height, boolean isRed) {
+    private int evaluateModerateSquareControl(GameState state, int square, int height, boolean isRed) {
         int control = 0;
         int[] directions = {-1, 1, -7, 7};
 
@@ -568,14 +546,14 @@ public class MaterialEval {
 
                 if (isOccupied(controlled, state)) break;
 
-                // Enhanced bonus for controlling central squares
+                // ✅ FIXED: Moderate bonus for controlling central squares
                 if (isCentralSquare(controlled)) {
-                    control += 8; // Erhöht von 5
+                    control += Material.CENTRAL_BONUS / 3;  // 4 points
                 }
 
-                // Enhanced bonus for controlling enemy territory
+                // ✅ FIXED: Moderate bonus for controlling enemy territory
                 if (isEnemyTerritory(controlled, isRed)) {
-                    control += 5; // Erhöht von 3
+                    control += Material.ADVANCEMENT_BONUS / 3;  // ~3 points
                 }
             }
         }
@@ -583,7 +561,7 @@ public class MaterialEval {
         return control;
     }
 
-    // === LEGACY HELPER METHODS ===
+    // === UTILITY METHODS ===
 
     /**
      * Calculate total material for a player
@@ -628,42 +606,31 @@ public class MaterialEval {
     }
 
     /**
-     * Get development bonus (pieces off back rank)
+     * ✅ FIXED: Moderate development bonus from EvaluationParameters
      */
     private int getDevelopmentBonus(int square, boolean isRed) {
         int rank = GameState.rank(square);
 
         if (isRed && rank != 6) {
-            return 35; // Erhöht von 25
+            return Positional.DEVELOPMENT_BONUS;  // 25 points from EvaluationParameters
         } else if (!isRed && rank != 0) {
-            return 35; // Erhöht von 25
+            return Positional.DEVELOPMENT_BONUS;
         }
 
         return 0;
     }
 
-    /**
-     * Get tablebase bonus (perfect endgame knowledge)
-     */
-    private int getTablebaseBonus(GameState state, int square, int height, boolean isRed) {
-        // TODO: Implement tablebase queries
-        return getEnhancedEndgameBonus(state, square, height, isRed) / 2;
-    }
-
-    // === UTILITY METHODS ===
+    // === MORE UTILITY METHODS ===
 
     private GamePhase detectGamePhase(GameState state) {
-        int totalMaterial = getTotalMaterial(state);
-        if (totalMaterial <= 6) return GamePhase.ENDGAME;
-        if (totalMaterial <= 12) return GamePhase.MIDDLEGAME;
-        return GamePhase.OPENING;
+        return EvaluationParameters.detectGamePhase(state);
     }
 
     private double[] getPhaseMultipliers(GamePhase phase) {
         return switch (phase) {
-            case OPENING -> OPENING_MULTIPLIERS;
-            case MIDDLEGAME -> MIDDLEGAME_MULTIPLIERS;
-            case ENDGAME, TABLEBASE -> ENDGAME_MULTIPLIERS;
+            case OPENING -> Material.OPENING_MULTIPLIERS;
+            case MIDDLEGAME -> Material.MIDDLEGAME_MULTIPLIERS;
+            case ENDGAME -> Material.ENDGAME_MULTIPLIERS;
         };
     }
 
@@ -714,7 +681,6 @@ public class MaterialEval {
     public enum GamePhase {
         OPENING,
         MIDDLEGAME,
-        ENDGAME,
-        TABLEBASE
+        ENDGAME
     }
 }

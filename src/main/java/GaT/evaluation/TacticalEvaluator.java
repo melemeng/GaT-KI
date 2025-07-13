@@ -3,104 +3,87 @@ package GaT.evaluation;
 import GaT.model.GameState;
 import GaT.model.Move;
 import GaT.search.MoveGenerator;
+import static GaT.evaluation.EvaluationParameters.*;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * TACTICAL EVALUATOR - Complete Enhanced Implementation
+ * ✅ FIXED TACTICAL EVALUATOR - Moderate Parameters
  *
- * ✅ ALL NEW PARAMETERS NOW IMPLEMENTED!
- * ✅ EDGE_ACTIVATION_BONUS - Außentürme aktivieren
- * ✅ CLUSTER_FORMATION_BONUS - Koordinierte Türme
- * ✅ SUPPORTING_ATTACK_BONUS - Unterstützte Angriffe
- * ✅ Enhanced tower chain detection
- * ✅ Turm & Wächter specific tactical patterns
+ * 🚨 PREVIOUS PROBLEMS SOLVED:
+ * ❌ Excessive tactical bonuses (150, 120, 100) → ✅ NOW moderate from EvaluationParameters
+ * ❌ Local parameter definitions → ✅ NOW uses only EvaluationParameters
+ * ❌ Tactical evaluation overwhelming material → ✅ NOW balanced 4-5% weight
+ * ❌ Parameter chaos across modules → ✅ NOW centralized
+ *
+ * PRINCIPLE: Tactical evaluation provides important pattern recognition but doesn't dominate material
  */
 public class TacticalEvaluator {
 
-    // === ENHANCED CONSTANTS ===
-    private static final int FORK_BONUS = 150;
-    private static final int PIN_BONUS = 120;
-    private static final int TOWER_CHAIN_BONUS = 80;
-    private static final int FORCING_MOVE_BONUS = 60;
-    private static final int DISCOVERY_BONUS = 100;
-
-    // === NEW: CLUSTER BONUSES ===
-    private static final int CLUSTER_BONUS = 40;               // Coordinated towers
-    private static final int TOWER_COORDINATION_BONUS = 60;    // Towers that can see each other
-    private static final int GUARD_PROTECTION_CLUSTER = 30;    // Guard protected by tower cluster
-
-    // === ✅ NEUE PARAMETER JETZT IMPLEMENTIERT ===
-    private static final int EDGE_ACTIVATION_BONUS = 40;       // Außentürme aktivieren
-    private static final int CLUSTER_FORMATION_BONUS = 50;     // Koordinierte Türme
-    private static final int SUPPORTING_ATTACK_BONUS = 35;     // Unterstützte Angriffe
-
-    // === MAIN EVALUATION ===
-
     /**
-     * ✅ UPDATED: Evaluate tactical features - NOW USES ALL NEW PARAMETERS!
+     * ✅ FIXED: Evaluate tactical features - Uses moderate centralized parameters
      */
     public int evaluateTactical(GameState state) {
         if (state == null) return 0;
 
         int tacticalScore = 0;
 
-        // Original pattern detection
+        // ✅ FIXED: Original pattern detection with moderate bonuses
         tacticalScore += detectForks(state);
         tacticalScore += detectPins(state);
         tacticalScore += detectTowerChains(state);
         tacticalScore += evaluateForcingMoves(state);
 
-        // Original cluster bonus
+        // ✅ FIXED: Original cluster bonus with moderate values
         tacticalScore += evaluateClusterBonus(state);
 
-        // ✅ NEUE PARAMETER JETZT AKTIV:
-        tacticalScore += evaluateEdgeActivation(state);        // ← NEU!
-        tacticalScore += evaluateClusterFormation(state);     // ← NEU!
-        tacticalScore += evaluateSupportingAttacks(state);    // ← NEU!
+        // ✅ FIXED: NEW PARAMETERS with moderate values from EvaluationParameters:
+        tacticalScore += evaluateEdgeActivation(state);        // NOW uses Tactical.EDGE_ACTIVATION_BONUS (12)
+        tacticalScore += evaluateClusterFormation(state);     // NOW uses Tactical.CLUSTER_FORMATION_BONUS (15)
+        tacticalScore += evaluateSupportingAttacks(state);    // NOW uses Tactical.SUPPORTING_ATTACK_BONUS (10)
 
         return tacticalScore;
     }
 
-    // === ✅ NEUE IMPLEMENTIERUNGEN ===
+    // === ✅ FIXED NEW IMPLEMENTATIONS WITH MODERATE BONUSES ===
 
     /**
-     * ✅ EDGE ACTIVATION - Außentürme aktivieren
+     * ✅ FIXED: EDGE ACTIVATION - Moderate bonuses from EvaluationParameters
      */
     public int evaluateEdgeActivation(GameState state) {
         int bonus = 0;
-        int[] edgeFiles = {0, 1, 5, 6}; // Außenspalten
+        int[] edgeFiles = {0, 1, 5, 6}; // Edge files
 
         for (int file : edgeFiles) {
             for (int rank = 0; rank < 7; rank++) {
                 int pos = GameState.getIndex(rank, file);
 
-                // Rote Türme an den Rändern
+                // ✅ FIXED: Red towers on edges with moderate bonus
                 if (state.redStackHeights[pos] > 0) {
                     int height = state.redStackHeights[pos];
 
-                    // Bonus für Türme, die Zentrum bedrohen können
+                    // ✅ FIXED: Moderate bonus for towers that can threaten center
                     if (canThreatenCenter(pos, height)) {
-                        bonus += height * EDGE_ACTIVATION_BONUS;
+                        bonus += height * Tactical.EDGE_ACTIVATION_BONUS;  // 12 from EvaluationParameters
                     }
 
-                    // Extra Bonus für Schlossbedrohung
+                    // ✅ FIXED: Moderate extra bonus for castle threats
                     if (canThreatenEnemyCastle(pos, height, true)) {
-                        bonus += EDGE_ACTIVATION_BONUS * 2;
+                        bonus += Tactical.EDGE_ACTIVATION_BONUS;  // 12 extra
                     }
                 }
 
-                // Blaue Türme (negativ)
+                // ✅ FIXED: Blue towers (moderate negative)
                 if (state.blueStackHeights[pos] > 0) {
                     int height = state.blueStackHeights[pos];
 
                     if (canThreatenCenter(pos, height)) {
-                        bonus -= height * EDGE_ACTIVATION_BONUS;
+                        bonus -= height * Tactical.EDGE_ACTIVATION_BONUS;
                     }
 
                     if (canThreatenEnemyCastle(pos, height, false)) {
-                        bonus -= EDGE_ACTIVATION_BONUS * 2;
+                        bonus -= Tactical.EDGE_ACTIVATION_BONUS;
                     }
                 }
             }
@@ -110,35 +93,35 @@ public class TacticalEvaluator {
     }
 
     /**
-     * ✅ CLUSTER FORMATION - Koordinierte Türme
+     * ✅ FIXED: CLUSTER FORMATION - Moderate bonuses from EvaluationParameters
      */
     public int evaluateClusterFormation(GameState state) {
         int bonus = 0;
 
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-            // Rote Cluster
+            // ✅ FIXED: Red clusters with moderate bonus
             if (state.redStackHeights[i] > 0) {
                 int nearbyTowers = countNearbyTowers(state, i, true, 2);
                 if (nearbyTowers >= 2) {
-                    bonus += nearbyTowers * CLUSTER_FORMATION_BONUS;
+                    bonus += nearbyTowers * Tactical.CLUSTER_FORMATION_BONUS;  // 15 from EvaluationParameters
 
-                    // Extra Bonus für hohe Türme in Clustern
+                    // ✅ FIXED: Moderate extra bonus for high towers in clusters
                     int height = state.redStackHeights[i];
                     if (height >= 3) {
-                        bonus += CLUSTER_FORMATION_BONUS / 2;
+                        bonus += Tactical.CLUSTER_FORMATION_BONUS / 3;  // 5 extra
                     }
                 }
             }
 
-            // Blaue Cluster
+            // ✅ FIXED: Blue clusters with moderate penalty
             if (state.blueStackHeights[i] > 0) {
                 int nearbyTowers = countNearbyTowers(state, i, false, 2);
                 if (nearbyTowers >= 2) {
-                    bonus -= nearbyTowers * CLUSTER_FORMATION_BONUS;
+                    bonus -= nearbyTowers * Tactical.CLUSTER_FORMATION_BONUS;
 
                     int height = state.blueStackHeights[i];
                     if (height >= 3) {
-                        bonus -= CLUSTER_FORMATION_BONUS / 2;
+                        bonus -= Tactical.CLUSTER_FORMATION_BONUS / 3;
                     }
                 }
             }
@@ -148,32 +131,32 @@ public class TacticalEvaluator {
     }
 
     /**
-     * ✅ SUPPORTING ATTACKS - Unterstützte Angriffe
+     * ✅ FIXED: SUPPORTING ATTACKS - Moderate bonuses from EvaluationParameters
      */
     public int evaluateSupportingAttacks(GameState state) {
         int bonus = 0;
 
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-            // Rote unterstützte Angriffe
+            // ✅ FIXED: Red supported attacks with moderate bonus
             if (state.redStackHeights[i] > 0) {
                 List<Integer> threats = findThreats(state, i, true);
 
                 for (int threat : threats) {
                     int supporters = countSupportingThreats(state, threat, true);
                     if (supporters > 0) {
-                        bonus += supporters * SUPPORTING_ATTACK_BONUS;
+                        bonus += supporters * Tactical.SUPPORTING_ATTACK_BONUS;  // 10 from EvaluationParameters
                     }
                 }
             }
 
-            // Blaue unterstützte Angriffe
+            // ✅ FIXED: Blue supported attacks with moderate penalty
             if (state.blueStackHeights[i] > 0) {
                 List<Integer> threats = findThreats(state, i, false);
 
                 for (int threat : threats) {
                     int supporters = countSupportingThreats(state, threat, false);
                     if (supporters > 0) {
-                        bonus -= supporters * SUPPORTING_ATTACK_BONUS;
+                        bonus -= supporters * Tactical.SUPPORTING_ATTACK_BONUS;
                     }
                 }
             }
@@ -182,7 +165,7 @@ public class TacticalEvaluator {
         return bonus;
     }
 
-    // === ✅ NEUE HELPER METHODEN ===
+    // === ✅ FIXED HELPER METHODS WITH MODERATE ASSESSMENTS ===
 
     private boolean canThreatenCenter(int pos, int height) {
         int[] centralSquares = {
@@ -199,7 +182,7 @@ public class TacticalEvaluator {
     }
 
     private boolean canThreatenEnemyCastle(int pos, int height, boolean isRed) {
-        int castle = isRed ? GameState.getIndex(0, 3) : GameState.getIndex(6, 3);
+        int castle = isRed ? BLUE_CASTLE_INDEX : RED_CASTLE_INDEX;
         return calculateManhattanDistance(pos, castle) <= height + 1;
     }
 
@@ -214,6 +197,7 @@ public class TacticalEvaluator {
                 int distance = calculateManhattanDistance(pos, i);
                 if (distance <= radius) {
                     count++;
+                    if (count >= 4) break; // Cap for performance
                 }
             }
         }
@@ -234,7 +218,7 @@ public class TacticalEvaluator {
                 if (!GameState.isOnBoard(target)) break;
                 if (isRankWrap(pos, target, dir)) break;
 
-                // Gegnerische Figur gefunden?
+                // Enemy piece found?
                 if (isRed && state.blueStackHeights[target] > 0) {
                     threats.add(target);
                     break;
@@ -243,14 +227,14 @@ public class TacticalEvaluator {
                     break;
                 }
 
-                // Gegnerischer Wächter?
+                // Enemy guard?
                 long enemyGuard = isRed ? state.blueGuard : state.redGuard;
                 if (enemyGuard != 0 && target == Long.numberOfTrailingZeros(enemyGuard)) {
                     threats.add(target);
                     break;
                 }
 
-                // Blockierung?
+                // Blockage?
                 if (state.redStackHeights[target] > 0 || state.blueStackHeights[target] > 0) {
                     break;
                 }
@@ -267,10 +251,11 @@ public class TacticalEvaluator {
             int height = isRed ? state.redStackHeights[i] : state.blueStackHeights[i];
             if (height > 0 && canReachSquareSimple(i, target, height)) {
                 supporters++;
+                if (supporters >= 3) break; // Cap for performance
             }
         }
 
-        return Math.max(0, supporters - 1); // -1 weil der ursprüngliche Angreifer nicht zählt
+        return Math.max(0, supporters - 1); // -1 because original attacker doesn't count
     }
 
     private boolean canReachSquareSimple(int from, int to, int range) {
@@ -279,28 +264,27 @@ public class TacticalEvaluator {
         return distance <= range;
     }
 
-    // === ORIGINAL CLUSTER BONUS IMPLEMENTATION ===
+    // === ✅ FIXED ORIGINAL IMPLEMENTATIONS WITH MODERATE BONUSES ===
 
     /**
-     * Evaluate cluster bonuses for coordinated towers
-     * In Turm & Wächter coordinated towers are exponentially more powerful!
+     * ✅ FIXED: Evaluate cluster bonuses with moderate parameters from EvaluationParameters
      */
     public int evaluateClusterBonus(GameState state) {
         if (state == null) return 0;
 
         int clusterScore = 0;
 
-        // Check red clusters
+        // Check red clusters (moderate)
         clusterScore += evaluateColorCluster(state, true);
 
-        // Check blue clusters
+        // Check blue clusters (moderate)
         clusterScore -= evaluateColorCluster(state, false);
 
         return clusterScore;
     }
 
     /**
-     * Evaluate cluster for one color
+     * ✅ FIXED: Evaluate cluster for one color with moderate bonuses
      */
     private int evaluateColorCluster(GameState state, boolean isRed) {
         int bonus = 0;
@@ -313,26 +297,26 @@ public class TacticalEvaluator {
             int connectedTowers = countConnectedTowers(state, i, isRed);
 
             if (connectedTowers >= 1) {
-                // Basic bonus for connection
-                bonus += TOWER_COORDINATION_BONUS;
+                // ✅ FIXED: Moderate bonus for connection from EvaluationParameters
+                bonus += Tactical.TOWER_COORDINATION_BONUS;  // 18 from EvaluationParameters
 
-                // Height bonus: High towers in chains are extremely valuable
-                bonus += height * connectedTowers * 15;
+                // ✅ FIXED: Moderate height bonus for towers in chains
+                bonus += height * connectedTowers * (Tactical.TOWER_COORDINATION_BONUS / 6);  // 3 per height per connection
 
-                // Centrality bonus for clusters
+                // ✅ FIXED: Moderate centrality bonus for clusters
                 if (isCentralSquare(i)) {
-                    bonus += CLUSTER_BONUS;
+                    bonus += Tactical.CLUSTER_BONUS;  // 12 from EvaluationParameters
                 }
 
-                // Special bonus: Clusters with 3+ towers (rare but powerful)
+                // ✅ FIXED: Moderate bonus for clusters with 3+ towers
                 if (connectedTowers >= 2) {
-                    bonus += CLUSTER_BONUS * 2;
+                    bonus += Tactical.CLUSTER_BONUS;  // 12 extra
                 }
             }
 
-            // Guard protection through tower cluster
+            // ✅ FIXED: Moderate guard protection through tower cluster
             if (isGuardProtectedByCluster(state, i, isRed)) {
-                bonus += GUARD_PROTECTION_CLUSTER;
+                bonus += Tactical.GUARD_PROTECTION_CLUSTER;  // 15 from EvaluationParameters
             }
         }
 
@@ -340,7 +324,7 @@ public class TacticalEvaluator {
     }
 
     /**
-     * Count connected towers (that can "see" each other)
+     * Count connected towers (that can "see" each other) - moderate count
      */
     private int countConnectedTowers(GameState state, int square, boolean isRed) {
         int connected = 0;
@@ -368,11 +352,11 @@ public class TacticalEvaluator {
             }
         }
 
-        return connected;
+        return Math.min(connected, 3); // Cap to avoid excessive bonuses
     }
 
     /**
-     * Check if guard is protected by tower cluster
+     * Check if guard is protected by tower cluster (moderate assessment)
      */
     private boolean isGuardProtectedByCluster(GameState state, int towerSquare, boolean isRed) {
         long guardBit = isRed ? state.redGuard : state.blueGuard;
@@ -387,55 +371,15 @@ public class TacticalEvaluator {
         return distance <= towerHeight && canReachSquare(state, towerSquare, guardPos, towerHeight);
     }
 
-    // === ENHANCED HELPER METHODS ===
-
-    private boolean isValidSquare(int target, int from, int direction) {
-        if (target < 0 || target >= GameState.NUM_SQUARES) return false;
-
-        int fromFile = GameState.file(from);
-        int targetFile = GameState.file(target);
-
-        // Horizontal movement: same rank
-        if (Math.abs(direction) == 1) {
-            return GameState.rank(from) == GameState.rank(target);
-        }
-        // Vertical movement: same file
-        else {
-            return fromFile == targetFile;
-        }
-    }
-
-    private boolean hasBlockingPiece(GameState state, int from, int to) {
-        // Simplified blockade check
-        // For full implementation, check complete path
-        int direction = getDirection(from, to);
-        if (direction == 0) return false;
-
-        int current = from + direction;
-        while (current != to && GameState.isOnBoard(current)) {
-            if (state.redStackHeights[current] > 0 || state.blueStackHeights[current] > 0) {
-                return true;
-            }
-            current += direction;
-        }
-        return false;
-    }
-
-    private boolean isCentralSquare(int square) {
-        int file = GameState.file(square);
-        int rank = GameState.rank(square);
-        return file >= 2 && file <= 4 && rank >= 2 && rank <= 4;
-    }
-
-    // === ORIGINAL FORK DETECTION ===
+    // === ✅ FIXED FORK DETECTION WITH MODERATE BONUSES ===
 
     /**
-     * Detect fork opportunities (attacking 2+ targets)
+     * ✅ FIXED: Detect fork opportunities with moderate bonuses from EvaluationParameters
      */
     public int detectForks(GameState state) {
         int forkScore = 0;
 
-        // Check red forks
+        // ✅ FIXED: Check red forks with moderate bonus
         GameState redState = state.copy();
         redState.redToMove = true;
         List<Move> redMoves = MoveGenerator.generateAllMoves(redState);
@@ -443,14 +387,14 @@ public class TacticalEvaluator {
         for (Move move : redMoves) {
             int threats = countThreatsFromMove(state, move, true);
             if (threats >= 2) {
-                forkScore += FORK_BONUS;
+                forkScore += Tactical.FORK_BONUS;  // 45 from EvaluationParameters
                 if (threatsIncludeGuard(state, move, true)) {
-                    forkScore += FORK_BONUS / 2;
+                    forkScore += Tactical.FORK_BONUS / 2;  // 22-23 extra
                 }
             }
         }
 
-        // Check blue forks
+        // ✅ FIXED: Check blue forks with moderate penalty
         GameState blueState = state.copy();
         blueState.redToMove = false;
         List<Move> blueMoves = MoveGenerator.generateAllMoves(blueState);
@@ -458,9 +402,9 @@ public class TacticalEvaluator {
         for (Move move : blueMoves) {
             int threats = countThreatsFromMove(state, move, false);
             if (threats >= 2) {
-                forkScore -= FORK_BONUS;
+                forkScore -= Tactical.FORK_BONUS;
                 if (threatsIncludeGuard(state, move, false)) {
-                    forkScore -= FORK_BONUS / 2;
+                    forkScore -= Tactical.FORK_BONUS / 2;
                 }
             }
         }
@@ -468,21 +412,21 @@ public class TacticalEvaluator {
         return forkScore;
     }
 
-    // === PIN DETECTION ===
+    // === ✅ FIXED PIN DETECTION WITH MODERATE PENALTIES ===
 
     /**
-     * Detect pinned pieces
+     * ✅ FIXED: Detect pinned pieces with moderate penalties from EvaluationParameters
      */
     public int detectPins(GameState state) {
         int pinScore = 0;
 
-        // Check for pinned red pieces
+        // ✅ FIXED: Check for pinned red pieces with moderate penalty
         if (state.redGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.redGuard);
             pinScore -= detectPinsForSide(state, guardPos, true);
         }
 
-        // Check for pinned blue pieces
+        // ✅ FIXED: Check for pinned blue pieces with moderate bonus
         if (state.blueGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
             pinScore += detectPinsForSide(state, guardPos, false);
@@ -502,7 +446,8 @@ public class TacticalEvaluator {
                 if (isPiecePinnedToGuard(state, i, guardPos, checkRed)) {
                     int pieceValue = checkRed ?
                             state.redStackHeights[i] : state.blueStackHeights[i];
-                    pinValue += PIN_BONUS + (pieceValue * 30);
+                    // ✅ FIXED: Moderate pin penalty from EvaluationParameters
+                    pinValue += Tactical.PIN_BONUS + (pieceValue * (Tactical.PIN_BONUS / 3));  // 35 + ~12 per height
                 }
             }
         }
@@ -510,21 +455,21 @@ public class TacticalEvaluator {
         return pinValue;
     }
 
-    // === TOWER CHAIN DETECTION ===
+    // === ✅ FIXED TOWER CHAIN DETECTION WITH MODERATE BONUSES ===
 
     /**
-     * Detect tower chains (connected towers)
+     * ✅ FIXED: Detect tower chains with moderate bonuses from EvaluationParameters
      */
     public int detectTowerChains(GameState state) {
         int chainScore = 0;
         boolean[] visited = new boolean[GameState.NUM_SQUARES];
 
-        // Find red chains
+        // Find red chains (moderate bonuses)
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
             if (!visited[i] && state.redStackHeights[i] > 0) {
                 int chainLength = exploreChain(state, i, true, visited);
                 if (chainLength >= 2) {
-                    chainScore += TOWER_CHAIN_BONUS * chainLength;
+                    chainScore += Tactical.TOWER_COORDINATION_BONUS * chainLength / 2;  // Moderate: 9 per piece in chain
                 }
             }
         }
@@ -532,12 +477,12 @@ public class TacticalEvaluator {
         // Reset visited for blue
         visited = new boolean[GameState.NUM_SQUARES];
 
-        // Find blue chains
+        // Find blue chains (moderate penalties)
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
             if (!visited[i] && state.blueStackHeights[i] > 0) {
                 int chainLength = exploreChain(state, i, false, visited);
                 if (chainLength >= 2) {
-                    chainScore -= TOWER_CHAIN_BONUS * chainLength;
+                    chainScore -= Tactical.TOWER_COORDINATION_BONUS * chainLength / 2;
                 }
             }
         }
@@ -545,10 +490,10 @@ public class TacticalEvaluator {
         return chainScore;
     }
 
-    // === FORCING MOVES ===
+    // === ✅ FIXED FORCING MOVES WITH MODERATE BONUSES ===
 
     /**
-     * Evaluate forcing moves that demand response
+     * ✅ FIXED: Evaluate forcing moves with moderate bonuses from EvaluationParameters
      */
     private int evaluateForcingMoves(GameState state) {
         int forcingScore = 0;
@@ -559,21 +504,21 @@ public class TacticalEvaluator {
         // Limit analysis for performance
         int analyzed = 0;
         for (Move move : moves) {
-            if (analyzed++ > 20) break;
+            if (analyzed++ > 15) break; // Reduced from 20 for better performance
 
             if (isForcingMove(move, state)) {
                 forcingMoves++;
             }
         }
 
-        // Having multiple forcing moves is good
-        forcingScore = forcingMoves * FORCING_MOVE_BONUS;
+        // ✅ FIXED: Moderate bonus for having multiple forcing moves
+        forcingScore = forcingMoves * Tactical.FORCING_MOVE_BONUS;  // 20 from EvaluationParameters
 
         return state.redToMove ? forcingScore : -forcingScore;
     }
 
     /**
-     * Check if a move is forcing
+     * Check if a move is forcing (moderate criteria)
      */
     public boolean isForcingMove(Move move, GameState state) {
         // Guard attacks are always forcing
@@ -632,7 +577,7 @@ public class TacticalEvaluator {
             }
         }
 
-        return threats;
+        return Math.min(threats, 4); // Cap threats to avoid excessive values
     }
 
     private boolean threatsIncludeGuard(GameState state, Move move, boolean byRed) {
@@ -725,8 +670,7 @@ public class TacticalEvaluator {
             return false;
         }
 
-        int targetCastle = state.redToMove ?
-                GameState.getIndex(0, 3) : GameState.getIndex(6, 3);
+        int targetCastle = state.redToMove ? BLUE_CASTLE_INDEX : RED_CASTLE_INDEX;
 
         return calculateManhattanDistance(move.to, targetCastle) <= 1;
     }
@@ -754,6 +698,45 @@ public class TacticalEvaluator {
         }
 
         return true;
+    }
+
+    // === MORE HELPER METHODS ===
+
+    private boolean isValidSquare(int target, int from, int direction) {
+        if (target < 0 || target >= GameState.NUM_SQUARES) return false;
+
+        int fromFile = GameState.file(from);
+        int targetFile = GameState.file(target);
+
+        // Horizontal movement: same rank
+        if (Math.abs(direction) == 1) {
+            return GameState.rank(from) == GameState.rank(target);
+        }
+        // Vertical movement: same file
+        else {
+            return fromFile == targetFile;
+        }
+    }
+
+    private boolean hasBlockingPiece(GameState state, int from, int to) {
+        // Simplified blockade check
+        int direction = getDirection(from, to);
+        if (direction == 0) return false;
+
+        int current = from + direction;
+        while (current != to && GameState.isOnBoard(current)) {
+            if (state.redStackHeights[current] > 0 || state.blueStackHeights[current] > 0) {
+                return true;
+            }
+            current += direction;
+        }
+        return false;
+    }
+
+    private boolean isCentralSquare(int square) {
+        int file = GameState.file(square);
+        int rank = GameState.rank(square);
+        return file >= 2 && file <= 4 && rank >= 2 && rank <= 4;
     }
 
     private boolean isOnSameLine(int pos1, int pos2) {
