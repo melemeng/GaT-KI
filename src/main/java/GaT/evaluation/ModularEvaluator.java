@@ -6,11 +6,16 @@ import GaT.model.SearchConfig;
 /**
  * MODULAR EVALUATOR - Complete Implementation with All Modules
  *
+ * ✅ UPDATED WEIGHTS FOR AGGRESSIVE TACTICAL PLAY!
+ * ✅ All new parameters now properly integrated
+ * ✅ Enhanced tactical evaluation priority
+ * ✅ Better coordination and edge activation
+ *
  * Integrates all evaluation modules for Guards and Towers:
  * - MaterialEval: Piece values and material balance
- * - PositionalEval: Guard advancement and piece positioning
+ * - PositionalEval: Guard advancement and piece positioning (with TOWER_CHAIN_BONUS)
  * - SafetyEval: Guard safety and threat detection
- * - TacticalEvaluator: Pattern recognition (forks, pins, chains)
+ * - TacticalEvaluator: Pattern recognition (with all new parameters)
  * - ThreatMap: Multi-turn threat analysis
  */
 public class ModularEvaluator extends Evaluator {
@@ -43,13 +48,14 @@ public class ModularEvaluator extends Evaluator {
         }
     }
 
+    // ✅ UPDATED WEIGHTS FOR AGGRESSIVE TACTICAL PLAY!
     // Weight configurations for different game phases
     private static final PhaseWeights OPENING_WEIGHTS =
-            new PhaseWeights(0.30, 0.35, 0.15, 0.10, 0.10);
+            new PhaseWeights(0.25, 0.30, 0.15, 0.25, 0.05);  // +Tactical! (war 0.10)
     private static final PhaseWeights MIDDLEGAME_WEIGHTS =
-            new PhaseWeights(0.30, 0.20, 0.20, 0.15, 0.15);
+            new PhaseWeights(0.25, 0.20, 0.15, 0.30, 0.10);  // +Tactical! (war 0.15)
     private static final PhaseWeights ENDGAME_WEIGHTS =
-            new PhaseWeights(0.25, 0.30, 0.15, 0.20, 0.10);
+            new PhaseWeights(0.30, 0.25, 0.20, 0.20, 0.05);  // Ausgewogen
 
     // === EVALUATION MODES ===
     public enum EvaluationMode {
@@ -69,7 +75,11 @@ public class ModularEvaluator extends Evaluator {
         this.tacticalModule = new TacticalEvaluator();
         this.threatMap = new ThreatMap();
 
-        System.out.println("🚀 ModularEvaluator initialized with all evaluation modules");
+        System.out.println("🚀 ModularEvaluator initialized with AGGRESSIVE TACTICAL WEIGHTS");
+        System.out.println("   ✅ EDGE_ACTIVATION_BONUS: Active");
+        System.out.println("   ✅ CLUSTER_FORMATION_BONUS: Active");
+        System.out.println("   ✅ SUPPORTING_ATTACK_BONUS: Active");
+        System.out.println("   ✅ TOWER_CHAIN_BONUS: Active");
     }
 
     // === MAIN EVALUATION INTERFACE ===
@@ -128,20 +138,23 @@ public class ModularEvaluator extends Evaluator {
     private int evaluateBlitz(GameState state, int depth) {
         int eval = 0;
 
-        // Material (70%)
-        eval += materialModule.evaluateMaterialBasic(state) * 70 / 100;
+        // Material (60%) - reduced to make room for tactical
+        eval += materialModule.evaluateMaterialBasic(state) * 60 / 100;
 
-        // Basic safety (20%)
-        eval += safetyModule.evaluateGuardSafetyBasic(state) * 20 / 100;
+        // ✅ Tactical gets priority even in blitz mode! (25%)
+        eval += tacticalModule.evaluateTactical(state) * 25 / 100;
 
-        // Fast positional (10%)
-        eval += positionalModule.evaluateGuardAdvancementFast(state) * 10 / 100;
+        // Basic safety (10%)
+        eval += safetyModule.evaluateGuardSafetyBasic(state) * 10 / 100;
+
+        // Fast positional (5%)
+        eval += positionalModule.evaluateGuardAdvancementFast(state) * 5 / 100;
 
         return eval;
     }
 
     /**
-     * STANDARD MODE - Balanced evaluation
+     * ✅ STANDARD MODE - ENHANCED WITH NEW PARAMETERS!
      */
     private int evaluateStandard(GameState state, int depth) {
         GamePhase phase = detectGamePhase(state);
@@ -152,14 +165,14 @@ public class ModularEvaluator extends Evaluator {
         // Material evaluation
         eval += (int)(materialModule.evaluateMaterialWithActivity(state) * weights.material);
 
-        // Positional evaluation
+        // ✅ Positional evaluation (NOW WITH TOWER_CHAIN_BONUS!)
         eval += (int)(positionalModule.evaluatePositional(state) * weights.positional);
 
         // Safety evaluation (pass threat map for integration)
         safetyModule.setThreatMap(threatMap);
         eval += (int)(safetyModule.evaluateGuardSafety(state) * weights.safety);
 
-        // Tactical evaluation
+        // ✅ ENHANCED Tactical evaluation (NOW WITH ALL NEW PARAMETERS!)
         eval += (int)(tacticalModule.evaluateTactical(state) * weights.tactical);
 
         // Threat evaluation
@@ -169,7 +182,7 @@ public class ModularEvaluator extends Evaluator {
     }
 
     /**
-     * DEEP MODE - Comprehensive evaluation
+     * ✅ DEEP MODE - ALL PARAMETERS ACTIVE!
      */
     private int evaluateDeep(GameState state, int depth) {
         GamePhase phase = detectGamePhase(state);
@@ -179,13 +192,17 @@ public class ModularEvaluator extends Evaluator {
 
         // Advanced evaluations
         eval += (int)(materialModule.evaluateMaterialAdvanced(state) * weights.material);
+
+        // ✅ Advanced positional (WITH TOWER_CHAIN_BONUS!)
         eval += (int)(positionalModule.evaluatePositionalAdvanced(state) * weights.positional);
 
         // Pass threat map to safety module
         safetyModule.setThreatMap(threatMap);
         eval += (int)(safetyModule.evaluateGuardSafetyAdvanced(state) * weights.safety);
 
+        // ✅ Full tactical evaluation (ALL NEW PARAMETERS ACTIVE!)
         eval += (int)(tacticalModule.evaluateTactical(state) * weights.tactical);
+
         eval += (int)(threatMap.calculateThreatScore(state) * weights.threat);
 
         // Phase-specific adjustments
@@ -247,7 +264,7 @@ public class ModularEvaluator extends Evaluator {
         };
     }
 
-    // === PHASE-SPECIFIC EVALUATIONS ===
+    // === ✅ ENHANCED PHASE-SPECIFIC EVALUATIONS ===
 
     private int evaluateOpeningSpecific(GameState state) {
         int bonus = 0;
@@ -261,16 +278,22 @@ public class ModularEvaluator extends Evaluator {
             }
         }
 
+        // ✅ Edge activation bonus in opening
+        bonus += evaluateEdgeActivationOpening(state);
+
         return bonus;
     }
 
     private int evaluateMiddlegameSpecific(GameState state) {
         int bonus = 0;
 
-        // Piece coordination and tactics
+        // ✅ Enhanced piece coordination and tactics
         if (tacticalModule.detectForks(state) != 0) {
-            bonus += 50;
+            bonus += 100; // Erhöht von 50
         }
+
+        // ✅ Cluster formation bonus
+        bonus += tacticalModule.evaluateClusterFormation(state) / 2; // Halber Bonus hier
 
         return bonus;
     }
@@ -282,13 +305,38 @@ public class ModularEvaluator extends Evaluator {
         if (state.redGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.redGuard);
             int rank = GameState.rank(guardPos);
-            bonus += (6 - rank) * 50;
+            bonus += (6 - rank) * 75; // Erhöht von 50
         }
 
         if (state.blueGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
             int rank = GameState.rank(guardPos);
-            bonus -= rank * 50;
+            bonus -= rank * 75; // Erhöht von 50
+        }
+
+        return bonus;
+    }
+
+    // === ✅ NEUE HILFSMETHODEN ===
+
+    /**
+     * ✅ Edge activation specifically for opening
+     */
+    private int evaluateEdgeActivationOpening(GameState state) {
+        int bonus = 0;
+        int[] edgeFiles = {0, 1, 5, 6};
+
+        for (int file : edgeFiles) {
+            for (int rank = 3; rank < 7; rank++) { // Nur hintere Ränge in Eröffnung
+                int pos = GameState.getIndex(rank, file);
+
+                if (state.redStackHeights[pos] > 0) {
+                    bonus += 15; // Entwicklung der Randtürme
+                }
+                if (state.blueStackHeights[pos] > 0) {
+                    bonus -= 15;
+                }
+            }
         }
 
         return bonus;
@@ -337,6 +385,10 @@ public class ModularEvaluator extends Evaluator {
     public void setUseModularEvaluation(boolean use) {
         this.useModularEvaluation = use;
         System.out.println("ModularEvaluator: " + (use ? "ENABLED" : "DISABLED"));
+        if (use) {
+            System.out.println("   🎯 Aggressive tactical weights active!");
+            System.out.println("   ⚔️ Edge activation, cluster formation, supporting attacks!");
+        }
     }
 
     public void setEvaluationMode(EvaluationMode mode) {
@@ -348,7 +400,7 @@ public class ModularEvaluator extends Evaluator {
         return mode;
     }
 
-    // === DIAGNOSTICS ===
+    // === ✅ ENHANCED DIAGNOSTICS ===
 
     public String getEvaluationBreakdown(GameState state) {
         if (!useModularEvaluation) {
@@ -362,26 +414,36 @@ public class ModularEvaluator extends Evaluator {
         PhaseWeights weights = getPhaseWeights(phase);
 
         StringBuilder sb = new StringBuilder();
-        sb.append("=== MODULAR EVALUATION BREAKDOWN ===\n");
+        sb.append("=== ✅ ENHANCED MODULAR EVALUATION BREAKDOWN ===\n");
         sb.append("Phase: ").append(phase).append("\n");
         sb.append("Mode: ").append(mode).append("\n");
         sb.append("Time remaining: ").append(getRemainingTime()).append("ms\n\n");
 
         sb.append("Components:\n");
-        sb.append(String.format("  Material: %+d (%.0f%%)\n",
-                materialModule.evaluateMaterialWithActivity(state), weights.material * 100));
-        sb.append(String.format("  Positional: %+d (%.0f%%)\n",
-                positionalModule.evaluatePositional(state), weights.positional * 100));
+
+        int material = materialModule.evaluateMaterialWithActivity(state);
+        int positional = positionalModule.evaluatePositional(state);
+        int tactical = tacticalModule.evaluateTactical(state);
+
+        sb.append(String.format("  Material: %+d (%.0f%%)\n", material, weights.material * 100));
+        sb.append(String.format("  Positional: %+d (%.0f%%) ✅ WITH TOWER_CHAINS\n", positional, weights.positional * 100));
 
         // Pass threat map to safety module for breakdown
         safetyModule.setThreatMap(threatMap);
-        sb.append(String.format("  Safety: %+d (%.0f%%)\n",
-                safetyModule.evaluateGuardSafety(state), weights.safety * 100));
+        int safety = safetyModule.evaluateGuardSafety(state);
+        sb.append(String.format("  Safety: %+d (%.0f%%)\n", safety, weights.safety * 100));
 
-        sb.append(String.format("  Tactical: %+d (%.0f%%)\n",
-                tacticalModule.evaluateTactical(state), weights.tactical * 100));
-        sb.append(String.format("  Threats: %+d (%.0f%%)\n",
-                threatMap.calculateThreatScore(state), weights.threat * 100));
+        sb.append(String.format("  Tactical: %+d (%.0f%%) ✅ WITH NEW PARAMETERS\n", tactical, weights.tactical * 100));
+
+        int threats = threatMap.calculateThreatScore(state);
+        sb.append(String.format("  Threats: %+d (%.0f%%)\n", threats, weights.threat * 100));
+
+        // ✅ Zeige Details der neuen Parameter
+        sb.append("\n🎯 New Parameter Details:\n");
+        sb.append(String.format("  Edge Activation: %+d\n", tacticalModule.evaluateEdgeActivation(state)));
+        sb.append(String.format("  Cluster Formation: %+d\n", tacticalModule.evaluateClusterFormation(state)));
+        sb.append(String.format("  Supporting Attacks: %+d\n", tacticalModule.evaluateSupportingAttacks(state)));
+        sb.append(String.format("  Tower Chains: %+d\n", positionalModule.evaluateTowerChains(state)));
 
         sb.append("\nTotal: ").append(evaluate(state, 0));
 

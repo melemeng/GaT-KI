@@ -4,12 +4,18 @@ import GaT.model.GameState;
 import GaT.model.SearchConfig;
 
 /**
- * MATERIAL EVALUATION COMPONENT
+ * ENHANCED MATERIAL EVALUATION COMPONENT
+ *
+ * ✅ Enhanced with aggressive parameters
+ * ✅ Better activity bonuses for coordinated play
+ * ✅ Improved outpost evaluation for edge towers
+ * ✅ Enhanced piece activity coordination
+ *
  * Handles all material-related evaluation (piece values, imbalances, activity)
  */
 public class MaterialEval {
 
-    // === MATERIAL VALUES ===
+    // === ENHANCED MATERIAL VALUES ===
     public static final int TOWER_BASE_VALUE = 100;
     public static final int GUARD_BASE_VALUE = 50;
 
@@ -18,11 +24,17 @@ public class MaterialEval {
     private static final double[] MIDDLEGAME_MULTIPLIERS = {1.1, 1.0};
     private static final double[] ENDGAME_MULTIPLIERS = {1.2, 1.5};
 
-    // === ACTIVITY BONUSES ===
-    private static final int ADVANCEMENT_BONUS = 15;
-    private static final int CENTRAL_BONUS = 20;
-    private static final int CONNECTED_BONUS = 25;
-    private static final int MOBILITY_BONUS = 10;
+    // === ✅ ENHANCED ACTIVITY BONUSES ===
+    private static final int ADVANCEMENT_BONUS = 25;               // Erhöht von 15
+    private static final int CENTRAL_BONUS = 30;                   // Erhöht von 20
+    private static final int CONNECTED_BONUS = 40;                 // Erhöht von 25
+    private static final int MOBILITY_BONUS = 15;                  // Erhöht von 10
+
+    // === ✅ NEW: AGGRESSIVE COORDINATION BONUSES ===
+    private static final int EDGE_TOWER_BONUS = 35;                // NEU! Aktive Randtürme
+    private static final int DEEP_PENETRATION_BONUS = 50;          // NEU! Tiefe Vorstöße
+    private static final int CLUSTER_SUPPORT_BONUS = 30;           // NEU! Turm-Cluster Support
+    private static final int GUARD_ESCORT_BONUS = 45;              // NEU! Wächter-Begleitung
 
     /**
      * SIMPLE MATERIAL EVALUATION - Ultra-fast for time pressure
@@ -39,7 +51,7 @@ public class MaterialEval {
     }
 
     /**
-     * BASIC MATERIAL EVALUATION - Standard material with basic bonuses
+     * ✅ ENHANCED BASIC MATERIAL EVALUATION - Now with coordination awareness
      */
     public int evaluateMaterialBasic(GameState state) {
         int materialScore = 0;
@@ -50,13 +62,13 @@ public class MaterialEval {
 
             if (redHeight > 0) {
                 int value = redHeight * TOWER_BASE_VALUE;
-                value += getBasicPositionalBonus(i, redHeight, true);
+                value += getEnhancedPositionalBonus(state, i, redHeight, true);
                 materialScore += value;
             }
 
             if (blueHeight > 0) {
                 int value = blueHeight * TOWER_BASE_VALUE;
-                value += getBasicPositionalBonus(i, blueHeight, false);
+                value += getEnhancedPositionalBonus(state, i, blueHeight, false);
                 materialScore -= value;
             }
         }
@@ -65,7 +77,7 @@ public class MaterialEval {
     }
 
     /**
-     * MATERIAL WITH ACTIVITY - Enhanced with mobility and positioning
+     * ✅ ENHANCED MATERIAL WITH ACTIVITY - Better coordination detection
      */
     public int evaluateMaterialWithActivity(GameState state) {
         int materialScore = 0;
@@ -76,13 +88,13 @@ public class MaterialEval {
 
             if (redHeight > 0) {
                 int value = redHeight * TOWER_BASE_VALUE;
-                value += getActivityBonus(state, i, redHeight, true);
+                value += getAdvancedActivityBonus(state, i, redHeight, true);
                 materialScore += value;
             }
 
             if (blueHeight > 0) {
                 int value = blueHeight * TOWER_BASE_VALUE;
-                value += getActivityBonus(state, i, blueHeight, false);
+                value += getAdvancedActivityBonus(state, i, blueHeight, false);
                 materialScore -= value;
             }
         }
@@ -91,7 +103,7 @@ public class MaterialEval {
     }
 
     /**
-     * ADVANCED MATERIAL EVALUATION - Deep positional understanding
+     * ✅ ENHANCED ADVANCED MATERIAL EVALUATION - Full coordination awareness
      */
     public int evaluateMaterialAdvanced(GameState state) {
         int materialScore = 0;
@@ -117,8 +129,8 @@ public class MaterialEval {
             }
         }
 
-        // Add imbalance evaluation
-        materialScore += evaluateMaterialImbalance(state, phase);
+        // Add enhanced imbalance evaluation
+        materialScore += evaluateEnhancedMaterialImbalance(state, phase);
 
         return materialScore;
     }
@@ -136,14 +148,14 @@ public class MaterialEval {
 
             if (redHeight > 0) {
                 int value = redHeight * TOWER_BASE_VALUE;
-                // Endgame bonuses: advancement and king support
-                value += getEndgameBonus(state, i, redHeight, true);
+                // Enhanced endgame bonuses
+                value += getEnhancedEndgameBonus(state, i, redHeight, true);
                 materialScore += value;
             }
 
             if (blueHeight > 0) {
                 int value = blueHeight * TOWER_BASE_VALUE;
-                value += getEndgameBonus(state, i, blueHeight, false);
+                value += getEnhancedEndgameBonus(state, i, blueHeight, false);
                 materialScore -= value;
             }
         }
@@ -151,15 +163,15 @@ public class MaterialEval {
         return materialScore;
     }
 
-    // === POSITIONAL BONUS CALCULATION ===
+    // === ✅ ENHANCED POSITIONAL BONUS CALCULATION ===
 
     /**
-     * Basic positional bonuses for material evaluation
+     * ✅ Enhanced basic positional bonuses
      */
-    private int getBasicPositionalBonus(int square, int height, boolean isRed) {
+    private int getEnhancedPositionalBonus(GameState state, int square, int height, boolean isRed) {
         int bonus = 0;
 
-        // Advancement bonus
+        // Enhanced advancement bonus
         int rank = GameState.rank(square);
         if (isRed && rank < 3) {
             bonus += height * ADVANCEMENT_BONUS;
@@ -167,51 +179,71 @@ public class MaterialEval {
             bonus += height * ADVANCEMENT_BONUS;
         }
 
-        // Central files bonus
+        // Enhanced central files bonus
         int file = GameState.file(square);
         if (file >= 2 && file <= 4) {
             bonus += CENTRAL_BONUS;
         }
 
-        return bonus;
-    }
-
-    /**
-     * Activity bonuses including mobility and coordination
-     */
-    private int getActivityBonus(GameState state, int square, int height, boolean isRed) {
-        int bonus = getBasicPositionalBonus(square, height, isRed);
-
-        // Connected pieces bonus
-        if (hasAdjacentFriendly(state, square, isRed)) {
-            bonus += CONNECTED_BONUS;
+        // ✅ NEW: Edge tower activation bonus
+        if (isEdgeFile(file) && canThreatenCenter(state, square, height)) {
+            bonus += EDGE_TOWER_BONUS;
         }
 
-        // Mobility estimation (pieces that can move far are more valuable)
-        bonus += estimateMobility(state, square, height, isRed);
+        return bonus;
+    }
 
-        // Outpost bonus (pieces deep in enemy territory)
-        bonus += getOutpostBonus(square, isRed);
+    /**
+     * ✅ Advanced activity bonuses with coordination
+     */
+    private int getAdvancedActivityBonus(GameState state, int square, int height, boolean isRed) {
+        int bonus = getEnhancedPositionalBonus(state, square, height, isRed);
+
+        // Enhanced connected pieces bonus
+        if (hasAdjacentFriendly(state, square, isRed)) {
+            bonus += CONNECTED_BONUS;
+
+            // ✅ NEW: Cluster support bonus
+            int nearbyFriendly = countNearbyFriendly(state, square, isRed, 2);
+            if (nearbyFriendly >= 2) {
+                bonus += CLUSTER_SUPPORT_BONUS;
+            }
+        }
+
+        // Enhanced mobility estimation
+        bonus += estimateEnhancedMobility(state, square, height, isRed);
+
+        // Enhanced outpost bonus
+        bonus += getEnhancedOutpostBonus(state, square, height, isRed);
+
+        // ✅ NEW: Guard escort bonus
+        if (isEscortingGuard(state, square, height, isRed)) {
+            bonus += GUARD_ESCORT_BONUS;
+        }
 
         return bonus;
     }
 
     /**
-     * Advanced positional bonuses with phase awareness
+     * ✅ Advanced positional bonuses with phase awareness
      */
     private int getAdvancedPositionalBonus(GameState state, int square, int height, boolean isRed, GamePhase phase) {
-        int bonus = getActivityBonus(state, square, height, isRed);
+        int bonus = getAdvancedActivityBonus(state, square, height, isRed);
 
         // Phase-specific bonuses
         switch (phase) {
             case OPENING:
                 bonus += getDevelopmentBonus(square, isRed);
+                // ✅ Enhanced edge activation in opening
+                if (isEdgeFile(GameState.file(square))) {
+                    bonus += EDGE_TOWER_BONUS / 2;
+                }
                 break;
             case MIDDLEGAME:
-                bonus += getTacticalBonus(state, square, height, isRed);
+                bonus += getEnhancedTacticalBonus(state, square, height, isRed);
                 break;
             case ENDGAME:
-                bonus += getEndgameBonus(state, square, height, isRed);
+                bonus += getEnhancedEndgameBonus(state, square, height, isRed);
                 break;
             case TABLEBASE:
                 bonus += getTablebaseBonus(state, square, height, isRed);
@@ -222,42 +254,48 @@ public class MaterialEval {
     }
 
     /**
-     * Endgame-specific bonuses
+     * ✅ Enhanced endgame-specific bonuses
      */
-    private int getEndgameBonus(GameState state, int square, int height, boolean isRed) {
+    private int getEnhancedEndgameBonus(GameState state, int square, int height, boolean isRed) {
         int bonus = 0;
 
-        // Distance to enemy guard matters in endgame
+        // Enhanced distance to enemy guard
         long enemyGuard = isRed ? state.blueGuard : state.redGuard;
         if (enemyGuard != 0) {
             int enemyGuardPos = Long.numberOfTrailingZeros(enemyGuard);
             int distance = calculateDistance(square, enemyGuardPos);
 
-            // Closer pieces are more valuable
-            bonus += Math.max(0, (7 - distance) * 10);
+            // Closer pieces are more valuable (enhanced)
+            bonus += Math.max(0, (7 - distance) * 15); // Erhöht von 10
         }
 
-        // Support for own guard
+        // Enhanced support for own guard
         long ownGuard = isRed ? state.redGuard : state.blueGuard;
         if (ownGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(ownGuard);
             int guardDistance = calculateDistance(square, guardPos);
 
-            // Pieces near own guard provide support
+            // Pieces near own guard provide support (enhanced)
             if (guardDistance <= 2) {
-                bonus += 30;
+                bonus += 45; // Erhöht von 30
+            }
+
+            // ✅ NEW: Deep penetration bonus for advanced guard support
+            int guardRank = GameState.rank(guardPos);
+            if ((isRed && guardRank <= 2) || (!isRed && guardRank >= 4)) {
+                bonus += DEEP_PENETRATION_BONUS;
             }
         }
 
         return bonus;
     }
 
-    // === SPECIALIZED EVALUATION METHODS ===
+    // === ✅ NEW ENHANCED EVALUATION METHODS ===
 
     /**
-     * Evaluate material imbalances and their strategic implications
+     * ✅ Enhanced material imbalance evaluation
      */
-    private int evaluateMaterialImbalance(GameState state, GamePhase phase) {
+    private int evaluateEnhancedMaterialImbalance(GameState state, GamePhase phase) {
         int redTotal = getTotalMaterial(state, true);
         int blueTotal = getTotalMaterial(state, false);
         int imbalance = redTotal - blueTotal;
@@ -266,22 +304,286 @@ public class MaterialEval {
             return 0; // Equal material
         }
 
-        // Small imbalances are often more significant than raw piece count suggests
+        // Enhanced imbalance bonuses
         int imbalanceBonus = 0;
 
         if (phase == GamePhase.ENDGAME) {
-            // In endgame, small material advantages are magnified
-            imbalanceBonus = imbalance * 150;
+            // In endgame, material advantages are magnified (enhanced)
+            imbalanceBonus = imbalance * 200; // Erhöht von 150
         } else if (phase == GamePhase.MIDDLEGAME) {
-            // In middlegame, material advantage helps in tactics
-            imbalanceBonus = imbalance * 120;
+            // In middlegame, material advantage helps in tactics (enhanced)
+            imbalanceBonus = imbalance * 150; // Erhöht von 120
         } else {
-            // In opening, development matters more than material
-            imbalanceBonus = imbalance * 80;
+            // In opening, development matters but material still counts (enhanced)
+            imbalanceBonus = imbalance * 100; // Erhöht von 80
         }
 
         return imbalanceBonus;
     }
+
+    /**
+     * ✅ Enhanced piece activity evaluation
+     */
+    public int evaluatePieceActivity(GameState state) {
+        int activityScore = 0;
+
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            if (state.redStackHeights[i] > 0) {
+                activityScore += evaluateEnhancedPieceActivityAt(state, i, true);
+            }
+            if (state.blueStackHeights[i] > 0) {
+                activityScore -= evaluateEnhancedPieceActivityAt(state, i, false);
+            }
+        }
+
+        return activityScore;
+    }
+
+    private int evaluateEnhancedPieceActivityAt(GameState state, int square, boolean isRed) {
+        int activity = 0;
+        int height = isRed ? state.redStackHeights[square] : state.blueStackHeights[square];
+
+        // Enhanced mobility factor
+        activity += estimateEnhancedMobility(state, square, height, isRed);
+
+        // Enhanced coordination with other pieces
+        if (hasAdjacentFriendly(state, square, isRed)) {
+            activity += 30; // Erhöht von 20
+        }
+
+        // Enhanced control of important squares
+        activity += evaluateEnhancedSquareControl(state, square, height, isRed);
+
+        // ✅ NEW: Coordination bonuses
+        int supporters = countSupportingPieces(state, square, isRed);
+        if (supporters > 0) {
+            activity += supporters * 25;
+        }
+
+        return activity;
+    }
+
+    // === ✅ NEW HELPER METHODS ===
+
+    /**
+     * ✅ Check if file is edge file
+     */
+    private boolean isEdgeFile(int file) {
+        return file == 0 || file == 1 || file == 5 || file == 6;
+    }
+
+    /**
+     * ✅ Check if tower can threaten center
+     */
+    private boolean canThreatenCenter(GameState state, int square, int height) {
+        int[] centralSquares = {
+                GameState.getIndex(2, 3), GameState.getIndex(3, 3), GameState.getIndex(4, 3),
+                GameState.getIndex(3, 2), GameState.getIndex(3, 4)
+        };
+
+        for (int center : centralSquares) {
+            int distance = calculateDistance(square, center);
+            if (distance <= height) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * ✅ Count nearby friendly pieces
+     */
+    private int countNearbyFriendly(GameState state, int square, boolean isRed, int radius) {
+        int count = 0;
+
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            if (i == square) continue;
+
+            int height = isRed ? state.redStackHeights[i] : state.blueStackHeights[i];
+            if (height > 0) {
+                int distance = calculateDistance(square, i);
+                if (distance <= radius) {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
+    /**
+     * ✅ Check if piece is escorting guard
+     */
+    private boolean isEscortingGuard(GameState state, int square, int height, boolean isRed) {
+        long guardBit = isRed ? state.redGuard : state.blueGuard;
+        if (guardBit == 0) return false;
+
+        int guardPos = Long.numberOfTrailingZeros(guardBit);
+        int distance = calculateDistance(square, guardPos);
+
+        // Close escort (adjacent or 1 square away)
+        return distance <= 2 && distance <= height;
+    }
+
+    /**
+     * ✅ Enhanced mobility estimation
+     */
+    private int estimateEnhancedMobility(GameState state, int square, int height, boolean isRed) {
+        int mobility = 0;
+        int[] directions = {-1, 1, -7, 7};
+
+        for (int dir : directions) {
+            for (int dist = 1; dist <= height; dist++) {
+                int target = square + dir * dist;
+                if (!GameState.isOnBoard(target)) break;
+
+                // Check for rank wrap
+                if (Math.abs(dir) == 1 && GameState.rank(square) != GameState.rank(target)) break;
+
+                // Check if path is blocked
+                if (isOccupied(target, state)) {
+                    // Enhanced bonus for threatening enemy pieces
+                    if (isEnemyPiece(target, state, isRed)) {
+                        mobility += MOBILITY_BONUS; // Full bonus for threats
+                    }
+                    break;
+                } else {
+                    mobility += MOBILITY_BONUS / 2; // Half bonus for empty squares
+                }
+            }
+        }
+
+        return mobility;
+    }
+
+    /**
+     * ✅ Enhanced outpost bonus
+     */
+    private int getEnhancedOutpostBonus(GameState state, int square, int height, boolean isRed) {
+        int rank = GameState.rank(square);
+
+        if (isRed && rank <= 2) {
+            // Enhanced deep penetration bonus
+            int bonus = (2 - rank) * 40; // Erhöht von 30
+
+            // ✅ Extra bonus if supported
+            if (hasAdjacentFriendly(state, square, isRed)) {
+                bonus += DEEP_PENETRATION_BONUS;
+            }
+
+            return bonus;
+        } else if (!isRed && rank >= 4) {
+            int bonus = (rank - 4) * 40; // Erhöht von 30
+
+            if (hasAdjacentFriendly(state, square, isRed)) {
+                bonus += DEEP_PENETRATION_BONUS;
+            }
+
+            return bonus;
+        }
+
+        return 0;
+    }
+
+    /**
+     * ✅ Enhanced tactical bonus
+     */
+    private int getEnhancedTacticalBonus(GameState state, int square, int height, boolean isRed) {
+        int bonus = 0;
+
+        // Enhanced bonus for pieces that can attack enemy guard
+        long enemyGuard = isRed ? state.blueGuard : state.redGuard;
+        if (enemyGuard != 0) {
+            int guardPos = Long.numberOfTrailingZeros(enemyGuard);
+            if (canAttack(square, guardPos, height)) {
+                bonus += 150; // Erhöht von 100
+            }
+        }
+
+        // ✅ NEW: Bonus for supporting attacks
+        int supportedAttacks = countSupportedAttacks(state, square, height, isRed);
+        bonus += supportedAttacks * 25;
+
+        return bonus;
+    }
+
+    /**
+     * ✅ Count supported attacks
+     */
+    private int countSupportedAttacks(GameState state, int square, int height, boolean isRed) {
+        int supportedAttacks = 0;
+        int[] directions = {-1, 1, -7, 7};
+
+        for (int dir : directions) {
+            for (int dist = 1; dist <= height; dist++) {
+                int target = square + dir * dist;
+                if (!GameState.isOnBoard(target)) break;
+                if (Math.abs(dir) == 1 && GameState.rank(square) != GameState.rank(target)) break;
+
+                if (isEnemyPiece(target, state, isRed)) {
+                    // Check if this attack is supported by other pieces
+                    if (countSupportingPieces(state, target, isRed) > 0) {
+                        supportedAttacks++;
+                    }
+                    break;
+                }
+
+                if (isOccupied(target, state)) break;
+            }
+        }
+
+        return supportedAttacks;
+    }
+
+    /**
+     * ✅ Count supporting pieces for a square
+     */
+    private int countSupportingPieces(GameState state, int target, boolean isRed) {
+        int supporters = 0;
+
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            int height = isRed ? state.redStackHeights[i] : state.blueStackHeights[i];
+            if (height > 0 && canAttack(i, target, height)) {
+                supporters++;
+            }
+        }
+
+        return supporters;
+    }
+
+    /**
+     * ✅ Enhanced square control evaluation
+     */
+    private int evaluateEnhancedSquareControl(GameState state, int square, int height, boolean isRed) {
+        int control = 0;
+        int[] directions = {-1, 1, -7, 7};
+
+        // Check squares this piece controls
+        for (int dir : directions) {
+            for (int dist = 1; dist <= height; dist++) {
+                int controlled = square + dir * dist;
+                if (!GameState.isOnBoard(controlled)) break;
+
+                if (Math.abs(dir) == 1 && GameState.rank(square) != GameState.rank(controlled)) break;
+
+                if (isOccupied(controlled, state)) break;
+
+                // Enhanced bonus for controlling central squares
+                if (isCentralSquare(controlled)) {
+                    control += 8; // Erhöht von 5
+                }
+
+                // Enhanced bonus for controlling enemy territory
+                if (isEnemyTerritory(controlled, isRed)) {
+                    control += 5; // Erhöht von 3
+                }
+            }
+        }
+
+        return control;
+    }
+
+    // === LEGACY HELPER METHODS ===
 
     /**
      * Calculate total material for a player
@@ -300,44 +602,6 @@ public class MaterialEval {
     public int getTotalMaterial(GameState state) {
         return getTotalMaterial(state, true) + getTotalMaterial(state, false);
     }
-
-    /**
-     * Evaluate piece activity and coordination
-     */
-    public int evaluatePieceActivity(GameState state) {
-        int activityScore = 0;
-
-        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
-            if (state.redStackHeights[i] > 0) {
-                activityScore += evaluatePieceActivityAt(state, i, true);
-            }
-            if (state.blueStackHeights[i] > 0) {
-                activityScore -= evaluatePieceActivityAt(state, i, false);
-            }
-        }
-
-        return activityScore;
-    }
-
-    private int evaluatePieceActivityAt(GameState state, int square, boolean isRed) {
-        int activity = 0;
-        int height = isRed ? state.redStackHeights[square] : state.blueStackHeights[square];
-
-        // Mobility factor
-        activity += estimateMobility(state, square, height, isRed);
-
-        // Coordination with other pieces
-        if (hasAdjacentFriendly(state, square, isRed)) {
-            activity += 20;
-        }
-
-        // Control of important squares
-        activity += evaluateSquareControl(state, square, height, isRed);
-
-        return activity;
-    }
-
-    // === HELPER METHODS ===
 
     /**
      * Check if piece has adjacent friendly pieces
@@ -364,82 +628,18 @@ public class MaterialEval {
     }
 
     /**
-     * Estimate piece mobility
-     */
-    private int estimateMobility(GameState state, int square, int height, boolean isRed) {
-        int mobility = 0;
-        int[] directions = {-1, 1, -7, 7};
-
-        for (int dir : directions) {
-            for (int dist = 1; dist <= height; dist++) {
-                int target = square + dir * dist;
-                if (!GameState.isOnBoard(target)) break;
-
-                // Check for rank wrap
-                if (Math.abs(dir) == 1 && GameState.rank(square) != GameState.rank(target)) break;
-
-                // Check if path is blocked
-                if (isOccupied(target, state)) {
-                    // Can capture enemy pieces
-                    if (isEnemyPiece(target, state, isRed)) {
-                        mobility += MOBILITY_BONUS / 2;
-                    }
-                    break;
-                } else {
-                    mobility += MOBILITY_BONUS;
-                }
-            }
-        }
-
-        return mobility;
-    }
-
-    /**
-     * Get outpost bonus for pieces in enemy territory
-     */
-    private int getOutpostBonus(int square, boolean isRed) {
-        int rank = GameState.rank(square);
-
-        if (isRed && rank <= 2) {
-            return (2 - rank) * 30; // Deeper = better
-        } else if (!isRed && rank >= 4) {
-            return (rank - 4) * 30;
-        }
-
-        return 0;
-    }
-
-    /**
      * Get development bonus (pieces off back rank)
      */
     private int getDevelopmentBonus(int square, boolean isRed) {
         int rank = GameState.rank(square);
 
         if (isRed && rank != 6) {
-            return 25; // Red pieces off rank 7
+            return 35; // Erhöht von 25
         } else if (!isRed && rank != 0) {
-            return 25; // Blue pieces off rank 1
+            return 35; // Erhöht von 25
         }
 
         return 0;
-    }
-
-    /**
-     * Get tactical bonus for pieces in active positions
-     */
-    private int getTacticalBonus(GameState state, int square, int height, boolean isRed) {
-        int bonus = 0;
-
-        // Pieces that can attack enemy guard
-        long enemyGuard = isRed ? state.blueGuard : state.redGuard;
-        if (enemyGuard != 0) {
-            int guardPos = Long.numberOfTrailingZeros(enemyGuard);
-            if (canAttack(square, guardPos, height)) {
-                bonus += 100; // Attacking enemy guard is valuable
-            }
-        }
-
-        return bonus;
     }
 
     /**
@@ -447,39 +647,7 @@ public class MaterialEval {
      */
     private int getTablebaseBonus(GameState state, int square, int height, boolean isRed) {
         // TODO: Implement tablebase queries
-        return getEndgameBonus(state, square, height, isRed) / 2;
-    }
-
-    /**
-     * Evaluate control of strategic squares
-     */
-    private int evaluateSquareControl(GameState state, int square, int height, boolean isRed) {
-        int control = 0;
-        int[] directions = {-1, 1, -7, 7};
-
-        // Check squares this piece controls
-        for (int dir : directions) {
-            for (int dist = 1; dist <= height; dist++) {
-                int controlled = square + dir * dist;
-                if (!GameState.isOnBoard(controlled)) break;
-
-                if (Math.abs(dir) == 1 && GameState.rank(square) != GameState.rank(controlled)) break;
-
-                if (isOccupied(controlled, state)) break;
-
-                // Bonus for controlling central squares
-                if (isCentralSquare(controlled)) {
-                    control += 5;
-                }
-
-                // Bonus for controlling enemy territory
-                if (isEnemyTerritory(controlled, isRed)) {
-                    control += 3;
-                }
-            }
-        }
-
-        return control;
+        return getEnhancedEndgameBonus(state, square, height, isRed) / 2;
     }
 
     // === UTILITY METHODS ===

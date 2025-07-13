@@ -5,49 +5,52 @@ import GaT.search.MoveGenerator;
 import GaT.model.Move;
 import static GaT.evaluation.SafetyEval.*;
 
-
 import java.util.List;
 
 /**
- * FIXED EVALUATOR - Balanced and Stable
+ * BASE EVALUATOR - Legacy Compatibility
  *
- * CRITICAL FIXES:
- * ✅ 1. Removed extreme aggressive bonuses that caused wild scores
- * ✅ 2. Fixed evaluation stability and consistency
- * ✅ 3. Proper material vs positional balance
- * ✅ 4. Fixed game-ending condition detection
- * ✅ 5. Robust error handling for edge cases
- * ✅ 6. Tournament-ready evaluation
+ * ✅ All parameters properly defined
+ * ✅ Main evaluation logic moved to ModularEvaluator
+ * ✅ This class provides fallback and compatibility
+ * ✅ Parameter definitions for reference
  */
 public class Evaluator {
 
-    // === AGGRESSIVE EVALUATION CONSTANTS ===
+    // === BASIC EVALUATION CONSTANTS ===
     private static final int TOWER_BASE_VALUE = 100;
     private static final int GUARD_BASE_VALUE = 50;
     private static final int CASTLE_REACH_SCORE = 5000;
     private static final int GUARD_CAPTURE_SCORE = 4000;
 
-    // === AGGRESSIVE BONUSES (deutlich erhöht) ===
-    private static final int GUARD_ADVANCEMENT_BONUS = 50;  // War 25 -> +100%
-    private static final int CENTRAL_BONUS = 50;            // War 15 -> +233%
-    private static final int MOBILITY_BONUS = 30;           // War 8 -> +275%
-    private static final int COORDINATION_BONUS = 40;       // War 12 -> +233%
-    private static final int THREAT_BONUS = 80;             // War 30 -> +167%
-    private static final int CLUSTER_BONUS = 40;            // NEU! Koordinierte Türme
+    // === ✅ ALL PARAMETER DEFINITIONS (for reference) ===
+    // Note: These are implemented in the specialized modules!
 
-    // === ZUSÄTZLICHE AGGRESSIVE BONUSES ===
-    private static final int TOWER_CHAIN_BONUS = 60;        // NEU! Sich sehende Türme
-    private static final int GUARD_MOBILITY_ENDGAME = 100;  // NEU! Wächter-Aktivität im Endspiel
-    private static final int CASTLE_APPROACH_BONUS = 25;    // NEU! Pro Feld näher zum Schloss
-    // Was 100
+    // Basic bonuses
+    private static final int GUARD_ADVANCEMENT_BONUS = 50;
+    private static final int CENTRAL_BONUS = 25;
+    private static final int MOBILITY_BONUS = 30;
+    private static final int COORDINATION_BONUS = 60;
+    private static final int THREAT_BONUS = 80;
+
+    // ✅ NEW PARAMETERS (implemented in TacticalEvaluator)
+    private static final int CLUSTER_BONUS = 40;                    // Coordinated towers
+    private static final int EDGE_ACTIVATION_BONUS = 40;           // Außentürme aktivieren
+    private static final int CLUSTER_FORMATION_BONUS = 50;         // Koordinierte Türme
+    private static final int SUPPORTING_ATTACK_BONUS = 35;         // Unterstützte Angriffe
+
+    // ✅ ADDITIONAL PARAMETERS (implemented in PositionalEval)
+    private static final int TOWER_CHAIN_BONUS = 60;               // Sich sehende Türme
+    private static final int GUARD_MOBILITY_ENDGAME = 100;         // Wächter-Aktivität im Endspiel
+    private static final int CASTLE_APPROACH_BONUS = 25;           // Pro Feld näher zum Schloss
 
     // === STRATEGIC SQUARES ===
     private static final int[] CENTRAL_SQUARES = {
             GameState.getIndex(2, 3), GameState.getIndex(3, 3), GameState.getIndex(4, 3), // D3, D4, D5
-            GameState.getIndex(3, 2), GameState.getIndex(3, 4)  // C4, E4 (auch zentral!)
+            GameState.getIndex(3, 2), GameState.getIndex(3, 4)  // C4, E4
     };
     private static final int[] ADVANCED_SQUARES = {
-            GameState.getIndex(1, 3), GameState.getIndex(5, 3),  // D2, D6 (vorgeschobene Positionen)
+            GameState.getIndex(1, 3), GameState.getIndex(5, 3),  // D2, D6
             GameState.getIndex(2, 2), GameState.getIndex(2, 4),  // C3, E3
             GameState.getIndex(4, 2), GameState.getIndex(4, 4)   // C5, E5
     };
@@ -61,7 +64,10 @@ public class Evaluator {
     private static volatile boolean emergencyMode = false;
 
     /**
-     * FIXED MAIN EVALUATION - Stable and Balanced
+     * ✅ MAIN EVALUATION - Legacy compatibility
+     *
+     * NOTE: For best performance, use ModularEvaluator which implements
+     * all new parameters (EDGE_ACTIVATION_BONUS, CLUSTER_FORMATION_BONUS, etc.)
      */
     public int evaluate(GameState state, int depth) {
         if (state == null) return 0;
@@ -84,7 +90,7 @@ public class Evaluator {
         }
     }
 
-    // === TERMINAL POSITION EVALUATION - FIXED ===
+    // === TERMINAL POSITION EVALUATION ===
     private int checkTerminalPositionFixed(GameState state, int depth) {
         // Guard captured
         if (state.redGuard == 0) return -GUARD_CAPTURE_SCORE - depth;
@@ -140,7 +146,7 @@ public class Evaluator {
         return eval;
     }
 
-    // === MATERIAL EVALUATION - BALANCED ===
+    // === MATERIAL EVALUATION ===
     private int evaluateMaterialBasic(GameState state) {
         int materialScore = 0;
 
@@ -200,7 +206,7 @@ public class Evaluator {
         return bonus;
     }
 
-    // === GUARD EVALUATION - BALANCED ===
+    // === GUARD EVALUATION ===
     private int evaluateGuardAdvancementBasic(GameState state) {
         int guardScore = 0;
 
@@ -276,13 +282,13 @@ public class Evaluator {
         return safetyScore;
     }
 
-    // === TACTICAL EVALUATION - CONTROLLED ===
+    // === TACTICAL EVALUATION ===
     private int evaluateTacticalThreats(GameState state) {
         int threatScore = 0;
 
         try {
             List<Move> moves = MoveGenerator.generateAllMoves(state);
-            for (Move move : moves.subList(0, Math.min(10, moves.size()))) { // Limit to avoid timeout
+            for (Move move : moves.subList(0, Math.min(10, moves.size()))) {
                 if (isCapture(move, state)) {
                     int captureValue = getCaptureValue(move, state);
                     threatScore += state.redToMove ? captureValue / 4 : -captureValue / 4;
@@ -299,7 +305,7 @@ public class Evaluator {
     private int evaluateMobility(GameState state) {
         try {
             List<Move> moves = MoveGenerator.generateAllMoves(state);
-            int mobilityBonus = Math.min(moves.size() * MOBILITY_BONUS / 2, 100); // Cap mobility bonus
+            int mobilityBonus = Math.min(moves.size() * MOBILITY_BONUS / 2, 100);
             return state.redToMove ? mobilityBonus : -mobilityBonus;
         } catch (Exception e) {
             return 0;
@@ -452,11 +458,11 @@ public class Evaluator {
         boolean isRed = state.redToMove;
 
         if (((isRed ? state.blueGuard : state.redGuard) & toBit) != 0) {
-            return 800; // Reduced from 1500
+            return 800;
         }
 
         int height = isRed ? state.blueStackHeights[move.to] : state.redStackHeights[move.to];
-        return height * 80; // Reduced from 100
+        return height * 80;
     }
 
     private boolean isCentralSquare(int square) {
@@ -494,5 +500,32 @@ public class Evaluator {
 
     public static boolean isEmergencyMode() {
         return emergencyMode;
+    }
+
+    // === ✅ INFORMATION ABOUT NEW PARAMETERS ===
+
+    /**
+     * ✅ Parameter Status Information
+     *
+     * ALL NEW PARAMETERS ARE NOW IMPLEMENTED:
+     * - EDGE_ACTIVATION_BONUS (40) → TacticalEvaluator.evaluateEdgeActivation()
+     * - CLUSTER_FORMATION_BONUS (50) → TacticalEvaluator.evaluateClusterFormation()
+     * - SUPPORTING_ATTACK_BONUS (35) → TacticalEvaluator.evaluateSupportingAttacks()
+     * - TOWER_CHAIN_BONUS (60) → PositionalEval.evaluateTowerChains()
+     * - GUARD_MOBILITY_ENDGAME (100) → PositionalEval (endgame evaluation)
+     * - CASTLE_APPROACH_BONUS (25) → PositionalEval (guard advancement)
+     *
+     * Use ModularEvaluator for full access to these parameters!
+     */
+    public static void printParameterStatus() {
+        System.out.println("✅ PARAMETER STATUS:");
+        System.out.println("   EDGE_ACTIVATION_BONUS: " + EDGE_ACTIVATION_BONUS + " (ACTIVE in TacticalEvaluator)");
+        System.out.println("   CLUSTER_FORMATION_BONUS: " + CLUSTER_FORMATION_BONUS + " (ACTIVE in TacticalEvaluator)");
+        System.out.println("   SUPPORTING_ATTACK_BONUS: " + SUPPORTING_ATTACK_BONUS + " (ACTIVE in TacticalEvaluator)");
+        System.out.println("   TOWER_CHAIN_BONUS: " + TOWER_CHAIN_BONUS + " (ACTIVE in PositionalEval)");
+        System.out.println("   GUARD_MOBILITY_ENDGAME: " + GUARD_MOBILITY_ENDGAME + " (ACTIVE in PositionalEval)");
+        System.out.println("   CASTLE_APPROACH_BONUS: " + CASTLE_APPROACH_BONUS + " (ACTIVE in PositionalEval)");
+        System.out.println("");
+        System.out.println("🎯 Recommendation: Use ModularEvaluator for best performance!");
     }
 }

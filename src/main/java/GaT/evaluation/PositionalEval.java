@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * ENHANCED POSITIONAL EVALUATION COMPONENT - AGGRESSIVE PARAMETERS
  *
- * ENHANCEMENTS:
+ * ✅ TOWER_CHAIN_BONUS NOW IMPLEMENTED!
  * ✅ Aggressive parameter values for stronger play
  * ✅ Enhanced central control with tower height awareness
  * ✅ Improved guard advancement with castle approach bonus
@@ -31,6 +31,9 @@ public class PositionalEval {
     private static final int GUARD_CASTLE_APPROACH = 60;       // NEU! Wächter nähert sich Schloss
     private static final int DEFENSIVE_FORMATION_BONUS = 30;   // NEU! Türme schützen Wächter
     private static final int ENDGAME_GUARD_ACTIVITY = 80;      // NEU! Wächter-Aktivität im Endspiel
+
+    // === ✅ TOWER_CHAIN_BONUS JETZT IMPLEMENTIERT ===
+    private static final int TOWER_CHAIN_BONUS = 60;           // ✅ NEU! Sich sehende Türme
 
     // === ERWEITERTE STRATEGISCHE QUADRATE ===
     private static final int[] CENTRAL_SQUARES = {
@@ -67,7 +70,7 @@ public class PositionalEval {
     };
 
     /**
-     * COMPREHENSIVE POSITIONAL EVALUATION - ENHANCED
+     * ✅ UPDATED: COMPREHENSIVE POSITIONAL EVALUATION - NOW WITH TOWER CHAINS!
      */
     public int evaluatePositional(GameState state) {
         int positionalScore = 0;
@@ -84,7 +87,103 @@ public class PositionalEval {
         // Mobility and development (15% weight)
         positionalScore += evaluateMobilityAndDevelopment(state) * 15 / 100;
 
+        // ✅ TOWER_CHAIN_BONUS JETZT AKTIV!
+        positionalScore += evaluateTowerChains(state);
+
         return positionalScore;
+    }
+
+    // === ✅ NEUE TOWER CHAINS IMPLEMENTIERUNG ===
+
+    /**
+     * ✅ TOWER CHAINS - Sich sehende Türme bewerten
+     */
+    public int evaluateTowerChains(GameState state) {
+        int chainBonus = 0;
+
+        // Horizontale Ketten
+        for (int rank = 0; rank < 7; rank++) {
+            chainBonus += evaluateRankChain(state, rank, true);  // Rot
+            chainBonus -= evaluateRankChain(state, rank, false); // Blau
+        }
+
+        // Vertikale Ketten
+        for (int file = 0; file < 7; file++) {
+            chainBonus += evaluateFileChain(state, file, true);
+            chainBonus -= evaluateFileChain(state, file, false);
+        }
+
+        return chainBonus;
+    }
+
+    /**
+     * ✅ Bewerte Turm-Kette in einer Reihe
+     */
+    private int evaluateRankChain(GameState state, int rank, boolean isRed) {
+        int chainLength = 0;
+        int totalHeight = 0;
+        int maxBonus = 0;
+
+        for (int file = 0; file < 7; file++) {
+            int pos = GameState.getIndex(rank, file);
+            int height = isRed ? state.redStackHeights[pos] : state.blueStackHeights[pos];
+
+            if (height > 0) {
+                chainLength++;
+                totalHeight += height;
+            } else if (chainLength > 0) {
+                // Kette unterbrochen - bewerte sie
+                if (chainLength >= 2) {
+                    int bonus = chainLength * totalHeight * TOWER_CHAIN_BONUS / 10;
+                    maxBonus = Math.max(maxBonus, bonus);
+                }
+                chainLength = 0;
+                totalHeight = 0;
+            }
+        }
+
+        // Kette bis Ende der Reihe
+        if (chainLength >= 2) {
+            int bonus = chainLength * totalHeight * TOWER_CHAIN_BONUS / 10;
+            maxBonus = Math.max(maxBonus, bonus);
+        }
+
+        return maxBonus;
+    }
+
+    /**
+     * ✅ Bewerte Turm-Kette in einer Spalte
+     */
+    private int evaluateFileChain(GameState state, int file, boolean isRed) {
+        int chainLength = 0;
+        int totalHeight = 0;
+        int maxBonus = 0;
+
+        for (int rank = 0; rank < 7; rank++) {
+            int pos = GameState.getIndex(rank, file);
+            int height = isRed ? state.redStackHeights[pos] : state.blueStackHeights[pos];
+
+            if (height > 0) {
+                chainLength++;
+                totalHeight += height;
+            } else if (chainLength > 0) {
+                // Kette unterbrochen - bewerte sie
+                if (chainLength >= 2) {
+                    int bonus = chainLength * totalHeight * TOWER_CHAIN_BONUS / 10;
+                    maxBonus = Math.max(maxBonus, bonus);
+                }
+                chainLength = 0;
+                totalHeight = 0;
+            }
+        }
+
+        // Kette bis Ende der Spalte
+        if (chainLength >= 2) {
+            int bonus = chainLength * totalHeight * TOWER_CHAIN_BONUS / 10;
+            maxBonus = Math.max(maxBonus, bonus);
+        }
+
+        return maxBonus;
     }
 
     /**

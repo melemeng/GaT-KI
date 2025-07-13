@@ -4,19 +4,17 @@ import GaT.model.GameState;
 import GaT.model.Move;
 import GaT.search.MoveGenerator;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * TACTICAL EVALUATOR - Complete Enhanced Implementation
  *
- * Provides tactical pattern recognition and evaluation for Guards and Towers.
- * This is a lightweight evaluator that focuses on tactical features only.
- * It does NOT extend Evaluator to avoid circular dependencies.
- *
- * ENHANCEMENTS:
- * ✅ Added Cluster Bonus for coordinated towers
+ * ✅ ALL NEW PARAMETERS NOW IMPLEMENTED!
+ * ✅ EDGE_ACTIVATION_BONUS - Außentürme aktivieren
+ * ✅ CLUSTER_FORMATION_BONUS - Koordinierte Türme
+ * ✅ SUPPORTING_ATTACK_BONUS - Unterstützte Angriffe
  * ✅ Enhanced tower chain detection
- * ✅ Improved guard protection evaluation
  * ✅ Turm & Wächter specific tactical patterns
  */
 public class TacticalEvaluator {
@@ -33,10 +31,15 @@ public class TacticalEvaluator {
     private static final int TOWER_COORDINATION_BONUS = 60;    // Towers that can see each other
     private static final int GUARD_PROTECTION_CLUSTER = 30;    // Guard protected by tower cluster
 
+    // === ✅ NEUE PARAMETER JETZT IMPLEMENTIERT ===
+    private static final int EDGE_ACTIVATION_BONUS = 40;       // Außentürme aktivieren
+    private static final int CLUSTER_FORMATION_BONUS = 50;     // Koordinierte Türme
+    private static final int SUPPORTING_ATTACK_BONUS = 35;     // Unterstützte Angriffe
+
     // === MAIN EVALUATION ===
 
     /**
-     * Evaluate tactical features of the position - ENHANCED with Cluster Bonus
+     * ✅ UPDATED: Evaluate tactical features - NOW USES ALL NEW PARAMETERS!
      */
     public int evaluateTactical(GameState state) {
         if (state == null) return 0;
@@ -49,13 +52,234 @@ public class TacticalEvaluator {
         tacticalScore += detectTowerChains(state);
         tacticalScore += evaluateForcingMoves(state);
 
-        // NEW: Cluster-Bonus (very important for Turm & Wächter!)
+        // Original cluster bonus
         tacticalScore += evaluateClusterBonus(state);
+
+        // ✅ NEUE PARAMETER JETZT AKTIV:
+        tacticalScore += evaluateEdgeActivation(state);        // ← NEU!
+        tacticalScore += evaluateClusterFormation(state);     // ← NEU!
+        tacticalScore += evaluateSupportingAttacks(state);    // ← NEU!
 
         return tacticalScore;
     }
 
-    // === NEW: CLUSTER BONUS IMPLEMENTATION ===
+    // === ✅ NEUE IMPLEMENTIERUNGEN ===
+
+    /**
+     * ✅ EDGE ACTIVATION - Außentürme aktivieren
+     */
+    public int evaluateEdgeActivation(GameState state) {
+        int bonus = 0;
+        int[] edgeFiles = {0, 1, 5, 6}; // Außenspalten
+
+        for (int file : edgeFiles) {
+            for (int rank = 0; rank < 7; rank++) {
+                int pos = GameState.getIndex(rank, file);
+
+                // Rote Türme an den Rändern
+                if (state.redStackHeights[pos] > 0) {
+                    int height = state.redStackHeights[pos];
+
+                    // Bonus für Türme, die Zentrum bedrohen können
+                    if (canThreatenCenter(pos, height)) {
+                        bonus += height * EDGE_ACTIVATION_BONUS;
+                    }
+
+                    // Extra Bonus für Schlossbedrohung
+                    if (canThreatenEnemyCastle(pos, height, true)) {
+                        bonus += EDGE_ACTIVATION_BONUS * 2;
+                    }
+                }
+
+                // Blaue Türme (negativ)
+                if (state.blueStackHeights[pos] > 0) {
+                    int height = state.blueStackHeights[pos];
+
+                    if (canThreatenCenter(pos, height)) {
+                        bonus -= height * EDGE_ACTIVATION_BONUS;
+                    }
+
+                    if (canThreatenEnemyCastle(pos, height, false)) {
+                        bonus -= EDGE_ACTIVATION_BONUS * 2;
+                    }
+                }
+            }
+        }
+
+        return bonus;
+    }
+
+    /**
+     * ✅ CLUSTER FORMATION - Koordinierte Türme
+     */
+    public int evaluateClusterFormation(GameState state) {
+        int bonus = 0;
+
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            // Rote Cluster
+            if (state.redStackHeights[i] > 0) {
+                int nearbyTowers = countNearbyTowers(state, i, true, 2);
+                if (nearbyTowers >= 2) {
+                    bonus += nearbyTowers * CLUSTER_FORMATION_BONUS;
+
+                    // Extra Bonus für hohe Türme in Clustern
+                    int height = state.redStackHeights[i];
+                    if (height >= 3) {
+                        bonus += CLUSTER_FORMATION_BONUS / 2;
+                    }
+                }
+            }
+
+            // Blaue Cluster
+            if (state.blueStackHeights[i] > 0) {
+                int nearbyTowers = countNearbyTowers(state, i, false, 2);
+                if (nearbyTowers >= 2) {
+                    bonus -= nearbyTowers * CLUSTER_FORMATION_BONUS;
+
+                    int height = state.blueStackHeights[i];
+                    if (height >= 3) {
+                        bonus -= CLUSTER_FORMATION_BONUS / 2;
+                    }
+                }
+            }
+        }
+
+        return bonus;
+    }
+
+    /**
+     * ✅ SUPPORTING ATTACKS - Unterstützte Angriffe
+     */
+    public int evaluateSupportingAttacks(GameState state) {
+        int bonus = 0;
+
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            // Rote unterstützte Angriffe
+            if (state.redStackHeights[i] > 0) {
+                List<Integer> threats = findThreats(state, i, true);
+
+                for (int threat : threats) {
+                    int supporters = countSupportingThreats(state, threat, true);
+                    if (supporters > 0) {
+                        bonus += supporters * SUPPORTING_ATTACK_BONUS;
+                    }
+                }
+            }
+
+            // Blaue unterstützte Angriffe
+            if (state.blueStackHeights[i] > 0) {
+                List<Integer> threats = findThreats(state, i, false);
+
+                for (int threat : threats) {
+                    int supporters = countSupportingThreats(state, threat, false);
+                    if (supporters > 0) {
+                        bonus -= supporters * SUPPORTING_ATTACK_BONUS;
+                    }
+                }
+            }
+        }
+
+        return bonus;
+    }
+
+    // === ✅ NEUE HELPER METHODEN ===
+
+    private boolean canThreatenCenter(int pos, int height) {
+        int[] centralSquares = {
+                GameState.getIndex(2, 3), GameState.getIndex(3, 3), GameState.getIndex(4, 3),
+                GameState.getIndex(3, 2), GameState.getIndex(3, 4)
+        };
+
+        for (int center : centralSquares) {
+            if (canReachSquareSimple(pos, center, height)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean canThreatenEnemyCastle(int pos, int height, boolean isRed) {
+        int castle = isRed ? GameState.getIndex(0, 3) : GameState.getIndex(6, 3);
+        return calculateManhattanDistance(pos, castle) <= height + 1;
+    }
+
+    private int countNearbyTowers(GameState state, int pos, boolean isRed, int radius) {
+        int count = 0;
+
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            if (i == pos) continue;
+
+            int height = isRed ? state.redStackHeights[i] : state.blueStackHeights[i];
+            if (height > 0) {
+                int distance = calculateManhattanDistance(pos, i);
+                if (distance <= radius) {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
+    private List<Integer> findThreats(GameState state, int pos, boolean isRed) {
+        List<Integer> threats = new ArrayList<>();
+        int height = isRed ? state.redStackHeights[pos] : state.blueStackHeights[pos];
+
+        int[] directions = {-1, 1, -7, 7};
+
+        for (int dir : directions) {
+            for (int dist = 1; dist <= height; dist++) {
+                int target = pos + dir * dist;
+
+                if (!GameState.isOnBoard(target)) break;
+                if (isRankWrap(pos, target, dir)) break;
+
+                // Gegnerische Figur gefunden?
+                if (isRed && state.blueStackHeights[target] > 0) {
+                    threats.add(target);
+                    break;
+                } else if (!isRed && state.redStackHeights[target] > 0) {
+                    threats.add(target);
+                    break;
+                }
+
+                // Gegnerischer Wächter?
+                long enemyGuard = isRed ? state.blueGuard : state.redGuard;
+                if (enemyGuard != 0 && target == Long.numberOfTrailingZeros(enemyGuard)) {
+                    threats.add(target);
+                    break;
+                }
+
+                // Blockierung?
+                if (state.redStackHeights[target] > 0 || state.blueStackHeights[target] > 0) {
+                    break;
+                }
+            }
+        }
+
+        return threats;
+    }
+
+    private int countSupportingThreats(GameState state, int target, boolean isRed) {
+        int supporters = 0;
+
+        for (int i = 0; i < GameState.NUM_SQUARES; i++) {
+            int height = isRed ? state.redStackHeights[i] : state.blueStackHeights[i];
+            if (height > 0 && canReachSquareSimple(i, target, height)) {
+                supporters++;
+            }
+        }
+
+        return Math.max(0, supporters - 1); // -1 weil der ursprüngliche Angreifer nicht zählt
+    }
+
+    private boolean canReachSquareSimple(int from, int to, int range) {
+        if (!isOnSameLine(from, to)) return false;
+        int distance = calculateManhattanDistance(from, to);
+        return distance <= range;
+    }
+
+    // === ORIGINAL CLUSTER BONUS IMPLEMENTATION ===
 
     /**
      * Evaluate cluster bonuses for coordinated towers
