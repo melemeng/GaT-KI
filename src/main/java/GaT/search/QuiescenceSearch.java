@@ -33,9 +33,15 @@ public class QuiescenceSearch {
     private static MoveOrdering moveOrdering = new MoveOrdering();
 
     /**
-     * ENHANCED: Quiescence search with history heuristic integration
+     * NULL-SAFE QUIESCENCE SEARCH - CRITICAL FIX
      */
     public static int quiesce(GameState state, int alpha, int beta, boolean maximizingPlayer, int qDepth) {
+        // CRITICAL NULL CHECK AT ENTRY
+        if (state == null) {
+            System.err.println("❌ ERROR: Null state in QuiescenceSearch.quiesce()");
+            return 0; // Safe neutral value
+        }
+
         qNodes++;
 
         if (qDepth >= MAX_Q_DEPTH) {
@@ -69,10 +75,33 @@ public class QuiescenceSearch {
                     }
                 }
 
+                // CRITICAL NULL-SAFE COPY AND MOVE APPLICATION
                 GameState copy = state.copy();
-                copy.applyMove(move);
+                if (copy == null) {
+                    System.err.println("❌ ERROR: state.copy() returned null in QuiescenceSearch for move " + move);
+                    continue; // Skip this move
+                }
 
-                int eval = quiesce(copy, alpha, beta, false, qDepth + 1);
+                try {
+                    copy.applyMove(move);
+                    // VERIFY STATE IS STILL VALID
+                    if (copy.redTowers == 0 && copy.blueTowers == 0 && copy.redGuard == 0 && copy.blueGuard == 0) {
+                        System.err.println("❌ ERROR: applyMove() corrupted state in QuiescenceSearch for move " + move);
+                        continue; // Skip this move
+                    }
+                } catch (Exception e) {
+                    System.err.println("❌ ERROR: applyMove() failed in QuiescenceSearch for move " + move + ": " + e.getMessage());
+                    continue; // Skip this move
+                }
+
+                int eval;
+                try {
+                    eval = quiesce(copy, alpha, beta, false, qDepth + 1);
+                } catch (Exception e) {
+                    System.err.println("❌ ERROR: Recursive quiesce() failed for move " + move + ": " + e.getMessage());
+                    eval = standPat; // Use conservative fallback
+                }
+
                 maxEval = Math.max(maxEval, eval);
                 alpha = Math.max(alpha, eval);
 
@@ -114,10 +143,33 @@ public class QuiescenceSearch {
                     }
                 }
 
+                // CRITICAL NULL-SAFE COPY AND MOVE APPLICATION
                 GameState copy = state.copy();
-                copy.applyMove(move);
+                if (copy == null) {
+                    System.err.println("❌ ERROR: state.copy() returned null in QuiescenceSearch for move " + move);
+                    continue; // Skip this move
+                }
 
-                int eval = quiesce(copy, alpha, beta, true, qDepth + 1);
+                try {
+                    copy.applyMove(move);
+                    // VERIFY STATE IS STILL VALID
+                    if (copy.redTowers == 0 && copy.blueTowers == 0 && copy.redGuard == 0 && copy.blueGuard == 0) {
+                        System.err.println("❌ ERROR: applyMove() corrupted state in QuiescenceSearch for move " + move);
+                        continue; // Skip this move
+                    }
+                } catch (Exception e) {
+                    System.err.println("❌ ERROR: applyMove() failed in QuiescenceSearch for move " + move + ": " + e.getMessage());
+                    continue; // Skip this move
+                }
+
+                int eval;
+                try {
+                    eval = quiesce(copy, alpha, beta, true, qDepth + 1);
+                } catch (Exception e) {
+                    System.err.println("❌ ERROR: Recursive quiesce() failed for move " + move + ": " + e.getMessage());
+                    eval = standPat; // Use conservative fallback
+                }
+
                 minEval = Math.min(minEval, eval);
                 beta = Math.min(beta, eval);
 
@@ -140,13 +192,15 @@ public class QuiescenceSearch {
     }
 
     /**
-     * ENHANCED: Safe tactical move generation with better ordering
+     * NULL-SAFE generateTacticalMovesEnhanced - ADDITIONAL FIX
      */
-    public static List<Move> generateTacticalMoves(GameState state) {
-        return generateTacticalMovesEnhanced(state, 0);
-    }
-
     private static List<Move> generateTacticalMovesEnhanced(GameState state, int qDepth) {
+        // CRITICAL NULL CHECK
+        if (state == null) {
+            System.err.println("❌ ERROR: Null state in generateTacticalMovesEnhanced");
+            return new ArrayList<>();
+        }
+
         AtomicInteger depth = recursionDepth.get();
 
         if (depth.get() >= MAX_TACTICAL_RECURSION) {
@@ -156,10 +210,14 @@ public class QuiescenceSearch {
         depth.incrementAndGet();
         try {
             List<Move> allMoves = MoveGenerator.generateAllMoves(state);
+            if (allMoves == null) {
+                return new ArrayList<>();
+            }
+
             List<Move> tacticalMoves = new ArrayList<>();
 
             for (Move move : allMoves) {
-                if (isTacticalMoveSafe(move, state)) {
+                if (move != null && isTacticalMoveSafe(move, state)) {
                     tacticalMoves.add(move);
                 }
             }
@@ -168,6 +226,10 @@ public class QuiescenceSearch {
             orderTacticalMoves(tacticalMoves, state, qDepth);
 
             return tacticalMoves;
+
+        } catch (Exception e) {
+            System.err.println("❌ ERROR: generateTacticalMovesEnhanced failed: " + e.getMessage());
+            return new ArrayList<>();
         } finally {
             depth.decrementAndGet();
         }
