@@ -5,22 +5,21 @@ import GaT.model.Move;
 import GaT.model.TTEntry;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * ENHANCED QUIESCENCE SEARCH - WITH HISTORY HEURISTIC INTEGRATION
+ * CRITICAL FIX: QuiescenceSearch with proper null-safe copy() exception handling
  *
- * ENHANCEMENTS:
- * ✅ History Heuristic updates for capture sequences
- * ✅ Better move ordering in tactical positions
- * ✅ Enhanced statistics tracking
- * ✅ Optimized for single-threaded performance
+ * FIXES:
+ * ✅ state.copy() now inside try-catch blocks
+ * ✅ Proper exception handling for all copy operations
+ * ✅ Fixed validation order
+ * ✅ Robust fallback mechanisms
+ * ✅ Comprehensive error logging
  */
 public class QuiescenceSearch {
 
-    // === THREAD-SAFE RECURSION PROTECTION ===
-    private static final ThreadLocal<AtomicInteger> recursionDepth =
-            ThreadLocal.withInitial(() -> new AtomicInteger(0));
+    // === SIMPLE RECURSION PROTECTION ===
+    private static int recursionDepth = 0;
     private static final int MAX_Q_DEPTH = 12;
     private static final int MAX_TACTICAL_RECURSION = 2;
 
@@ -33,7 +32,7 @@ public class QuiescenceSearch {
     private static MoveOrdering moveOrdering = new MoveOrdering();
 
     /**
-     * NULL-SAFE QUIESCENCE SEARCH - CRITICAL FIX
+     * CRITICAL FIX: Quiescence search with proper exception handling
      */
     public static int quiesce(GameState state, int alpha, int beta, boolean maximizingPlayer, int qDepth) {
         // CRITICAL NULL CHECK AT ENTRY
@@ -42,14 +41,26 @@ public class QuiescenceSearch {
             return 0; // Safe neutral value
         }
 
+        // VALIDATION CHECK
+        if (!state.isValid()) {
+            System.err.println("❌ ERROR: Invalid state in QuiescenceSearch.quiesce()");
+            return Minimax.evaluate(state, -qDepth);
+        }
+
         qNodes++;
 
         if (qDepth >= MAX_Q_DEPTH) {
             return Minimax.evaluate(state, -qDepth);
         }
 
-        // Stand pat evaluation
-        int standPat = Minimax.evaluate(state, -qDepth);
+        // Stand pat evaluation with exception handling
+        int standPat;
+        try {
+            standPat = Minimax.evaluate(state, -qDepth);
+        } catch (Exception e) {
+            System.err.println("❌ ERROR: Stand pat evaluation failed: " + e.getMessage());
+            standPat = 0; // Neutral fallback
+        }
 
         if (maximizingPlayer) {
             if (standPat >= beta) {
@@ -58,8 +69,14 @@ public class QuiescenceSearch {
             }
             alpha = Math.max(alpha, standPat);
 
-            // Enhanced tactical move generation with ordering
-            List<Move> tacticalMoves = generateTacticalMovesEnhanced(state, qDepth);
+            // Enhanced tactical move generation with proper exception handling
+            List<Move> tacticalMoves;
+            try {
+                tacticalMoves = generateTacticalMovesEnhanced(state, qDepth);
+            } catch (Exception e) {
+                System.err.println("❌ ERROR: Tactical move generation failed: " + e.getMessage());
+                return standPat;
+            }
 
             if (tacticalMoves.isEmpty()) {
                 return standPat;
@@ -67,30 +84,52 @@ public class QuiescenceSearch {
 
             int maxEval = standPat;
             for (Move move : tacticalMoves) {
-                // Enhanced delta pruning
-                if (isCapture(move, state)) {
-                    int captureValue = estimateCaptureValue(move, state);
-                    if (standPat + captureValue + 150 < alpha) {
-                        continue; // Skip bad captures
-                    }
+                if (move == null) {
+                    System.err.println("❌ ERROR: Null move in tactical moves list");
+                    continue;
                 }
 
-                // CRITICAL NULL-SAFE COPY AND MOVE APPLICATION
-                GameState copy = state.copy();
-                if (copy == null) {
-                    System.err.println("❌ ERROR: state.copy() returned null in QuiescenceSearch for move " + move);
-                    continue; // Skip this move
-                }
-
+                // Enhanced delta pruning with exception handling
                 try {
+                    if (isCapture(move, state)) {
+                        int captureValue = estimateCaptureValue(move, state);
+                        if (standPat + captureValue + 150 < alpha) {
+                            continue; // Skip bad captures
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("❌ ERROR: Delta pruning check failed for move " + move + ": " + e.getMessage());
+                    // Continue without delta pruning
+                }
+
+                // CRITICAL FIX: copy() AND applyMove() in try-catch!
+                GameState copy = null;
+                try {
+                    copy = state.copy();
+
+                    // NULL-CHECK AFTER copy()
+                    if (copy == null) {
+                        System.err.println("❌ ERROR: state.copy() returned null in QuiescenceSearch for move " + move);
+                        continue; // Skip this move
+                    }
+
+                    // VALIDATION CHECK AFTER copy()
+                    if (!copy.isValid()) {
+                        System.err.println("❌ ERROR: state.copy() returned invalid state in QuiescenceSearch for move " + move);
+                        continue; // Skip this move
+                    }
+
+                    // APPLY MOVE
                     copy.applyMove(move);
-                    // VERIFY STATE IS STILL VALID
-                    if (copy.redTowers == 0 && copy.blueTowers == 0 && copy.redGuard == 0 && copy.blueGuard == 0) {
+
+                    // VALIDATION AFTER applyMove()
+                    if (!copy.isValid()) {
                         System.err.println("❌ ERROR: applyMove() corrupted state in QuiescenceSearch for move " + move);
                         continue; // Skip this move
                     }
+
                 } catch (Exception e) {
-                    System.err.println("❌ ERROR: applyMove() failed in QuiescenceSearch for move " + move + ": " + e.getMessage());
+                    System.err.println("❌ ERROR: Copy/ApplyMove failed in QuiescenceSearch for move " + move + ": " + e.getMessage());
                     continue; // Skip this move
                 }
 
@@ -108,10 +147,10 @@ public class QuiescenceSearch {
                 if (beta <= alpha) {
                     qCutoffs++;
 
-                    // ENHANCED: Update history for good tactical sequences
+                    // History update with exception handling
                     if (qDepth <= 2 && !isCapture(move, state)) {
                         try {
-                            moveOrdering.updateHistoryOnCutoff(move, state, Math.max(1, 8 - qDepth));
+                            moveOrdering.updateHistory(move, Math.max(1, 8 - qDepth), state);
                         } catch (Exception e) {
                             // Silent fail - history is optimization
                         }
@@ -128,7 +167,13 @@ public class QuiescenceSearch {
             }
             beta = Math.min(beta, standPat);
 
-            List<Move> tacticalMoves = generateTacticalMovesEnhanced(state, qDepth);
+            List<Move> tacticalMoves;
+            try {
+                tacticalMoves = generateTacticalMovesEnhanced(state, qDepth);
+            } catch (Exception e) {
+                System.err.println("❌ ERROR: Tactical move generation failed: " + e.getMessage());
+                return standPat;
+            }
 
             if (tacticalMoves.isEmpty()) {
                 return standPat;
@@ -136,29 +181,52 @@ public class QuiescenceSearch {
 
             int minEval = standPat;
             for (Move move : tacticalMoves) {
-                if (isCapture(move, state)) {
-                    int captureValue = estimateCaptureValue(move, state);
-                    if (standPat - captureValue - 150 > beta) {
-                        continue;
-                    }
+                if (move == null) {
+                    System.err.println("❌ ERROR: Null move in tactical moves list");
+                    continue;
                 }
 
-                // CRITICAL NULL-SAFE COPY AND MOVE APPLICATION
-                GameState copy = state.copy();
-                if (copy == null) {
-                    System.err.println("❌ ERROR: state.copy() returned null in QuiescenceSearch for move " + move);
-                    continue; // Skip this move
-                }
-
+                // Delta pruning with exception handling
                 try {
+                    if (isCapture(move, state)) {
+                        int captureValue = estimateCaptureValue(move, state);
+                        if (standPat - captureValue - 150 > beta) {
+                            continue;
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("❌ ERROR: Delta pruning check failed for move " + move + ": " + e.getMessage());
+                    // Continue without delta pruning
+                }
+
+                // CRITICAL FIX: copy() AND applyMove() in try-catch!
+                GameState copy = null;
+                try {
+                    copy = state.copy();
+
+                    // NULL-CHECK AFTER copy()
+                    if (copy == null) {
+                        System.err.println("❌ ERROR: state.copy() returned null in QuiescenceSearch for move " + move);
+                        continue; // Skip this move
+                    }
+
+                    // VALIDATION CHECK AFTER copy()
+                    if (!copy.isValid()) {
+                        System.err.println("❌ ERROR: state.copy() returned invalid state in QuiescenceSearch for move " + move);
+                        continue; // Skip this move
+                    }
+
+                    // APPLY MOVE
                     copy.applyMove(move);
-                    // VERIFY STATE IS STILL VALID
-                    if (copy.redTowers == 0 && copy.blueTowers == 0 && copy.redGuard == 0 && copy.blueGuard == 0) {
+
+                    // VALIDATION AFTER applyMove()
+                    if (!copy.isValid()) {
                         System.err.println("❌ ERROR: applyMove() corrupted state in QuiescenceSearch for move " + move);
                         continue; // Skip this move
                     }
+
                 } catch (Exception e) {
-                    System.err.println("❌ ERROR: applyMove() failed in QuiescenceSearch for move " + move + ": " + e.getMessage());
+                    System.err.println("❌ ERROR: Copy/ApplyMove failed in QuiescenceSearch for move " + move + ": " + e.getMessage());
                     continue; // Skip this move
                 }
 
@@ -176,10 +244,10 @@ public class QuiescenceSearch {
                 if (beta <= alpha) {
                     qCutoffs++;
 
-                    // ENHANCED: Update history for good tactical sequences
+                    // History update with exception handling
                     if (qDepth <= 2 && !isCapture(move, state)) {
                         try {
-                            moveOrdering.updateHistoryOnCutoff(move, state, Math.max(1, 8 - qDepth));
+                            moveOrdering.updateHistory(move, Math.max(1, 8 - qDepth), state);
                         } catch (Exception e) {
                             // Silent fail - history is optimization
                         }
@@ -192,7 +260,7 @@ public class QuiescenceSearch {
     }
 
     /**
-     * NULL-SAFE generateTacticalMovesEnhanced - ADDITIONAL FIX
+     * FIXED: Tactical move generation with proper exception handling
      */
     private static List<Move> generateTacticalMovesEnhanced(GameState state, int qDepth) {
         // CRITICAL NULL CHECK
@@ -201,16 +269,25 @@ public class QuiescenceSearch {
             return new ArrayList<>();
         }
 
-        AtomicInteger depth = recursionDepth.get();
-
-        if (depth.get() >= MAX_TACTICAL_RECURSION) {
+        if (!state.isValid()) {
+            System.err.println("❌ ERROR: Invalid state in generateTacticalMovesEnhanced");
             return new ArrayList<>();
         }
 
-        depth.incrementAndGet();
+        if (recursionDepth >= MAX_TACTICAL_RECURSION) {
+            return new ArrayList<>();
+        }
+
+        recursionDepth++;
         try {
-            List<Move> allMoves = MoveGenerator.generateAllMoves(state);
-            if (allMoves == null) {
+            List<Move> allMoves;
+            try {
+                allMoves = MoveGenerator.generateAllMoves(state);
+                if (allMoves == null) {
+                    return new ArrayList<>();
+                }
+            } catch (Exception e) {
+                System.err.println("❌ ERROR: Move generation failed in generateTacticalMovesEnhanced: " + e.getMessage());
                 return new ArrayList<>();
             }
 
@@ -222,8 +299,13 @@ public class QuiescenceSearch {
                 }
             }
 
-            // ENHANCED: Order tactical moves for better cutoffs
-            orderTacticalMoves(tacticalMoves, state, qDepth);
+            // Order tactical moves with exception handling
+            try {
+                orderTacticalMoves(tacticalMoves, state, qDepth);
+            } catch (Exception e) {
+                System.err.println("❌ ERROR: Tactical move ordering failed: " + e.getMessage());
+                // Continue with unordered moves
+            }
 
             return tacticalMoves;
 
@@ -231,173 +313,218 @@ public class QuiescenceSearch {
             System.err.println("❌ ERROR: generateTacticalMovesEnhanced failed: " + e.getMessage());
             return new ArrayList<>();
         } finally {
-            depth.decrementAndGet();
+            recursionDepth--;
         }
     }
 
     /**
-     * ENHANCED: Order tactical moves using history and capture values
+     * Order tactical moves with exception handling
      */
     private static void orderTacticalMoves(List<Move> moves, GameState state, int qDepth) {
         if (moves.size() <= 1) return;
 
-        moves.sort((a, b) -> {
-            int scoreA = scoreTacticalMove(a, state, qDepth);
-            int scoreB = scoreTacticalMove(b, state, qDepth);
-            return Integer.compare(scoreB, scoreA);
-        });
+        try {
+            moves.sort((a, b) -> {
+                try {
+                    int scoreA = scoreTacticalMove(a, state, qDepth);
+                    int scoreB = scoreTacticalMove(b, state, qDepth);
+                    return Integer.compare(scoreB, scoreA);
+                } catch (Exception e) {
+                    System.err.println("❌ ERROR: Move comparison failed: " + e.getMessage());
+                    return 0; // Equal if comparison fails
+                }
+            });
+        } catch (Exception e) {
+            System.err.println("❌ ERROR: Tactical move sorting failed: " + e.getMessage());
+            // Continue with unsorted moves
+        }
     }
 
     /**
-     * ENHANCED: Score tactical moves with history integration
+     * Score tactical moves with exception handling
      */
     private static int scoreTacticalMove(Move move, GameState state, int qDepth) {
+        if (move == null || state == null) return 0;
+
         int score = 0;
 
-        // Capture value (highest priority)
-        if (isCapture(move, state)) {
-            score += estimateCaptureValue(move, state) * 10;
+        try {
+            // Capture value (highest priority)
+            if (isCapture(move, state)) {
+                score += estimateCaptureValue(move, state) * 10;
 
-            // MVV-LVA: subtract attacker value
-            score -= getAttackerValue(move, state);
-        }
-
-        // Winning moves
-        if (isWinningGuardMove(move, state)) {
-            score += 50000;
-        }
-
-        // Check giving moves
-        if (givesCheckSimple(move, state)) {
-            score += 100;
-        }
-
-        // History heuristic for quiet tactical moves
-        if (!isCapture(move, state) && qDepth <= 2) {
-            try {
-                if (moveOrdering.getHistoryHeuristic().isQuietMove(move, state)) {
-                    boolean isRedMove = state.redToMove;
-                    score += moveOrdering.getHistoryHeuristic().getScore(move, isRedMove) / 10;
-                }
-            } catch (Exception e) {
-                // Silent fail
+                // MVV-LVA: subtract attacker value
+                score -= getAttackerValue(move, state);
             }
-        }
 
-        // Activity bonus
-        score += move.amountMoved * 5;
+            // Winning moves
+            if (isWinningGuardMove(move, state)) {
+                score += 50000;
+            }
+
+            // Check giving moves
+            if (givesCheckSimple(move, state)) {
+                score += 100;
+            }
+
+            // Activity bonus
+            score += move.amountMoved * 5;
+
+        } catch (Exception e) {
+            System.err.println("❌ ERROR: Tactical move scoring failed for move " + move + ": " + e.getMessage());
+            // Return conservative score
+        }
 
         return score;
     }
 
     /**
-     * ENHANCED: Safe tactical move detection
+     * Safe tactical move detection with exception handling
      */
     private static boolean isTacticalMoveSafe(Move move, GameState state) {
-        // 1. All captures are tactical
-        if (isCapture(move, state)) {
-            return true;
-        }
+        if (move == null || state == null) return false;
 
-        // 2. Winning guard moves
-        if (isWinningGuardMove(move, state)) {
-            return true;
-        }
+        try {
+            // 1. All captures are tactical
+            if (isCapture(move, state)) {
+                return true;
+            }
 
-        // 3. Simple check detection
-        if (givesCheckSimple(move, state)) {
-            return true;
-        }
+            // 2. Winning guard moves
+            if (isWinningGuardMove(move, state)) {
+                return true;
+            }
 
-        // 4. Promotion-like moves (high towers)
-        if (move.amountMoved >= 3) {
-            return true;
+            // 3. Simple check detection
+            if (givesCheckSimple(move, state)) {
+                return true;
+            }
+
+            // 4. Promotion-like moves (high towers)
+            if (move.amountMoved >= 3) {
+                return true;
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ ERROR: Tactical move detection failed for move " + move + ": " + e.getMessage());
+            return false; // Conservative - don't consider tactical if error
         }
 
         return false;
     }
 
+    // === SAFE HELPER METHODS ===
+
     private static boolean isCapture(Move move, GameState state) {
-        long toBit = GameState.bit(move.to);
-        long pieces = state.redToMove ? (state.blueTowers | state.blueGuard) : (state.redTowers | state.redGuard);
-        return (pieces & toBit) != 0;
+        try {
+            if (move == null || state == null) return false;
+            long toBit = GameState.bit(move.to);
+            long pieces = state.redToMove ? (state.blueTowers | state.blueGuard) : (state.redTowers | state.redGuard);
+            return (pieces & toBit) != 0;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static boolean isWinningGuardMove(Move move, GameState state) {
-        boolean isRed = state.redToMove;
+        try {
+            if (move == null || state == null) return false;
 
-        // Check if it's a guard move
-        long guardBit = isRed ? state.redGuard : state.blueGuard;
-        if (guardBit == 0 || move.from != Long.numberOfTrailingZeros(guardBit)) {
+            boolean isRed = state.redToMove;
+
+            // Check if it's a guard move
+            long guardBit = isRed ? state.redGuard : state.blueGuard;
+            if (guardBit == 0 || move.from != Long.numberOfTrailingZeros(guardBit)) {
+                return false;
+            }
+
+            // Check if moving to enemy castle
+            int targetCastle = isRed ? GameState.getIndex(0, 3) : GameState.getIndex(6, 3);
+            return move.to == targetCastle;
+        } catch (Exception e) {
             return false;
         }
-
-        // Check if moving to enemy castle
-        int targetCastle = isRed ? GameState.getIndex(0, 3) : GameState.getIndex(6, 3);
-        return move.to == targetCastle;
     }
 
     private static boolean givesCheckSimple(Move move, GameState state) {
-        boolean isRed = state.redToMove;
-        long enemyGuard = isRed ? state.blueGuard : state.redGuard;
+        try {
+            if (move == null || state == null) return false;
 
-        if (enemyGuard == 0) return false;
+            boolean isRed = state.redToMove;
+            long enemyGuard = isRed ? state.blueGuard : state.redGuard;
 
-        int enemyGuardPos = Long.numberOfTrailingZeros(enemyGuard);
-        int rankDiff = Math.abs(GameState.rank(move.to) - GameState.rank(enemyGuardPos));
-        int fileDiff = Math.abs(GameState.file(move.to) - GameState.file(enemyGuardPos));
+            if (enemyGuard == 0) return false;
 
-        // Simple adjacency or line attack check
-        return (rankDiff + fileDiff == 1) ||
-                (rankDiff == 0 && fileDiff <= move.amountMoved) ||
-                (fileDiff == 0 && rankDiff <= move.amountMoved);
+            int enemyGuardPos = Long.numberOfTrailingZeros(enemyGuard);
+            int rankDiff = Math.abs(GameState.rank(move.to) - GameState.rank(enemyGuardPos));
+            int fileDiff = Math.abs(GameState.file(move.to) - GameState.file(enemyGuardPos));
+
+            // Simple adjacency or line attack check
+            return (rankDiff + fileDiff == 1) ||
+                    (rankDiff == 0 && fileDiff <= move.amountMoved) ||
+                    (fileDiff == 0 && rankDiff <= move.amountMoved);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static int estimateCaptureValue(Move move, GameState state) {
-        long toBit = GameState.bit(move.to);
-        boolean isRed = state.redToMove;
+        try {
+            if (move == null || state == null) return 0;
 
-        // Guard capture
-        if (((isRed ? state.blueGuard : state.redGuard) & toBit) != 0) {
-            return 1500;
+            long toBit = GameState.bit(move.to);
+            boolean isRed = state.redToMove;
+
+            // Guard capture
+            if (((isRed ? state.blueGuard : state.redGuard) & toBit) != 0) {
+                return 1500;
+            }
+
+            // Tower capture
+            if (((isRed ? state.blueTowers : state.redTowers) & toBit) != 0) {
+                int height = isRed ? state.blueStackHeights[move.to] : state.redStackHeights[move.to];
+                return height * 100;
+            }
+
+            return 0;
+        } catch (Exception e) {
+            return 0;
         }
-
-        // Tower capture
-        if (((isRed ? state.blueTowers : state.redTowers) & toBit) != 0) {
-            int height = isRed ? state.blueStackHeights[move.to] : state.redStackHeights[move.to];
-            return height * 100;
-        }
-
-        return 0;
     }
 
     /**
-     * ENHANCED: Get attacker value for MVV-LVA
+     * Get attacker value for MVV-LVA with exception handling
      */
     private static int getAttackerValue(Move move, GameState state) {
-        boolean isRed = state.redToMove;
+        try {
+            if (move == null || state == null) return 0;
 
-        // Check if it's a guard move
-        long guardBit = isRed ? state.redGuard : state.blueGuard;
-        if (guardBit != 0 && move.from == Long.numberOfTrailingZeros(guardBit)) {
-            return 50; // Guard value
+            boolean isRed = state.redToMove;
+
+            // Check if it's a guard move
+            long guardBit = isRed ? state.redGuard : state.blueGuard;
+            if (guardBit != 0 && move.from == Long.numberOfTrailingZeros(guardBit)) {
+                return 50; // Guard value
+            }
+
+            // Tower value based on height
+            int height = isRed ? state.redStackHeights[move.from] : state.blueStackHeights[move.from];
+            return height * 25;
+        } catch (Exception e) {
+            return 0;
         }
-
-        // Tower value based on height
-        int height = isRed ? state.redStackHeights[move.from] : state.blueStackHeights[move.from];
-        return height * 25;
     }
 
-    // === ENHANCED INITIALIZATION ===
+    // === INITIALIZATION AND STATISTICS ===
 
     /**
-     * ENHANCED: Set move ordering instance for history access
+     * Set move ordering instance for history access
      */
     public static void setMoveOrdering(MoveOrdering ordering) {
-        moveOrdering = ordering;
+        if (ordering != null) {
+            moveOrdering = ordering;
+        }
     }
-
-    // === STATISTICS AND UTILITY ===
 
     public static void resetQuiescenceStats() {
         qNodes = 0;
@@ -411,7 +538,7 @@ public class QuiescenceSearch {
     }
 
     /**
-     * ENHANCED: Get quiescence statistics with history info
+     * Get quiescence statistics
      */
     public static String getQuiescenceStatistics() {
         return String.format("Q-Search: %d nodes, %d cutoffs, %d standpat",

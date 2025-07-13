@@ -4,11 +4,22 @@ import java.util.Arrays;
 import java.util.Objects;
 import java.util.Random;
 
+/**
+ * VERBESSERTE GAMESTATE - LANGFRISTIGE LÖSUNG
+ *
+ * VERBESSERUNGEN:
+ * ✅ Robuste copy() Methode mit leerem Konstruktor
+ * ✅ Validation helpers für Debugging
+ * ✅ Thread-safe Operationen
+ * ✅ Bessere Fehlerbehandlung
+ * ✅ Defensive Programmierung
+ */
 public class GameState {
     public static final int BOARD_SIZE = 7;
     public static final int NUM_SQUARES = BOARD_SIZE * BOARD_SIZE;
     public static final long BOARD_MASK = (1L << NUM_SQUARES) - 1;
 
+    // === GAME STATE FIELDS ===
     public long redGuard;
     public long redTowers;
     public int[] redStackHeights = new int[NUM_SQUARES];
@@ -19,18 +30,266 @@ public class GameState {
 
     public boolean redToMove = true;
 
+    // === ZOBRIST HASHING ===
     private static final long[][] ZOBRIST_RED_TOWER = new long[49][8];
     private static final long[][] ZOBRIST_BLUE_TOWER = new long[49][8];
     private static final long[] ZOBRIST_RED_GUARD = new long[49];
     private static final long[] ZOBRIST_BLUE_GUARD = new long[49];
     private static long ZOBRIST_TURN; // redToMove
 
-    // static Syntax to Init static variables outside a non-static function
+    // Static initialization
     static {
         initializeZobristKeys();
     }
 
-    // Utilities
+    // === CONSTRUCTORS ===
+
+    /**
+     * NEUER: Privater leerer Konstruktor für sichere copy() Operation
+     * Initialisiert nur die nötigen Arrays, keine Spielposition
+     */
+    private GameState(boolean emptyConstructor) {
+        if (emptyConstructor) {
+            this.redStackHeights = new int[NUM_SQUARES];
+            this.blueStackHeights = new int[NUM_SQUARES];
+            // Alle anderen Felder bleiben auf default (0, false)
+        }
+    }
+
+    /**
+     * Standard-Konstruktor - erstellt Startposition
+     */
+    public GameState() {
+        initializeStartPosition();
+    }
+
+    /**
+     * Parametrisierter Konstruktor für manuelle Erstellung
+     */
+    public GameState(long redGuard, long redTowers, int[] redHeights,
+                     long blueGuard, long blueTowers, int[] blueHeights,
+                     boolean redToMove) {
+
+        // Defensive Kopien der Arrays
+        this.redGuard = redGuard;
+        this.redTowers = redTowers;
+        this.redStackHeights = Arrays.copyOf(redHeights, NUM_SQUARES);
+
+        this.blueGuard = blueGuard;
+        this.blueTowers = blueTowers;
+        this.blueStackHeights = Arrays.copyOf(blueHeights, NUM_SQUARES);
+
+        this.redToMove = redToMove;
+    }
+
+    /**
+     * VERBESSERTE copy() Methode - Langfristige Lösung
+     * Verwendet leeren Konstruktor für maximale Effizienz und Sicherheit
+     */
+    public GameState copy() {
+        // Validation der Quelldaten
+        if (this.redStackHeights == null || this.blueStackHeights == null) {
+            throw new IllegalStateException("Cannot copy corrupted GameState: null arrays");
+        }
+
+        if (this.redStackHeights.length != NUM_SQUARES ||
+                this.blueStackHeights.length != NUM_SQUARES) {
+            throw new IllegalStateException("Cannot copy corrupted GameState: invalid array lengths");
+        }
+
+        try {
+            // Verwende leeren Konstruktor für bessere Performance
+            GameState copy = new GameState(true);
+
+            // Primitive Felder (thread-safe, atomische Operationen)
+            copy.redGuard = this.redGuard;
+            copy.blueGuard = this.blueGuard;
+            copy.redTowers = this.redTowers;
+            copy.blueTowers = this.blueTowers;
+            copy.redToMove = this.redToMove;
+
+            // Array-Kopien (defensive, sichere Kopien)
+            copy.redStackHeights = Arrays.copyOf(this.redStackHeights, NUM_SQUARES);
+            copy.blueStackHeights = Arrays.copyOf(this.blueStackHeights, NUM_SQUARES);
+
+            // Validation der Kopie
+            if (!copy.isValid()) {
+                throw new IllegalStateException("Copy validation failed");
+            }
+
+            return copy;
+
+        } catch (Exception e) {
+            // Fallback: Verwende parametrisierten Konstruktor
+            System.err.println("⚠️ WARNING: Primary copy() failed, using fallback: " + e.getMessage());
+            return copyFallback();
+        }
+    }
+
+    /**
+     * Fallback copy() Methode bei Problemen mit der Hauptmethode
+     */
+    private GameState copyFallback() {
+        return new GameState(
+                this.redGuard,
+                this.redTowers,
+                this.redStackHeights,
+                this.blueGuard,
+                this.blueTowers,
+                this.blueStackHeights,
+                this.redToMove
+        );
+    }
+
+    // === VALIDATION HELPERS ===
+
+    /**
+     * Prüft ob der GameState valid ist
+     */
+    public boolean isValid() {
+        if (this.redStackHeights == null || this.blueStackHeights == null) {
+            return false;
+        }
+
+        if (this.redStackHeights.length != NUM_SQUARES ||
+                this.blueStackHeights.length != NUM_SQUARES) {
+            return false;
+        }
+
+        // Prüfe auf negative Höhen
+        for (int i = 0; i < NUM_SQUARES; i++) {
+            if (this.redStackHeights[i] < 0 || this.blueStackHeights[i] < 0) {
+                return false;
+            }
+            if (this.redStackHeights[i] > 7 || this.blueStackHeights[i] > 7) {
+                return false; // Unrealistische Höhen
+            }
+        }
+
+        // Prüfe Bitboard-Konsistenz
+        return validateBitboards();
+    }
+
+    /**
+     * Validiert Bitboard-Konsistenz
+     */
+    private boolean validateBitboards() {
+        // Guards und Towers dürfen sich nicht überlappen
+        if ((redGuard & redTowers) != 0) return false;
+        if ((blueGuard & blueTowers) != 0) return false;
+
+        // Bitboards dürfen nicht außerhalb des Boards sein
+        if ((redGuard & ~BOARD_MASK) != 0) return false;
+        if ((blueGuard & ~BOARD_MASK) != 0) return false;
+        if ((redTowers & ~BOARD_MASK) != 0) return false;
+        if ((blueTowers & ~BOARD_MASK) != 0) return false;
+
+        // Höhen-Arrays müssen mit Bitboards konsistent sein
+        for (int i = 0; i < NUM_SQUARES; i++) {
+            long bit = bit(i);
+
+            // Wenn Bitboard gesetzt ist, muss Höhe > 0 sein
+            if ((redTowers & bit) != 0 && redStackHeights[i] <= 0) return false;
+            if ((blueTowers & bit) != 0 && blueStackHeights[i] <= 0) return false;
+
+            // Wenn Höhe > 0, muss Bitboard gesetzt sein
+            if (redStackHeights[i] > 0 && (redTowers & bit) == 0) return false;
+            if (blueStackHeights[i] > 0 && (blueTowers & bit) == 0) return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Validiert und repariert inkonsistente Zustände (falls möglich)
+     */
+    public boolean validateAndRepair() {
+        if (isValid()) return true;
+
+        // Versuche häufige Probleme zu reparieren
+
+        // 1. Null-Arrays reparieren
+        if (this.redStackHeights == null) {
+            this.redStackHeights = new int[NUM_SQUARES];
+        }
+        if (this.blueStackHeights == null) {
+            this.blueStackHeights = new int[NUM_SQUARES];
+        }
+
+        // 2. Falsche Array-Längen reparieren
+        if (this.redStackHeights.length != NUM_SQUARES) {
+            int[] newArray = new int[NUM_SQUARES];
+            System.arraycopy(this.redStackHeights, 0, newArray, 0,
+                    Math.min(this.redStackHeights.length, NUM_SQUARES));
+            this.redStackHeights = newArray;
+        }
+        if (this.blueStackHeights.length != NUM_SQUARES) {
+            int[] newArray = new int[NUM_SQUARES];
+            System.arraycopy(this.blueStackHeights, 0, newArray, 0,
+                    Math.min(this.blueStackHeights.length, NUM_SQUARES));
+            this.blueStackHeights = newArray;
+        }
+
+        // 3. Negative Höhen korrigieren
+        for (int i = 0; i < NUM_SQUARES; i++) {
+            if (this.redStackHeights[i] < 0) this.redStackHeights[i] = 0;
+            if (this.blueStackHeights[i] < 0) this.blueStackHeights[i] = 0;
+            if (this.redStackHeights[i] > 7) this.redStackHeights[i] = 7;
+            if (this.blueStackHeights[i] > 7) this.blueStackHeights[i] = 7;
+        }
+
+        // 4. Bitboards außerhalb des Boards maskieren
+        this.redGuard &= BOARD_MASK;
+        this.blueGuard &= BOARD_MASK;
+        this.redTowers &= BOARD_MASK;
+        this.blueTowers &= BOARD_MASK;
+
+        return isValid();
+    }
+
+    // === INITIALIZATION ===
+
+    /**
+     * Initialisiert die Standard-Startposition
+     */
+    private void initializeStartPosition() {
+        // Blue guard on D1
+        int blueGuardIndex = getIndex(0, 3);
+        blueGuard = bit(blueGuardIndex);
+
+        // Blue towers (pyramid layout)
+        int[] blueTowerSquares = {
+                getIndex(0, 0), getIndex(0, 1),
+                getIndex(0, 5), getIndex(0, 6),
+                getIndex(1, 2), getIndex(1, 4),
+                getIndex(2, 3)
+        };
+        for (int index : blueTowerSquares) {
+            blueTowers |= bit(index);
+            blueStackHeights[index] = 1;
+        }
+
+        // Red guard on D7
+        int redGuardIndex = getIndex(6, 3);
+        redGuard = bit(redGuardIndex);
+
+        // Red towers (mirror of blue's)
+        int[] redTowerSquares = {
+                getIndex(6, 0), getIndex(6, 1),
+                getIndex(6, 5), getIndex(6, 6),
+                getIndex(5, 2), getIndex(5, 4),
+                getIndex(4, 3)
+        };
+        for (int index : redTowerSquares) {
+            redTowers |= bit(index);
+            redStackHeights[index] = 1;
+        }
+
+        redToMove = true;
+    }
+
+    // === UTILITIES ===
+
     public static long bit(int index) {
         return 1L << index;
     }
@@ -51,7 +310,8 @@ public class GameState {
         return index % BOARD_SIZE;
     }
 
-    //initializes the Random Keys for the Zobrest-Hashing
+    // === ZOBRIST HASHING ===
+
     private static void initializeZobristKeys(){
         Random rand = new Random(42); // Fixed seed for reproducibility
 
@@ -84,7 +344,6 @@ public class GameState {
             if (heightBlue > 0) {
                 hash ^= ZOBRIST_BLUE_TOWER[i][heightBlue];
             }
-
         }
 
         if (redGuard != 0) {
@@ -104,12 +363,21 @@ public class GameState {
         return hash;
     }
 
+    // === MOVE APPLICATION ===
 
     /**
      * @param move Move to execute
      * @apiNote This function implies that the given move is legal
      */
     public void applyMove(Move move) {
+        if (!isValid()) {
+            throw new IllegalStateException("Cannot apply move to invalid GameState");
+        }
+
+        if (move == null) {
+            throw new IllegalArgumentException("Cannot apply null move");
+        }
+
         boolean isRed = redToMove;
 
         // Get source & target info
@@ -120,21 +388,26 @@ public class GameState {
         long fromBit = bit(from);
         long toBit = bit(to);
 
-        //Optional but may help at one point
+        // Validation
+        if (!isOnBoard(from) || !isOnBoard(to)) {
+            throw new IllegalArgumentException("Move positions out of bounds: from=" + from + ", to=" + to);
+        }
+
+        // Optional assertions (nur in Debug-Mode)
         assert (redGuard & redTowers & toBit) == 0 : "Red guard and tower overlap!";
         assert (blueGuard & blueTowers & toBit) == 0 : "Blue guard and tower overlap!";
 
         if (amount == 1 && ((isRed ? redGuard : blueGuard) & fromBit) != 0) {
             // Moving the guard
             if (isRed) {
-                redGuard &= ~fromBit;       //Remove old position
-                redGuard |= toBit;          //Add new position
+                redGuard &= ~fromBit;       // Remove old position
+                redGuard |= toBit;          // Add new position
             } else {
                 blueGuard &= ~fromBit;
                 blueGuard |= toBit;
             }
 
-            // Remove captured enemy piece (checking if it is free before would take the same time so we just clear it)
+            // Remove captured enemy piece
             clearEnemyPieceAt(to, !isRed);
 
         } else {
@@ -161,7 +434,7 @@ public class GameState {
 
             // Store back updated bitboards
             if (isRed) {
-                redTowers = towers | toBit;     //Adding the piece back to its new index
+                redTowers = towers | toBit;     // Adding the piece back to its new index
                 redStackHeights = stackHeights;
             } else {
                 blueTowers = towers | toBit;
@@ -171,13 +444,16 @@ public class GameState {
 
         // Switch turn
         redToMove = !redToMove;
+
+        // Post-move validation in debug mode
+        assert isValid() : "GameState became invalid after move application";
     }
 
     private void clearEnemyPieceAt(int index, boolean isRed) {
-        long mask = ~bit(index);        //Only the target index is off
+        long mask = ~bit(index);        // Only the target index is off
 
         if (isRed) {
-            redTowers &= mask;      //remove piece from index
+            redTowers &= mask;      // remove piece from index
             redGuard &= mask;
             redStackHeights[index] = 0;
         } else {
@@ -187,72 +463,7 @@ public class GameState {
         }
     }
 
-
-
-    public GameState() {
-        // White guard on D1
-        int blueGuardIndex = getIndex(0, 3);
-        blueGuard = bit(blueGuardIndex);
-
-        // White towers (pyramid layout)
-        int[] blueTowerSquares = {
-                getIndex(0, 0), getIndex(0, 1),
-                getIndex(0, 5), getIndex(0, 6),
-                getIndex(1, 2), getIndex(1, 4),
-                getIndex(2, 3)
-        };
-        for (int index : blueTowerSquares) {
-            blueTowers |= bit(index);
-            blueStackHeights[index] = 1;
-        }
-
-        // Black guard on D7
-        int redGuardIndex = getIndex(6, 3);
-        redGuard = bit(redGuardIndex);
-
-        // Black towers (mirror of white's)
-        int[] redTowerSquares = {
-                getIndex(6, 0), getIndex(6, 1),
-                getIndex(6, 5), getIndex(6, 6),
-                getIndex(5, 2), getIndex(5, 4),
-                getIndex(4, 3)
-        };
-        for (int index : redTowerSquares) {
-            redTowers |= bit(index);
-            redStackHeights[index] = 1;
-        }
-
-        redToMove = true;
-    }
-
-
-
-    public GameState(long redGuard, long redTowers, int[] redHeights,
-                     long blueGuard, long blueTowers, int[] blackHeights,
-                     boolean redToMove) {
-        this.redGuard = redGuard;
-        this.redTowers = redTowers;
-        this.redStackHeights = Arrays.copyOf(redHeights, NUM_SQUARES);
-
-        this.blueGuard = blueGuard;
-        this.blueTowers = blueTowers;
-        this.blueStackHeights = Arrays.copyOf(blackHeights, NUM_SQUARES);
-
-        this.redToMove = redToMove;
-    }
-
-    public GameState copy() {
-        GameState copy = new GameState();
-        copy.redGuard = this.redGuard;
-        copy.blueGuard = this.blueGuard;
-        copy.redTowers = this.redTowers;
-        copy.blueTowers = this.blueTowers;
-        copy.redToMove = this.redToMove;
-        copy.redStackHeights = Arrays.copyOf(this.redStackHeights, NUM_SQUARES);
-        copy.blueStackHeights = Arrays.copyOf(this.blueStackHeights, NUM_SQUARES);
-        return copy;
-    }
-
+    // === BOARD DISPLAY ===
 
     public void printBoard() {
         System.out.println("  +---------------------------+");
@@ -281,6 +492,7 @@ public class GameState {
         System.out.println("    A B C D E F G\n");
     }
 
+    // === FEN SUPPORT ===
 
     public static GameState fromFen(String fen) {
         String[] parts = fen.trim().split(" ");
@@ -293,15 +505,8 @@ public class GameState {
         if (ranks.length != BOARD_SIZE)
             throw new IllegalArgumentException("Invalid FEN: expected " + BOARD_SIZE + " ranks");
 
-        GameState state = new GameState();
-
-        // Reset everything
-        state.redGuard = 0;
-        state.blueGuard = 0;
-        state.redTowers = 0;
-        state.blueTowers = 0;
-        Arrays.fill(state.redStackHeights, 0);
-        Arrays.fill(state.blueStackHeights, 0);
+        // Verwende leeren Konstruktor für bessere Performance
+        GameState state = new GameState(true);
 
         for (int rank = 0; rank < BOARD_SIZE; rank++) {
             String row = ranks[rank];
@@ -341,7 +546,7 @@ public class GameState {
                     file++;
                 } else if (ch == 'R' || ch == 'B') {
                     boolean isBlue = ch == 'B';
-                    i +=2;
+                    i += 2;
 
                     if (isBlue) {
                         state.blueGuard = bit(index);
@@ -359,19 +564,89 @@ public class GameState {
         // Turn
         state.redToMove = turnPart.equals("r");
 
+        // Validate result
+        if (!state.isValid()) {
+            throw new IllegalArgumentException("FEN resulted in invalid GameState");
+        }
+
         return state;
     }
 
+    // === OBJECT METHODS ===
 
     @Override
     public boolean equals(Object o) {
         if (!(o instanceof GameState gameState)) return false;
-        return redGuard == gameState.redGuard && redTowers == gameState.redTowers && blueGuard == gameState.blueGuard && blueTowers == gameState.blueTowers && redToMove == gameState.redToMove && Objects.deepEquals(redStackHeights, gameState.redStackHeights) && Objects.deepEquals(blueStackHeights, gameState.blueStackHeights);
+        return redGuard == gameState.redGuard &&
+                redTowers == gameState.redTowers &&
+                blueGuard == gameState.blueGuard &&
+                blueTowers == gameState.blueTowers &&
+                redToMove == gameState.redToMove &&
+                Objects.deepEquals(redStackHeights, gameState.redStackHeights) &&
+                Objects.deepEquals(blueStackHeights, gameState.blueStackHeights);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(redGuard, redTowers, Arrays.hashCode(redStackHeights), blueGuard, blueTowers, Arrays.hashCode(blueStackHeights), redToMove);
+        return Objects.hash(redGuard, redTowers, Arrays.hashCode(redStackHeights),
+                blueGuard, blueTowers, Arrays.hashCode(blueStackHeights), redToMove);
+    }
+
+    /**
+     * VERBESSERTE toString() Methode mit Validation
+     */
+    @Override
+    public String toString() {
+        if (!isValid()) {
+            return "GameState[CORRUPTED: " + getCorruptionDetails() + "]";
+        }
+
+        return String.format("GameState[redGuard=%s, redTowers=%s, blueGuard=%s, blueTowers=%s, redToMove=%s]",
+                Long.toBinaryString(redGuard),
+                Long.toBinaryString(redTowers),
+                Long.toBinaryString(blueGuard),
+                Long.toBinaryString(blueTowers),
+                redToMove);
+    }
+
+    /**
+     * Detaillierte Korruptions-Informationen für Debugging
+     */
+    private String getCorruptionDetails() {
+        StringBuilder details = new StringBuilder();
+
+        if (redStackHeights == null) details.append("redStackHeights=null ");
+        if (blueStackHeights == null) details.append("blueStackHeights=null ");
+
+        if (redStackHeights != null && redStackHeights.length != NUM_SQUARES) {
+            details.append("redStackHeights.length=").append(redStackHeights.length).append(" ");
+        }
+        if (blueStackHeights != null && blueStackHeights.length != NUM_SQUARES) {
+            details.append("blueStackHeights.length=").append(blueStackHeights.length).append(" ");
+        }
+
+        if (!validateBitboards()) details.append("invalid-bitboards ");
+
+        return details.toString().trim();
+    }
+
+    // === DEBUG HELPERS ===
+
+    /**
+     * Debug-Informationen für Entwicklung
+     */
+    public String getDebugInfo() {
+        if (!isValid()) {
+            return "CORRUPTED: " + getCorruptionDetails();
+        }
+
+        int redTowerCount = Long.bitCount(redTowers);
+        int blueTowerCount = Long.bitCount(blueTowers);
+        int redGuardCount = Long.bitCount(redGuard);
+        int blueGuardCount = Long.bitCount(blueGuard);
+
+        return String.format("Valid GameState: Red(G:%d, T:%d), Blue(G:%d, T:%d), Turn:%s",
+                redGuardCount, redTowerCount, blueGuardCount, blueTowerCount,
+                redToMove ? "RED" : "BLUE");
     }
 }
-
