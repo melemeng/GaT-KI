@@ -28,12 +28,6 @@ public class Main {
         System.out.println(MoveGenerator.generateAllMoves(state).size());
 
 
-//        Move best1 = TimedMinimax.findBestMoveWithTime(state, 99, 2000); // depth cap 99, time limit 5s
-//        GameState copy1 = state.copy();
-//        copy.applyMove(best1);
-//        System.out.println("Best move: " + best1);
-//        System.out.println("Evalutation: "+ evaluate(copy1, 1));
-
 
         System.out.println("=== With Quiescence ===");
         Minimax.counter = 0;

@@ -485,19 +485,6 @@ public class MoveOrdering {
 
     // === LEGACY COMPATIBILITY METHODS ===
 
-    /**
-     * Legacy method for compatibility
-     */
-    public int scoreMoveAdvanced(Move move, GameState state, int depth) {
-        return scoreMoveSafe(move, state, depth, null);
-    }
-
-    /**
-     * Legacy orderMovesAdvanced
-     */
-    public void orderMovesAdvanced(List<Move> moves, GameState state, int depth, TTEntry ttEntry) {
-        orderMoves(moves, state, depth, ttEntry);
-    }
 
     /**
      * Legacy updateHistoryOnCutoff
@@ -550,12 +537,6 @@ public class MoveOrdering {
 
     // === COMPATIBILITY GETTERS ===
 
-    /**
-     * Compatibility getter for tests
-     */
-    public HistoryHeuristic getHistoryHeuristic() {
-        return null; // Removed duplicate history system
-    }
 
     public void resetKillerMoves() {
         resetForNewSearch();

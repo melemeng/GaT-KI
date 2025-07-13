@@ -274,9 +274,11 @@ public class Minimax {
 
     // === LEGACY COMPATIBILITY METHODS ===
 
+    // ZU:
     /**
-     * Legacy findBestMove method - uses Alpha-Beta
+     * @deprecated Verwenden Sie findBestMoveWithStrategy(state, depth, PVS_Q) für bessere Performance
      */
+    @Deprecated(since = "2.0", forRemoval = true)
     public static Move findBestMove(GameState state, int depth) {
         return findBestMoveWithStrategy(state, depth, SearchConfig.SearchStrategy.ALPHA_BETA);
     }
@@ -284,6 +286,7 @@ public class Minimax {
     /**
      * Legacy findBestMoveWithQuiescence method - uses Alpha-Beta + Quiescence
      */
+    @Deprecated(since = "2.0", forRemoval = true)
     public static Move findBestMoveWithQuiescence(GameState state, int depth) {
         return findBestMoveWithStrategy(state, depth, SearchConfig.SearchStrategy.ALPHA_BETA_Q);
     }
@@ -291,6 +294,7 @@ public class Minimax {
     /**
      * Legacy findBestMoveWithPVS method - NOW USES REAL PVS!
      */
+    @Deprecated(since = "2.0", forRemoval = true)
     public static Move findBestMoveWithPVS(GameState state, int depth) {
         return findBestMoveWithStrategy(state, depth, SearchConfig.SearchStrategy.PVS);
     }

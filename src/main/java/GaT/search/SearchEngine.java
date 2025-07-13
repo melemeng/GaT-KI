@@ -46,63 +46,20 @@ public class SearchEngine {
     /**
      * PHASE 2 FIXED: Enhanced error handling with timeout distinction
      */
-    public int search(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer, SearchConfig.SearchStrategy strategy) {
+    public int search(GameState state, int depth, int alpha, int beta,
+                      boolean maximizingPlayer, SearchConfig.SearchStrategy strategy) {
+
+        // Standard auf PVS_Q wenn null
         if (strategy == null) {
-            System.err.println("⚠️ Null strategy provided, defaulting to ALPHA_BETA");
-            strategy = SearchConfig.SearchStrategy.ALPHA_BETA;
+            strategy = SearchConfig.SearchStrategy.PVS_Q;
         }
 
-        try {
-            return switch (strategy) {
-                case ALPHA_BETA -> alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer);
-                case ALPHA_BETA_Q -> alphaBetaWithQuiescence(state, depth, alpha, beta, maximizingPlayer);
-
-                // ✅ FIXED: Now actually calls PVS methods!
-                case PVS -> {
-                    PVSSearch.setTimeoutChecker(timeoutChecker);
-                    yield PVSSearch.search(state, depth, alpha, beta, maximizingPlayer, true);
-                }
-                case PVS_Q -> {
-                    PVSSearch.setTimeoutChecker(timeoutChecker);
-                    yield PVSSearch.searchWithQuiescence(state, depth, alpha, beta, maximizingPlayer, true);
-                }
-
-                default -> {
-                    System.err.println("⚠️ Unknown strategy: " + strategy + ", using ALPHA_BETA");
-                    yield alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer);
-                }
-            };
-
-        } catch (Exception e) {
-            // PHASE 2 FIX: Distinguish between timeout and real errors
-            if (e.getMessage() != null &&
-                    (e.getMessage().contains("Timeout") ||
-                            e.getMessage().contains("timeout") ||
-                            e instanceof RuntimeException && e.getMessage().contains("Timeout"))) {
-
-                System.out.println("⏱️ Search timeout - using current best");
-                // PHASE 2 FIX: Don't fall back to alpha-beta für timeouts
-                // Instead return a reasonable evaluation
-                return evaluator.evaluate(state, depth);
-
-            } else {
-                System.err.printf("❌ Real search error with %s: %s%n", strategy, e.getMessage());
-                // Log stack trace for debugging real errors
-                if (strategy == SearchConfig.SearchStrategy.PVS_Q ||
-                        strategy == SearchConfig.SearchStrategy.PVS) {
-                    System.err.println("🔄 PVS failed, falling back to alpha-beta");
-                }
-                // Nur bei echten errors auf alpha-beta fallback
-                return alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer);
-            }
-
-        } finally {
-            // PHASE 2 FIX: Enhanced cleanup
-            if (strategy == SearchConfig.SearchStrategy.PVS ||
-                    strategy == SearchConfig.SearchStrategy.PVS_Q) {
-                PVSSearch.clearTimeoutChecker();
-            }
-        }
+        return switch (strategy) {
+            case PVS_Q -> PVSSearch.searchWithQuiescence(state, depth, alpha, beta, maximizingPlayer, true);
+            case PVS -> PVSSearch.search(state, depth, alpha, beta, maximizingPlayer, true);
+            case ALPHA_BETA_Q -> alphaBetaWithQuiescence(state, depth, alpha, beta, maximizingPlayer);
+            case ALPHA_BETA -> alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer);
+        };
     }
 
     // === ALPHA-BETA SEARCH IMPLEMENTATION ===
