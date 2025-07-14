@@ -32,6 +32,11 @@ public class GameFrame extends JFrame {
     private JButton resetButton;
     private JButton stopAIButton;
     private JLabel statusLabel;
+    private JButton humanVsAiButton;
+    private JButton aiVsHumanButton;
+    private volatile boolean humanVsAiMode = false;
+    private volatile boolean humanIsRed = true;
+
 
     static String boardString = "7/2RG4/1b11r1b32/1b15/7/6r3/5BG1 r";
 
@@ -98,44 +103,136 @@ public class GameFrame extends JFrame {
     private JPanel createControlPanel() {
         JPanel panel = new JPanel(new FlowLayout());
 
-        // AI vs AI button
-        aiVsAiButton = new JButton("AI vs AI (ULTIMATE - FIXED)");
+        // Human vs AI button (Human = Red, AI = Blue)
+        humanVsAiButton = new JButton("🧑 Human vs 🤖 AI");
+        humanVsAiButton.setToolTipText("You play as Red, AI plays as Blue (Press H)");
+        humanVsAiButton.addActionListener(e -> {
+            if (!aiThinking) {
+                startHumanVsAI(true); // Human plays Red
+            }
+        });
+
+        // AI vs Human button (AI = Red, Human = Blue)
+        aiVsHumanButton = new JButton("🤖 AI vs 🧑 Human");
+        aiVsHumanButton.setToolTipText("AI plays as Red, you play as Blue");
+        aiVsHumanButton.addActionListener(e -> {
+            if (!aiThinking) {
+                startHumanVsAI(false); // Human plays Blue
+            }
+        });
+
+        // AI vs AI button (existing)
+        aiVsAiButton = new JButton("🤖 AI vs 🤖 AI");
+        aiVsAiButton.setToolTipText("Watch AI play against itself (Press A)");
         aiVsAiButton.addActionListener(e -> {
             if (!aiThinking) {
                 runAiMatch();
             }
         });
 
-        // Reset game button
-        resetButton = new JButton("Reset Game");
+        // Reset game button (existing)
+        resetButton = new JButton("🔄 Reset");
+        resetButton.setToolTipText("Reset game to starting position (Press R)");
         resetButton.addActionListener(e -> resetGame());
 
-        // Stop AI button
-        stopAIButton = new JButton("Stop AI");
+        // Stop AI button (existing)
+        stopAIButton = new JButton("⛔ Stop");
+        stopAIButton.setToolTipText("Stop AI thinking (Press Space)");
         stopAIButton.addActionListener(e -> stopAI());
         stopAIButton.setEnabled(false);
 
-        // Evaluate position button
-        JButton evaluateButton = new JButton("Evaluate");
-        evaluateButton.addActionListener(e -> showPositionEvaluation());
+        // Add help button
+        JButton helpButton = new JButton("❓ Help");
+        helpButton.setToolTipText("Show game rules and controls");
+        helpButton.addActionListener(e -> showHelp());
 
-        // Strategy comparison button
-        JButton compareButton = new JButton("Compare Strategies");
-        compareButton.addActionListener(e -> showStrategyComparison());
+        // Add evaluation button
+        JButton evalButton = new JButton("📊 Eval");
+        evalButton.setToolTipText("Show position evaluation");
+        evalButton.addActionListener(e -> showPositionEvaluation());
 
-        // Test AI button for debugging
-        JButton testAiButton = new JButton("Test AI Move");
-        testAiButton.addActionListener(e -> testSingleAIMove());
-
+        // Add buttons to panel
+        panel.add(humanVsAiButton);
+        panel.add(aiVsHumanButton);
         panel.add(aiVsAiButton);
         panel.add(resetButton);
         panel.add(stopAIButton);
-        panel.add(evaluateButton);
-        panel.add(compareButton);
-        panel.add(testAiButton);
+        panel.add(evalButton);
+        panel.add(helpButton);
 
         return panel;
     }
+
+
+    private void showHelp() {
+        String helpText = """
+            🎯 GUARD & TOWERS - How to Play:
+            
+            📋 OBJECTIVE:
+            • Capture the opponent's guard, OR
+            • Move your guard to the opponent's castle (center of opposite baseline)
+            
+            🎮 HUMAN CONTROLS:
+            • Click a piece to select it
+            • Click destination to move
+            • Only legal moves are allowed
+            
+            📐 MOVEMENT RULES:
+            • Guard moves exactly 1 square (orthogonally)
+            • Tower moves exactly as many squares as its height
+            • No diagonal moves, no jumping over pieces
+            
+            🏗️ STACKING:
+            • Same-color towers combine when one moves to another
+            • You can split towers by moving only part of them
+            
+            ⚔️ CAPTURING:
+            • Guard captures any piece
+            • Any tower captures the guard
+            • Tower captures equal/smaller tower
+            
+            ⌨️ KEYBOARD SHORTCUTS:
+            • H - Human vs AI    • A - AI vs AI
+            • R - Reset game     • Space - Stop AI
+            
+            💡 TIPS:
+            • Click a piece to see its legal moves highlighted
+            • Red pieces: GUARD (G), towers (numbers show height)
+            • Blue pieces: guard (g), towers (numbers show height)
+            • Castle squares are in the center of each baseline
+            """;
+
+        JOptionPane.showMessageDialog(this, helpText, "Game Rules & Controls", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+
+    private void startHumanVsAI(boolean humanPlaysRed) {
+        synchronized (stateLock) {
+            // Reset to starting position
+            state = new GameState();
+            gameInProgress = true;
+            humanVsAiMode = true;
+            humanIsRed = humanPlaysRed;
+        }
+
+        updateUI();
+        updateButtonStates();
+
+        String humanColor = humanPlaysRed ? "Red" : "Blue";
+        String aiColor = humanPlaysRed ? "Blue" : "Red";
+
+        updateStatus("🎮 Human vs AI - You are " + humanColor + ", AI is " + aiColor +
+                (state.redToMove == humanPlaysRed ? " - Your turn!" : " - AI thinking..."));
+
+        System.out.println("🎮 Starting Human vs AI - Human: " + humanColor + ", AI: " + aiColor);
+
+        // If AI should move first (human is blue and red moves first, or human is red and blue moves first)
+        if (state.redToMove != humanPlaysRed) {
+            runAiMatch();
+        }
+    }
+
+
 
     private void testSingleAIMove() {
         if (aiThinking) {
