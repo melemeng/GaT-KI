@@ -25,10 +25,10 @@ public class TimedMinimax {
 
     // === SHARED COMPONENTS WITH SEARCHCONFIG ===
     private static final SearchStatistics statistics = SearchStatistics.getInstance();
-    private EnhancedEvaluator evaluator = new EnhancedEvaluator();
+    private static final Evaluator evaluator = Minimax.getEvaluator();
     private static final MoveOrdering moveOrdering = new MoveOrdering();
     private static final TranspositionTable transpositionTable = new TranspositionTable(SearchConfig.TT_SIZE);
-    private static final SearchEngine searchEngine = new SearchEngine(evaluator, moveOrdering, transpositionTable, statistics);
+    private static final SearchEngine searchEngine = new SearchEngine(Minimax.getEvaluator(), moveOrdering, transpositionTable, statistics);
 
     // === SEARCH STATE ===
     private static volatile long timeLimitMillis;

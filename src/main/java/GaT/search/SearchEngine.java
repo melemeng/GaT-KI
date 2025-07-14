@@ -42,6 +42,15 @@ public class SearchEngine {
         validateSearchConfigIntegration();
     }
 
+    public static SearchEngine createDefault() {
+        return new SearchEngine(
+                Minimax.getEvaluator(),
+                new MoveOrdering(),
+                new TranspositionTable(SearchConfig.TT_SIZE),
+                SearchStatistics.getInstance()
+        );
+    }
+
     // === MAIN SEARCH INTERFACE WITH SEARCHCONFIG ===
 
     /**
