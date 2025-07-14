@@ -24,7 +24,7 @@ import java.util.function.BooleanSupplier;
 public class Minimax {
 
     // === CORE COMPONENTS WITH SEARCHCONFIG ===
-    private static final Evaluator evaluator = new ModularEvaluator();
+    private EnhancedEvaluator evaluator = new EnhancedEvaluator();
     private static final MoveOrdering moveOrdering = new MoveOrdering();
     private static final TranspositionTable transpositionTable = new TranspositionTable(SearchConfig.TT_SIZE);
     private static final SearchStatistics statistics = SearchStatistics.getInstance();
