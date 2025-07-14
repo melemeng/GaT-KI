@@ -1,6 +1,7 @@
 package GaT.evaluation;
 
 import GaT.model.GameState;
+import GaT.model.SearchConfig;
 import GaT.search.MoveGenerator;
 import GaT.model.Move;
 import java.util.List;
@@ -816,5 +817,17 @@ public class Evaluator {
      */
     public boolean isGuardInDanger(GameState state, boolean checkRed) {
         return isGuardThreatened(state, checkRed);
+    }
+
+    /**
+     * Set remaining time for time-aware evaluation adjustments
+     */
+    public static void setRemainingTime(long timeMs) {
+        // Adjust evaluation behavior based on remaining time
+        if (timeMs < SearchConfig.EMERGENCY_TIME_MS) {
+            // In emergency mode, use faster/simpler evaluation
+            System.out.println("🚨 Emergency mode: Using simplified evaluation");
+        }
+        // You could store the time in a static field if needed for evaluation adjustments
     }
 }

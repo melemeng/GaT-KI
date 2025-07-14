@@ -194,12 +194,14 @@ public class SearchConfig {
     // === SEARCH STRATEGY ENUM ===
     public enum SearchStrategy {
         ALPHA_BETA("Alpha-Beta"),
+        MINIMAX("Minimax"),
         ALPHA_BETA_Q("Alpha-Beta + Quiescence"),
         PVS("Principal Variation Search"),
         PVS_Q("PVS + Quiescence (ULTIMATE)"),
         MTDF("MTD(f) Search"),
         YBWC("Young Brothers Wait Concept"),
         LAZY_SMP("Lazy SMP");
+
 
         public final String displayName;
 

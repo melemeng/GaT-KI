@@ -60,6 +60,15 @@ public class Minimax {
         return evaluator;
     }
 
+    /**
+     * Check if a move is a capture move
+     */
+    public static boolean isCapture(Move move, GameState state) {
+        if (move == null || state == null) return false;
+        long toBit = GameState.bit(move.to);
+        return ((state.redTowers | state.blueTowers | state.redGuard | state.blueGuard) & toBit) != 0;
+    }
+
     // === MAIN SEARCH INTERFACES ===
 
     /**
