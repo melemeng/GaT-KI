@@ -150,7 +150,7 @@ public class EvaluationParameters {
 
     // === SEARCH AND TIMING PARAMETERS ===
     public static class Search {
-        public static final int MAX_QUIESCENCE_DEPTH = 6;
+        public static final int MAX_QUIESCENCE_DEPTH = 16;
         public static final double TIME_ALLOCATION_CONSERVATIVE = 0.05;  // 5% per move
         public static final double TIME_ALLOCATION_AGGRESSIVE = 0.08;    // 8% per move
         public static final int EMERGENCY_TIME_MS = 200;
