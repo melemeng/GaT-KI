@@ -11,6 +11,7 @@ import static GaT.evaluation.EvaluationParameters.*;
  * ❌ Local parameter definitions → ✅ NOW uses only EvaluationParameters
  * ❌ Exponential bonuses that dominate material → ✅ NOW reasonable enhancements
  * ❌ Parameter chaos → ✅ NOW consistent across all modules
+ * ❌ GamePhase enum conflict → ✅ NOW uses only EvaluationParameters.GamePhase
  *
  * PRINCIPLE: Material evaluation provides base value, bonuses enhance but don't dominate
  */
@@ -88,8 +89,8 @@ public class MaterialEval {
     public int evaluateMaterialAdvanced(GameState state) {
         int materialScore = 0;
 
-        // Phase detection for appropriate values
-        GamePhase phase = detectGamePhase(state);
+        // ✅ FIXED: Phase detection using EvaluationParameters
+        EvaluationParameters.GamePhase phase = EvaluationParameters.detectGamePhase(state);
         double[] multipliers = getPhaseMultipliers(phase);
 
         for (int i = 0; i < GameState.NUM_SQUARES; i++) {
@@ -207,10 +208,10 @@ public class MaterialEval {
     /**
      * ✅ FIXED: Advanced positional bonuses with phase awareness but moderate values
      */
-    private int getAdvancedPositionalBonus(GameState state, int square, int height, boolean isRed, GamePhase phase) {
+    private int getAdvancedPositionalBonus(GameState state, int square, int height, boolean isRed, EvaluationParameters.GamePhase phase) {
         int bonus = getModerateActivityBonus(state, square, height, isRed);
 
-        // Phase-specific bonuses - all moderate from EvaluationParameters
+        // ✅ FIXED: Phase-specific bonuses - all moderate from EvaluationParameters
         switch (phase) {
             case OPENING:
                 bonus += getDevelopmentBonus(square, isRed);
@@ -272,7 +273,7 @@ public class MaterialEval {
     /**
      * ✅ FIXED: Moderate material imbalance evaluation
      */
-    private int evaluateModerateImbalance(GameState state, GamePhase phase) {
+    private int evaluateModerateImbalance(GameState state, EvaluationParameters.GamePhase phase) {
         int redTotal = getTotalMaterial(state, true);
         int blueTotal = getTotalMaterial(state, false);
         int imbalance = redTotal - blueTotal;
@@ -284,10 +285,10 @@ public class MaterialEval {
         // ✅ FIXED: Moderate imbalance bonuses
         int imbalanceBonus = 0;
 
-        if (phase == GamePhase.ENDGAME) {
+        if (phase == EvaluationParameters.GamePhase.ENDGAME) {
             // In endgame, material advantages are important but not overwhelming
             imbalanceBonus = imbalance * TOWER_BASE_VALUE;  // 100 per piece difference
-        } else if (phase == GamePhase.MIDDLEGAME) {
+        } else if (phase == EvaluationParameters.GamePhase.MIDDLEGAME) {
             // In middlegame, material advantage helps in tactics
             imbalanceBonus = imbalance * (TOWER_BASE_VALUE * 3 / 4);  // 75 per piece
         } else {
@@ -620,19 +621,20 @@ public class MaterialEval {
         return 0;
     }
 
-    // === MORE UTILITY METHODS ===
+    // === ✅ FIXED PHASE METHODS - Use EvaluationParameters ===
 
-    private GamePhase detectGamePhase(GameState state) {
-        return EvaluationParameters.detectGamePhase(state);
-    }
-
-    private double[] getPhaseMultipliers(GamePhase phase) {
+    /**
+     * ✅ FIXED: Get phase multipliers for the correct GamePhase enum
+     */
+    private double[] getPhaseMultipliers(EvaluationParameters.GamePhase phase) {
         return switch (phase) {
             case OPENING -> Material.OPENING_MULTIPLIERS;
             case MIDDLEGAME -> Material.MIDDLEGAME_MULTIPLIERS;
             case ENDGAME -> Material.ENDGAME_MULTIPLIERS;
         };
     }
+
+    // === MORE UTILITY METHODS ===
 
     private int calculateDistance(int from, int to) {
         int rankDiff = Math.abs(GameState.rank(from) - GameState.rank(to));
@@ -675,12 +677,5 @@ public class MaterialEval {
     private boolean isEnemyTerritory(int square, boolean isRed) {
         int rank = GameState.rank(square);
         return isRed ? rank < 3 : rank > 3;
-    }
-
-    // === PHASE ENUM ===
-    public enum GamePhase {
-        OPENING,
-        MIDDLEGAME,
-        ENDGAME
     }
 }
