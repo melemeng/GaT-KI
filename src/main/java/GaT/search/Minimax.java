@@ -1,6 +1,5 @@
 package GaT.search;
 
-import GaT.evaluation.ModularEvaluator;
 import GaT.model.GameState;
 import GaT.model.Move;
 import GaT.model.TTEntry;
