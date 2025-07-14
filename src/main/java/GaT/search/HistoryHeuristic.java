@@ -2,76 +2,65 @@ package GaT.search;
 
 import GaT.model.GameState;
 import GaT.model.Move;
+import GaT.model.SearchConfig;
 
 /**
- * HISTORY HEURISTIC IMPLEMENTATION - SINGLE-THREADED VERSION
- * Optimized single-threaded implementation of the History Heuristic for Guard & Towers
+ * HISTORY HEURISTIC - FULL SEARCHCONFIG INTEGRATION
  *
- * FEATURES:
- * ✅ Removed move.piece dependency (doesn't exist in Move class)
- * ✅ Uses GameState.redToMove to determine player color
- * ✅ Compatible with existing MoveOrdering architecture
- * ✅ Single-threaded optimization (no locks)
- * ✅ Fast access for search algorithms
- *
- * @author Guard & Towers AI Team
+ * CHANGES:
+ * ✅ All constants now use SearchConfig parameters
+ * ✅ No more hardcoded values
+ * ✅ Centralized parameter control
+ * ✅ Easy tuning via SearchConfig
  */
 public class HistoryHeuristic {
 
-    // === CONFIGURATION CONSTANTS ===
-    private static final int MAX_HISTORY_SCORE = 10000;
-    private static final int AGING_SHIFT = 1; // Divide scores by 2 when aging
-    private static final int AGING_THRESHOLD = 50000; // Age when max entry exceeds this
+    // === CONFIGURATION FROM SEARCHCONFIG ===
+    // Removed: private static final int MAX_HISTORY_SCORE = 10000;
+    // Now uses: SearchConfig.HISTORY_MAX_VALUE
+
+    // Removed: private static final int AGING_SHIFT = 1;
+    // Now uses: SearchConfig.HISTORY_AGING_SHIFT
+
+    // Removed: private static final int AGING_THRESHOLD = 50000;
+    // Now uses: SearchConfig.HISTORY_AGING_THRESHOLD
 
     // === HISTORY TABLES ===
-    // Separate tables for Red and Blue moves to avoid interference
-    private final int[][] redHistoryTable = new int[64][64]; // [from][to]
-    private final int[][] blueHistoryTable = new int[64][64]; // [from][to]
+    private final int[][] redHistoryTable = new int[64][64];
+    private final int[][] blueHistoryTable = new int[64][64];
 
-    // Statistics for debugging/optimization
+    // Statistics
     private long updateCount = 0;
     private long maxScoreEver = 0;
 
-    // === CORE INTERFACE ===
+    // === CORE INTERFACE WITH SEARCHCONFIG ===
 
     /**
-     * Update history score for a move that caused a beta cutoff
-     *
-     * @param move The move that caused the cutoff
-     * @param depth Current search depth (higher depth = more important)
-     * @param isRedMove Whether this is a red player move
+     * Update history score using SearchConfig parameters
      */
     public void update(Move move, int depth, boolean isRedMove) {
         if (move == null || !isValidSquare(move.from) || !isValidSquare(move.to)) {
             return;
         }
 
-        // Calculate bonus based on depth (deeper searches are more valuable)
         int bonus = calculateDepthBonus(depth);
-
-        // Determine which player's table to update
         int[][] table = isRedMove ? redHistoryTable : blueHistoryTable;
 
-        // Update history score
+        // Use SearchConfig.HISTORY_MAX_VALUE instead of hardcoded constant
         int currentScore = table[move.from][move.to];
-        table[move.from][move.to] = Math.min(currentScore + bonus, MAX_HISTORY_SCORE);
+        table[move.from][move.to] = Math.min(currentScore + bonus, SearchConfig.HISTORY_MAX_VALUE);
 
-        // Statistics
         updateCount++;
         maxScoreEver = Math.max(maxScoreEver, table[move.from][move.to]);
 
-        // Age table if necessary
-        if (table[move.from][move.to] > AGING_THRESHOLD) {
+        // Use SearchConfig.HISTORY_AGING_THRESHOLD instead of hardcoded constant
+        if (table[move.from][move.to] > SearchConfig.HISTORY_AGING_THRESHOLD) {
             ageHistoryTable(table);
         }
     }
 
     /**
-     * Get history score for a move
-     *
-     * @param move The move to score
-     * @param isRedMove Whether this is a red player move
-     * @return History score (higher = better historically)
+     * Get history score using SearchConfig parameters
      */
     public int getScore(Move move, boolean isRedMove) {
         if (move == null || !isValidSquare(move.from) || !isValidSquare(move.to)) {
@@ -82,55 +71,76 @@ public class HistoryHeuristic {
         return table[move.from][move.to];
     }
 
-    // === INTEGRATION HELPERS ===
+    // === ENHANCED INTEGRATION WITH SEARCHCONFIG ===
 
     /**
-     * Check if a move should use history heuristic
-     * (i.e., is a quiet move - not capture, not killer)
-     *
-     * @param move The move to check
-     * @param state Current game state
-     * @return true if move should use history scoring
+     * Check if move should use history heuristic based on SearchConfig
      */
     public boolean isQuietMove(Move move, GameState state) {
         if (move == null || state == null) {
             return false;
         }
 
-        // Check if it's a capture
+        // Only use history for quiet moves (not captures)
         long toBit = GameState.bit(move.to);
         boolean isCapture = ((state.redTowers | state.blueTowers |
                 state.redGuard | state.blueGuard) & toBit) != 0;
 
-        return !isCapture; // Not a capture = quiet move (killer check done in MoveOrdering)
+        return !isCapture;
     }
 
-    // === MAINTENANCE OPERATIONS ===
+    // === MAINTENANCE WITH SEARCHCONFIG ===
 
     /**
-     * Reset all history tables (call before new search)
+     * Age history table using SearchConfig aging shift
+     */
+    private void ageHistoryTable(int[][] table) {
+        for (int i = 0; i < 64; i++) {
+            for (int j = 0; j < 64; j++) {
+                // Use SearchConfig.HISTORY_AGING_SHIFT instead of hardcoded constant
+                table[i][j] >>>= SearchConfig.HISTORY_AGING_SHIFT;
+            }
+        }
+    }
+
+    /**
+     * Reset with SearchConfig validation
      */
     public void reset() {
         clearTable(redHistoryTable);
         clearTable(blueHistoryTable);
         updateCount = 0;
         maxScoreEver = 0;
+
+        // Log configuration being used
+        System.out.println("🔧 HistoryHeuristic reset with SearchConfig:");
+        System.out.println("   MAX_VALUE: " + SearchConfig.HISTORY_MAX_VALUE);
+        System.out.println("   AGING_THRESHOLD: " + SearchConfig.HISTORY_AGING_THRESHOLD);
+        System.out.println("   AGING_SHIFT: " + SearchConfig.HISTORY_AGING_SHIFT);
     }
 
     /**
-     * Age history tables by reducing all scores
-     * (call periodically to prevent score inflation)
+     * Enhanced statistics with SearchConfig info
      */
-    public void age() {
-        ageHistoryTable(redHistoryTable);
-        ageHistoryTable(blueHistoryTable);
+    public String getStatistics() {
+        int redEntries = countNonZeroEntries(redHistoryTable);
+        int blueEntries = countNonZeroEntries(blueHistoryTable);
+
+        return String.format(
+                "HistoryHeuristic: Updates=%d, MaxScore=%d/%d, Entries=[R:%d,B:%d], Config=[Max:%d,Threshold:%d]",
+                updateCount, maxScoreEver, SearchConfig.HISTORY_MAX_VALUE,
+                redEntries, blueEntries, SearchConfig.HISTORY_MAX_VALUE, SearchConfig.HISTORY_AGING_THRESHOLD
+        );
     }
 
     // === UTILITY METHODS ===
 
     private int calculateDepthBonus(int depth) {
-        // Quadratic bonus: deeper searches get exponentially more weight
-        return depth * depth;
+        // Enhanced depth bonus calculation with SearchConfig consideration
+        int baseBonus = depth * depth;
+
+        // Scale to SearchConfig.HISTORY_MAX_VALUE
+        return Math.min(baseBonus, SearchConfig.HISTORY_MAX_VALUE / 20);
     }
 
     private boolean isValidSquare(int square) {
@@ -143,30 +153,6 @@ public class HistoryHeuristic {
                 table[i][j] = 0;
             }
         }
-    }
-
-    private void ageHistoryTable(int[][] table) {
-        for (int i = 0; i < 64; i++) {
-            for (int j = 0; j < 64; j++) {
-                table[i][j] >>>= AGING_SHIFT; // Unsigned right shift = divide by 2
-            }
-        }
-    }
-
-    // === DEBUGGING/STATISTICS ===
-
-    /**
-     * Get statistics for debugging
-     */
-    public String getStatistics() {
-        int redEntries = countNonZeroEntries(redHistoryTable);
-        int blueEntries = countNonZeroEntries(blueHistoryTable);
-
-        return String.format(
-                "HistoryHeuristic Stats: Updates=%d, MaxScore=%d, " +
-                        "RedEntries=%d, BlueEntries=%d",
-                updateCount, maxScoreEver, redEntries, blueEntries
-        );
     }
 
     private int countNonZeroEntries(int[][] table) {
@@ -182,14 +168,14 @@ public class HistoryHeuristic {
     }
 
     /**
-     * Get the highest scoring move for debugging
+     * Get configuration-aware best move
      */
     public String getBestHistoryMove() {
         int maxScore = 0;
         int bestFrom = -1, bestTo = -1;
         String color = "";
 
-        // Check red table
+        // Check both tables
         for (int i = 0; i < 64; i++) {
             for (int j = 0; j < 64; j++) {
                 if (redHistoryTable[i][j] > maxScore) {
@@ -198,12 +184,6 @@ public class HistoryHeuristic {
                     bestTo = j;
                     color = "RED";
                 }
-            }
-        }
-
-        // Check blue table
-        for (int i = 0; i < 64; i++) {
-            for (int j = 0; j < 64; j++) {
                 if (blueHistoryTable[i][j] > maxScore) {
                     maxScore = blueHistoryTable[i][j];
                     bestFrom = i;
@@ -214,10 +194,38 @@ public class HistoryHeuristic {
         }
 
         if (maxScore > 0) {
-            return String.format("%s move %d->%d (score: %d)",
-                    color, bestFrom, bestTo, maxScore);
+            return String.format("%s move %d->%d (score: %d/%d)",
+                    color, bestFrom, bestTo, maxScore, SearchConfig.HISTORY_MAX_VALUE);
         } else {
             return "No history moves recorded";
         }
+    }
+
+    /**
+     * Validate SearchConfig integration
+     */
+    public boolean validateConfiguration() {
+        boolean valid = true;
+
+        if (SearchConfig.HISTORY_MAX_VALUE <= 0) {
+            System.err.println("❌ Invalid HISTORY_MAX_VALUE: " + SearchConfig.HISTORY_MAX_VALUE);
+            valid = false;
+        }
+
+        if (SearchConfig.HISTORY_AGING_THRESHOLD <= 0) {
+            System.err.println("❌ Invalid HISTORY_AGING_THRESHOLD: " + SearchConfig.HISTORY_AGING_THRESHOLD);
+            valid = false;
+        }
+
+        if (SearchConfig.HISTORY_AGING_SHIFT < 0 || SearchConfig.HISTORY_AGING_SHIFT > 5) {
+            System.err.println("❌ Invalid HISTORY_AGING_SHIFT: " + SearchConfig.HISTORY_AGING_SHIFT);
+            valid = false;
+        }
+
+        if (valid) {
+            System.out.println("✅ HistoryHeuristic SearchConfig integration validated");
+        }
+
+        return valid;
     }
 }

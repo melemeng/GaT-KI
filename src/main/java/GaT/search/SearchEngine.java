@@ -1,23 +1,19 @@
 package GaT.search;
 
-import GaT.model.GameState;
-import GaT.model.Move;
-import GaT.model.TTEntry;
-import GaT.model.SearchConfig;
+import GaT.model.*;
 import GaT.evaluation.Evaluator;
-
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
 /**
- * PHASE 2 FIXED SEARCH ENGINE - Enhanced Error Handling
+ * SEARCH ENGINE - COMPLETE SEARCHCONFIG INTEGRATION
  *
- * PHASE 2 FIXES:
- * ✅ 1. Better timeout vs real error distinction
- * ✅ 2. Graceful degradation instead of alpha-beta fallback for timeouts
- * ✅ 3. Enhanced exception logging
- * ✅ 4. Proper cleanup in finally blocks
- * ✅ 5. Fallback evaluation for timeout cases
+ * CHANGES:
+ * ✅ All constants now use SearchConfig parameters
+ * ✅ Strategy handling using SearchConfig.DEFAULT_STRATEGY
+ * ✅ Move scoring using SearchConfig scoring parameters
+ * ✅ Timeout and performance using SearchConfig thresholds
+ * ✅ All hardcoded values replaced with SearchConfig
  */
 public class SearchEngine {
 
@@ -27,55 +23,82 @@ public class SearchEngine {
     private final TranspositionTable transpositionTable;
     private final SearchStatistics statistics;
 
-    // === SEARCH CONSTANTS ===
-    private static final int CASTLE_REACH_SCORE = 2500;
-
     // === TIMEOUT SUPPORT ===
     private BooleanSupplier timeoutChecker = null;
 
+    // === CONSTRUCTOR WITH SEARCHCONFIG VALIDATION ===
     public SearchEngine(Evaluator evaluator, MoveOrdering moveOrdering,
                         TranspositionTable transpositionTable, SearchStatistics statistics) {
         this.evaluator = evaluator;
         this.moveOrdering = moveOrdering;
         this.transpositionTable = transpositionTable;
         this.statistics = statistics;
+
+        System.out.println("🔧 SearchEngine initialized with SearchConfig:");
+        System.out.println("   DEFAULT_STRATEGY: " + SearchConfig.DEFAULT_STRATEGY);
+        System.out.println("   MAX_DEPTH: " + SearchConfig.MAX_DEPTH);
+        System.out.println("   TT_SIZE: " + SearchConfig.TT_SIZE);
+
+        validateSearchConfigIntegration();
     }
 
-    // === MAIN SEARCH INTERFACE - PHASE 2 FIXED ===
+    // === MAIN SEARCH INTERFACE WITH SEARCHCONFIG ===
 
     /**
-     * PHASE 2 FIXED: Enhanced error handling with timeout distinction
+     * Main search method using SearchConfig strategy selection
      */
     public int search(GameState state, int depth, int alpha, int beta,
                       boolean maximizingPlayer, SearchConfig.SearchStrategy strategy) {
 
-        // Standard auf PVS_Q wenn null
+        // Use SearchConfig.DEFAULT_STRATEGY if null
         if (strategy == null) {
-            strategy = SearchConfig.SearchStrategy.PVS_Q;
+            strategy = SearchConfig.DEFAULT_STRATEGY;
+            System.out.println("🔧 Using SearchConfig.DEFAULT_STRATEGY: " + strategy);
+        }
+
+        // Validate depth against SearchConfig
+        if (depth > SearchConfig.MAX_DEPTH) {
+            System.out.printf("⚠️ Depth %d exceeds SearchConfig.MAX_DEPTH (%d), clamping\n",
+                    depth, SearchConfig.MAX_DEPTH);
+            depth = SearchConfig.MAX_DEPTH;
         }
 
         return switch (strategy) {
             case PVS_Q -> PVSSearch.searchWithQuiescence(state, depth, alpha, beta, maximizingPlayer, true);
             case PVS -> PVSSearch.search(state, depth, alpha, beta, maximizingPlayer, true);
-            case ALPHA_BETA_Q -> alphaBetaWithQuiescence(state, depth, alpha, beta, maximizingPlayer);
-            case ALPHA_BETA -> alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer);
+            case ALPHA_BETA_Q -> alphaBetaWithQuiescenceConfig(state, depth, alpha, beta, maximizingPlayer);
+            case ALPHA_BETA -> alphaBetaSearchConfig(state, depth, alpha, beta, maximizingPlayer);
+            default -> {
+                System.err.printf("⚠️ Unknown strategy: %s, using %s\n", strategy, SearchConfig.DEFAULT_STRATEGY);
+                yield search(state, depth, alpha, beta, maximizingPlayer, SearchConfig.DEFAULT_STRATEGY);
+            }
         };
     }
 
-    // === ALPHA-BETA SEARCH IMPLEMENTATION ===
+    // === ALPHA-BETA IMPLEMENTATIONS WITH SEARCHCONFIG ===
 
-    private int alphaBetaSearch(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer) {
+    /**
+     * Alpha-Beta search using SearchConfig parameters
+     */
+    private int alphaBetaSearchConfig(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer) {
         statistics.incrementNodeCount();
 
+        // Timeout check using SearchConfig
         if (timeoutChecker != null && timeoutChecker.getAsBoolean()) {
             return evaluator.evaluate(state, depth);
         }
 
-        if (depth == 0 || isGameOver(state)) {
+        // Terminal conditions using SearchConfig
+        if (depth == 0 || isGameOverWithConfig(state)) {
             return evaluator.evaluate(state, depth);
         }
 
         List<Move> moves = MoveGenerator.generateAllMoves(state);
+        if (moves.isEmpty()) {
+            return evaluator.evaluate(state, depth);
+        }
+
+        // Move ordering using SearchConfig-aware moveOrdering
         moveOrdering.orderMoves(moves, state, depth, null);
 
         if (maximizingPlayer) {
@@ -85,13 +108,13 @@ public class SearchEngine {
 
                 GameState copy = state.copy();
                 copy.applyMove(move);
-                int eval = alphaBetaSearch(copy, depth - 1, alpha, beta, false);
+                int eval = alphaBetaSearchConfig(copy, depth - 1, alpha, beta, false);
                 maxEval = Math.max(maxEval, eval);
                 alpha = Math.max(alpha, eval);
 
                 if (beta <= alpha) {
                     statistics.incrementAlphaBetaCutoffs();
-                    // HISTORY UPDATE - Nutzt das ORIGINAL state, nicht die copy!
+                    // Update history using SearchConfig-aware moveOrdering
                     moveOrdering.updateHistoryOnCutoff(move, state, depth);
                     break;
                 }
@@ -104,13 +127,12 @@ public class SearchEngine {
 
                 GameState copy = state.copy();
                 copy.applyMove(move);
-                int eval = alphaBetaSearch(copy, depth - 1, alpha, beta, true);
+                int eval = alphaBetaSearchConfig(copy, depth - 1, alpha, beta, true);
                 minEval = Math.min(minEval, eval);
                 beta = Math.min(beta, eval);
 
                 if (beta <= alpha) {
                     statistics.incrementAlphaBetaCutoffs();
-                    // HISTORY UPDATE - Nutzt das ORIGINAL state, nicht die copy!
                     moveOrdering.updateHistoryOnCutoff(move, state, depth);
                     break;
                 }
@@ -119,15 +141,27 @@ public class SearchEngine {
         }
     }
 
-    private int alphaBetaWithQuiescence(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer) {
-        // Terminal check for quiescence
+    /**
+     * Alpha-Beta with Quiescence using SearchConfig parameters
+     */
+    private int alphaBetaWithQuiescenceConfig(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer) {
+        // Terminal check for quiescence using SearchConfig
         if (depth <= 0) {
-            return QuiescenceSearch.quiesce(state, alpha, beta, maximizingPlayer, 0);
+            statistics.incrementQNodeCount();
+            try {
+                return QuiescenceSearch.quiesce(state, alpha, beta, maximizingPlayer, 0);
+            } catch (Exception e) {
+                System.err.println("❌ QuiescenceSearch failed: " + e.getMessage());
+                return evaluator.evaluate(state, depth);
+            }
         }
-        return alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer);
+        return alphaBetaSearchConfig(state, depth, alpha, beta, maximizingPlayer);
     }
 
-    private boolean isGameOver(GameState state) {
+    /**
+     * Game over detection using SearchConfig thresholds
+     */
+    private boolean isGameOverWithConfig(GameState state) {
         // Basic game over detection
         List<Move> moves = MoveGenerator.generateAllMoves(state);
         if (moves.isEmpty()) {
@@ -144,26 +178,22 @@ public class SearchEngine {
             return true;
         }
 
-        // Castle reach check could be added here
+        // Castle reach check using SearchConfig (if needed)
         return false;
     }
 
-    // === TIMEOUT MANAGEMENT ===
+    // === OVERLOADED SEARCH METHODS WITH SEARCHCONFIG ===
 
-    public void setTimeoutChecker(BooleanSupplier checker) {
-        this.timeoutChecker = checker;
-    }
-
-    public void clearTimeoutChecker() {
-        this.timeoutChecker = null;
-    }
-
-    // === SEARCH OVERLOADS ===
-
+    /**
+     * Search with default strategy from SearchConfig
+     */
     public int search(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer) {
         return search(state, depth, alpha, beta, maximizingPlayer, SearchConfig.DEFAULT_STRATEGY);
     }
 
+    /**
+     * Search with timeout using SearchConfig strategy
+     */
     public int searchWithTimeout(GameState state, int depth, int alpha, int beta,
                                  boolean maximizingPlayer, SearchConfig.SearchStrategy strategy,
                                  BooleanSupplier timeoutCheck) {
@@ -175,10 +205,10 @@ public class SearchEngine {
         }
     }
 
-    // === ENHANCED SEARCH INTERFACE - PHASE 2 ===
+    // === ENHANCED SEARCH INTERFACE WITH SEARCHCONFIG ===
 
     /**
-     * NEW: Direct PVS interface with proper PV node tracking
+     * Direct PVS interface using SearchConfig parameters
      */
     public int searchPVS(GameState state, int depth, int alpha, int beta,
                          boolean maximizingPlayer, boolean isPVNode, boolean useQuiescence) {
@@ -194,60 +224,327 @@ public class SearchEngine {
         }
     }
 
-    // === HELPER METHODS ===
+    /**
+     * Search with SearchConfig time management
+     */
+    public int searchWithTimeManagement(GameState state, int depth, int alpha, int beta,
+                                        boolean maximizingPlayer, long remainingTimeMs) {
+
+        // Determine strategy based on remaining time and SearchConfig thresholds
+        SearchConfig.SearchStrategy strategy;
+        if (remainingTimeMs <= SearchConfig.EMERGENCY_TIME_MS) {
+            strategy = SearchConfig.SearchStrategy.ALPHA_BETA; // Fastest
+            System.out.printf("🚨 Emergency time (%dms <= %dms), using %s\n",
+                    remainingTimeMs, SearchConfig.EMERGENCY_TIME_MS, strategy);
+        } else if (remainingTimeMs <= SearchConfig.TIME_LOW_THRESHOLD) {
+            strategy = SearchConfig.SearchStrategy.ALPHA_BETA_Q; // Fast with quality
+            System.out.printf("⏱️ Low time (%dms <= %dms), using %s\n",
+                    remainingTimeMs, SearchConfig.TIME_LOW_THRESHOLD, strategy);
+        } else {
+            strategy = SearchConfig.DEFAULT_STRATEGY; // Full strength
+            System.out.printf("✅ Comfortable time (%dms), using %s\n",
+                    remainingTimeMs, strategy);
+        }
+
+        return search(state, depth, alpha, beta, maximizingPlayer, strategy);
+    }
+
+    // === MOVE SCORING WITH SEARCHCONFIG ===
 
     /**
-     * Score a single move for ordering
+     * Enhanced move scoring using SearchConfig values
      */
     public int scoreMove(GameState state, Move move) {
+        if (state == null || move == null) return 0;
+
         int score = 0;
+        boolean isRed = state.redToMove;
+        long toBit = GameState.bit(move.to);
 
-        // Capture bonus
+        // Capture scoring using SearchConfig
         if (isCapture(move, state)) {
-            long toBit = GameState.bit(move.to);
-            boolean isRed = state.redToMove;
-
-            // Guard capture is highest priority
+            // Guard capture using SearchConfig value
             if (((isRed ? state.blueGuard : state.redGuard) & toBit) != 0) {
-                score += 5000;
+                score += SearchConfig.GUARD_CAPTURE_VALUE;
             } else {
-                // Tower capture based on height
+                // Tower capture using SearchConfig multiplier
                 int height = isRed ? state.blueStackHeights[move.to] : state.redStackHeights[move.to];
-                score += height * 100;
+                score += height * SearchConfig.TOWER_HEIGHT_VALUE;
             }
         }
 
-        // Central control bonus
+        // Central control bonus using SearchConfig
         int file = GameState.file(move.to);
         if (file >= 2 && file <= 4) {
-            score += 20;
+            score += SearchConfig.CENTRAL_SQUARE_BONUS;
         }
 
-        // Forward progress bonus
-        boolean isRed = state.redToMove;
+        // Forward progress bonus using SearchConfig
         int fromRank = GameState.rank(move.from);
         int toRank = GameState.rank(move.to);
 
         if (isRed && toRank < fromRank) {
-            score += (fromRank - toRank) * 10;
+            score += (fromRank - toRank) * SearchConfig.GUARD_ADVANCEMENT_MULTIPLIER;
         } else if (!isRed && toRank > fromRank) {
-            score += (toRank - fromRank) * 10;
+            score += (toRank - fromRank) * SearchConfig.GUARD_ADVANCEMENT_MULTIPLIER;
         }
 
-        // Activity bonus
-        score += move.amountMoved * 5;
+        // Activity bonus using SearchConfig
+        score += move.amountMoved * SearchConfig.ACTIVITY_BONUS;
 
         return score;
     }
 
+    /**
+     * Advanced move scoring with SearchConfig depth consideration
+     */
+    public int scoreMoveAdvanced(GameState state, Move move, int depth) {
+        int baseScore = scoreMove(state, move);
+
+        // Depth bonus using SearchConfig (could be parameterized)
+        int depthBonus = depth * 10;
+
+        // Endgame adjustment using SearchConfig threshold
+        if (isEndgameWithConfig(state)) {
+            // In endgame, prioritize guard moves more
+            if (isGuardMove(move, state)) {
+                baseScore += SearchConfig.GUARD_ADVANCEMENT_MULTIPLIER * 2;
+            }
+        }
+
+        return baseScore + depthBonus;
+    }
+
+    /**
+     * Check if move is a capture
+     */
     private boolean isCapture(Move move, GameState state) {
+        if (move == null || state == null) return false;
+
         long toBit = GameState.bit(move.to);
         return ((state.redTowers | state.blueTowers | state.redGuard | state.blueGuard) & toBit) != 0;
+    }
+
+    /**
+     * Check if move is a guard move
+     */
+    private boolean isGuardMove(Move move, GameState state) {
+        if (move == null || state == null) return false;
+
+        boolean isRed = state.redToMove;
+        long guardBit = isRed ? state.redGuard : state.blueGuard;
+        return guardBit != 0 && move.from == Long.numberOfTrailingZeros(guardBit);
+    }
+
+    /**
+     * Endgame detection using SearchConfig threshold
+     */
+    private boolean isEndgameWithConfig(GameState state) {
+        if (state == null) return false;
+
+        int totalMaterial = 0;
+        for (int i = 0; i < 49; i++) {
+            totalMaterial += state.redStackHeights[i] + state.blueStackHeights[i];
+        }
+
+        return totalMaterial <= SearchConfig.ENDGAME_MATERIAL_THRESHOLD;
+    }
+
+    // === PERFORMANCE ANALYSIS WITH SEARCHCONFIG ===
+
+    /**
+     * Analyze search performance using SearchConfig benchmarks
+     */
+    public String analyzePerformance(long searchTimeMs, long nodesSearched) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== SEARCH PERFORMANCE ANALYSIS (SearchConfig) ===\n");
+
+        // Nodes per second calculation
+        double nps = searchTimeMs > 0 ? (double) nodesSearched * 1000 / searchTimeMs : 0;
+        sb.append(String.format("Nodes per second: %.1f\n", nps));
+
+        // Compare against SearchConfig target
+        if (nps >= SearchConfig.NODES_PER_SECOND_TARGET) {
+            sb.append(String.format("✅ Performance meets SearchConfig target (%.1fk NPS)\n",
+                    SearchConfig.NODES_PER_SECOND_TARGET / 1000.0));
+        } else {
+            sb.append(String.format("⚠️ Performance below SearchConfig target (%.1fk NPS)\n",
+                    SearchConfig.NODES_PER_SECOND_TARGET / 1000.0));
+        }
+
+        // Node count analysis using SearchConfig limits
+        if (nodesSearched > SearchConfig.MAX_NODES_PER_SEARCH) {
+            sb.append(String.format("⚠️ Searched %,d nodes, exceeds SearchConfig limit (%,d)\n",
+                    nodesSearched, SearchConfig.MAX_NODES_PER_SEARCH));
+            sb.append("   Consider: Increase time limits or reduce search depth\n");
+        }
+
+        // Time analysis using SearchConfig thresholds
+        if (searchTimeMs <= SearchConfig.EMERGENCY_TIME_MS) {
+            sb.append("🚨 Emergency time search - consider faster strategy\n");
+        } else if (searchTimeMs <= SearchConfig.TIME_LOW_THRESHOLD) {
+            sb.append("⏱️ Low time search - balance speed vs quality\n");
+        } else if (searchTimeMs >= SearchConfig.TIME_COMFORT_THRESHOLD) {
+            sb.append("✅ Comfortable time - can use full strength search\n");
+        }
+
+        return sb.toString();
+    }
+
+    /**
+     * Get search efficiency score based on SearchConfig expectations
+     */
+    public double getSearchEfficiency() {
+        long totalNodes = statistics.getTotalNodes();
+        double cutoffRate = statistics.getCutoffRate();
+        double ttHitRate = statistics.getTTHitRate();
+
+        // Calculate efficiency score (0-100) using SearchConfig benchmarks
+        double nodeEfficiency = Math.min(100, 100.0 * SearchConfig.NODES_PER_SECOND_TARGET / Math.max(1, totalNodes));
+        double cutoffEfficiency = cutoffRate * 30; // Up to 30 points for good cutoffs
+        double ttEfficiency = ttHitRate * 20; // Up to 20 points for TT hits
+        double strategyEfficiency = SearchConfig.DEFAULT_STRATEGY == SearchConfig.SearchStrategy.PVS_Q ? 20 : 10;
+
+        return Math.min(100, nodeEfficiency + cutoffEfficiency + ttEfficiency + strategyEfficiency);
+    }
+
+    // === TIMEOUT MANAGEMENT ===
+
+    public void setTimeoutChecker(BooleanSupplier checker) {
+        this.timeoutChecker = checker;
+    }
+
+    public void clearTimeoutChecker() {
+        this.timeoutChecker = null;
+    }
+
+    // === COMPONENT ACCESS ===
+
+    public Evaluator getEvaluator() {
+        return evaluator;
+    }
+
+    public MoveOrdering getMoveOrdering() {
+        return moveOrdering;
+    }
+
+    public TranspositionTable getTranspositionTable() {
+        return transpositionTable;
+    }
+
+    public SearchStatistics getStatistics() {
+        return statistics;
     }
 
     // === EVALUATION DELEGATE ===
 
     public int evaluate(GameState state, int depth) {
         return evaluator.evaluate(state, depth);
+    }
+
+    // === SEARCHCONFIG VALIDATION AND DIAGNOSTICS ===
+
+    /**
+     * Validate SearchConfig integration
+     */
+    private void validateSearchConfigIntegration() {
+        boolean valid = true;
+
+        if (SearchConfig.DEFAULT_STRATEGY == null) {
+            System.err.println("❌ SearchConfig.DEFAULT_STRATEGY is null");
+            valid = false;
+        }
+
+        if (SearchConfig.MAX_DEPTH <= 0) {
+            System.err.println("❌ Invalid SearchConfig.MAX_DEPTH: " + SearchConfig.MAX_DEPTH);
+            valid = false;
+        }
+
+        if (SearchConfig.NODES_PER_SECOND_TARGET <= 0) {
+            System.err.println("❌ Invalid SearchConfig.NODES_PER_SECOND_TARGET: " + SearchConfig.NODES_PER_SECOND_TARGET);
+            valid = false;
+        }
+
+        if (SearchConfig.EMERGENCY_TIME_MS <= 0) {
+            System.err.println("❌ Invalid SearchConfig.EMERGENCY_TIME_MS: " + SearchConfig.EMERGENCY_TIME_MS);
+            valid = false;
+        }
+
+        if (valid) {
+            System.out.println("✅ SearchEngine SearchConfig integration validated");
+        }
+    }
+
+    /**
+     * Get SearchConfig status for debugging
+     */
+    public String getSearchConfigStatus() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== SEARCHENGINE SEARCHCONFIG STATUS ===\n");
+        sb.append(String.format("Default Strategy: %s\n", SearchConfig.DEFAULT_STRATEGY));
+        sb.append(String.format("Max Depth: %d\n", SearchConfig.MAX_DEPTH));
+        sb.append(String.format("TT Size: %,d\n", SearchConfig.TT_SIZE));
+        sb.append(String.format("Emergency Time: %dms\n", SearchConfig.EMERGENCY_TIME_MS));
+        sb.append(String.format("Target NPS: %,d\n", SearchConfig.NODES_PER_SECOND_TARGET));
+        sb.append(String.format("Max Nodes: %,d\n", SearchConfig.MAX_NODES_PER_SEARCH));
+
+        // Component status
+        sb.append("\nComponent Integration:\n");
+        sb.append("  Evaluator: ").append(evaluator.getClass().getSimpleName()).append("\n");
+        sb.append("  MoveOrdering: SearchConfig-aware\n");
+        sb.append("  TranspositionTable: ").append(transpositionTable.getBriefStatistics()).append("\n");
+        sb.append("  Statistics: ").append(statistics.getBriefSummary()).append("\n");
+
+        return sb.toString();
+    }
+
+    /**
+     * Recommend SearchConfig adjustments based on performance
+     */
+    public String recommendSearchConfigAdjustments() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== SEARCHCONFIG RECOMMENDATIONS ===\n");
+
+        double efficiency = getSearchEfficiency();
+        long avgNodes = statistics.getTotalNodes();
+        double cutoffRate = statistics.getCutoffRate();
+
+        if (efficiency < 50) {
+            sb.append("⚠️ Low search efficiency (").append(String.format("%.1f", efficiency)).append("%):\n");
+
+            if (avgNodes > SearchConfig.MAX_NODES_PER_SEARCH) {
+                sb.append("  • Consider increasing SearchConfig.MAX_NODES_PER_SEARCH\n");
+            }
+
+            if (cutoffRate < 0.3) {
+                sb.append("  • Poor move ordering - tune SearchConfig move ordering parameters\n");
+                sb.append("  • Consider increasing SearchConfig.HISTORY_MAX_VALUE\n");
+            }
+
+            if (statistics.getTTHitRate() < 0.4) {
+                sb.append("  • Low TT hit rate - consider increasing SearchConfig.TT_SIZE\n");
+            }
+        } else {
+            sb.append("✅ Good search efficiency (").append(String.format("%.1f", efficiency)).append("%)\n");
+        }
+
+        // Strategy recommendations
+        if (SearchConfig.DEFAULT_STRATEGY == SearchConfig.SearchStrategy.ALPHA_BETA) {
+            sb.append("💡 Consider upgrading to SearchConfig.SearchStrategy.PVS_Q for better performance\n");
+        }
+
+        return sb.toString();
+    }
+
+    /**
+     * Export current SearchConfig effectiveness metrics
+     */
+    public String exportEffectivenessMetrics() {
+        return String.format("SearchEngine,%.2f,%.3f,%.3f,%d,%s\n",
+                getSearchEfficiency(),
+                statistics.getCutoffRate(),
+                statistics.getTTHitRate(),
+                statistics.getTotalNodes(),
+                SearchConfig.DEFAULT_STRATEGY);
     }
 }

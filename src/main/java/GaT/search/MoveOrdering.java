@@ -8,62 +8,56 @@ import GaT.model.SearchConfig;
 import java.util.List;
 
 /**
- * CRITICAL FIX: MoveOrdering with proper null-safe handling
+ * MOVE ORDERING - COMPLETE SEARCHCONFIG INTEGRATION
  *
- * FIXES:
- * ✅ All methods now have null-checks for GameState
- * ✅ Fixed storeKillerMove calling isCapture(move, null)
- * ✅ Robust exception handling throughout
- * ✅ Safe fallbacks for all operations
- * ✅ Single unified scoreMove() method with safety
+ * CHANGES:
+ * ✅ All constants now use SearchConfig parameters
+ * ✅ Removed all hardcoded priorities and bonuses
+ * ✅ Killer move configuration from SearchConfig
+ * ✅ History heuristic configuration from SearchConfig
+ * ✅ Centralized parameter control for easy tuning
  */
 public class MoveOrdering {
 
-    // === CORE TABLES ===
+    // === CORE TABLES USING SEARCHCONFIG ===
     private Move[][] killerMoves;
     private int[][] historyTable;
     private Move[] pvLine;
-
-    // === CONSTANTS ===
-    private static final int TT_MOVE_PRIORITY = 1000000;
-    private static final int CAPTURE_BASE_PRIORITY = 100000;
-    private static final int KILLER_1_PRIORITY = 10000;
-    private static final int KILLER_2_PRIORITY = 9000;
-    private static final int HISTORY_MAX_SCORE = 1000;
-    private static final int POSITIONAL_MAX_SCORE = 500;
-
-    private static final int HISTORY_MAX = SearchConfig.HISTORY_MAX_VALUE;
     private int killerAge = 0;
 
-    // === CONSTRUCTOR ===
+    // === CONSTRUCTOR WITH SEARCHCONFIG INITIALIZATION ===
     public MoveOrdering() {
         initializeTables();
+        validateSearchConfig();
     }
 
     private void initializeTables() {
+        // Use SearchConfig parameters instead of hardcoded values
         killerMoves = new Move[SearchConfig.MAX_KILLER_DEPTH][SearchConfig.KILLER_MOVE_SLOTS];
         historyTable = new int[GameState.NUM_SQUARES][GameState.NUM_SQUARES];
         pvLine = new Move[SearchConfig.MAX_KILLER_DEPTH];
         killerAge = 0;
+
+        System.out.println("🔧 MoveOrdering initialized with SearchConfig:");
+        System.out.println("   MAX_KILLER_DEPTH: " + SearchConfig.MAX_KILLER_DEPTH);
+        System.out.println("   KILLER_MOVE_SLOTS: " + SearchConfig.KILLER_MOVE_SLOTS);
+        System.out.println("   HISTORY_MAX_VALUE: " + SearchConfig.HISTORY_MAX_VALUE);
     }
 
-    // === MAIN INTERFACE: FIXED ORDERING ===
+    // === MAIN INTERFACE WITH SEARCHCONFIG PRIORITIES ===
 
     /**
-     * FIXED: Move ordering with proper null-safety
+     * Move ordering using SearchConfig priorities
      */
     public void orderMoves(List<Move> moves, GameState state, int depth, TTEntry ttEntry) {
         if (moves == null || moves.size() <= 1) return;
 
-        // NULL-CHECK for state
         if (state == null) {
             System.err.println("❌ ERROR: Null state in orderMoves - using basic ordering");
-            // Fallback to basic ordering without state-dependent scoring
             orderMovesBasic(moves);
             return;
         }
 
-        // VALIDATION CHECK
         if (!state.isValid()) {
             System.err.println("❌ ERROR: Invalid state in orderMoves - using basic ordering");
             orderMovesBasic(moves);
@@ -71,15 +65,14 @@ public class MoveOrdering {
         }
 
         try {
-            // Safe sorting with exception handling
             moves.sort((a, b) -> {
                 try {
                     int scoreA = scoreMoveSafe(a, state, depth, ttEntry);
                     int scoreB = scoreMoveSafe(b, state, depth, ttEntry);
-                    return Integer.compare(scoreB, scoreA); // Descending order
+                    return Integer.compare(scoreB, scoreA);
                 } catch (Exception e) {
                     System.err.println("❌ ERROR: Move comparison failed: " + e.getMessage());
-                    return 0; // Equal if comparison fails
+                    return 0;
                 }
             });
         } catch (Exception e) {
@@ -87,42 +80,26 @@ public class MoveOrdering {
             orderMovesBasic(moves);
         }
 
-        // Update statistics
         SearchStatistics.getInstance().incrementTotalMoveOrderingQueries();
     }
 
     /**
-     * FIXED: Safe move scoring with comprehensive null-checks
+     * Safe move scoring using SearchConfig priorities
      */
-    public int scoreMove(Move move, GameState state, int depth, TTEntry ttEntry) {
-        return scoreMoveSafe(move, state, depth, ttEntry);
-    }
-
     private int scoreMoveSafe(Move move, GameState state, int depth, TTEntry ttEntry) {
-        // Basic null checks
-        if (move == null) {
-            return 0;
-        }
-
-        if (state == null) {
-            // Can only use state-independent scoring
-            return scoreBasic(move, depth, ttEntry);
-        }
-
-        if (!state.isValid()) {
-            System.err.println("❌ ERROR: Invalid state in scoreMoveSafe");
-            return scoreBasic(move, depth, ttEntry);
-        }
+        if (move == null) return 0;
+        if (state == null) return scoreBasic(move, depth, ttEntry);
+        if (!state.isValid()) return scoreBasic(move, depth, ttEntry);
 
         try {
-            // === 1. TT-MOVE (ABSOLUTE PRIORITY) ===
+            // === 1. TT-MOVE (HIGHEST PRIORITY) ===
             if (ttEntry != null && move.equals(ttEntry.bestMove)) {
-                return TT_MOVE_PRIORITY;
+                return SearchConfig.MOVE_ORDERING_TT_PRIORITY;
             }
 
             // === 2. CAPTURES (MVV-LVA) ===
             if (isCaptureS(move, state)) {
-                return CAPTURE_BASE_PRIORITY + evaluateMVVLVA(move, state);
+                return SearchConfig.MOVE_ORDERING_CAPTURE_BASE + evaluateMVVLVA(move, state);
             }
 
             // === 3. KILLER MOVES ===
@@ -133,7 +110,7 @@ public class MoveOrdering {
             // === 4. HISTORY HEURISTIC ===
             int historyScore = getUnifiedHistoryScore(move, state);
 
-            // === 5. BASIC POSITIONAL HINTS ===
+            // === 5. POSITIONAL HINTS ===
             int positionalScore = getBasicPositionalScore(move, state);
 
             return historyScore + positionalScore;
@@ -144,57 +121,17 @@ public class MoveOrdering {
         }
     }
 
-    /**
-     * State-independent scoring for fallback
-     */
-    private int scoreBasic(Move move, int depth, TTEntry ttEntry) {
-        try {
-            // TT move
-            if (ttEntry != null && move.equals(ttEntry.bestMove)) {
-                return TT_MOVE_PRIORITY;
-            }
-
-            // Killer moves
-            if (isKillerMove(move, depth)) {
-                return getKillerPriority(move, depth);
-            }
-
-            // Activity bonus
-            return move.amountMoved * 5;
-
-        } catch (Exception e) {
-            return 0;
-        }
-    }
-
-    /**
-     * Basic move ordering fallback
-     */
-    private void orderMovesBasic(List<Move> moves) {
-        try {
-            moves.sort((a, b) -> {
-                if (a == null && b == null) return 0;
-                if (a == null) return 1;
-                if (b == null) return -1;
-
-                // Simple activity-based ordering
-                return Integer.compare(b.amountMoved, a.amountMoved);
-            });
-        } catch (Exception e) {
-            System.err.println("❌ ERROR: Basic move ordering failed: " + e.getMessage());
-            // Don't sort if even basic ordering fails
-        }
-    }
-
-    // === SAFE MVV-LVA ===
+    // === MVV-LVA WITH SEARCHCONFIG PARAMETERS ===
 
     private int evaluateMVVLVA(Move move, GameState state) {
         try {
             int victimValue = getVictimValue(move, state);
             int attackerValue = getAttackerValue(move, state);
-            return victimValue * 100 - attackerValue;
+
+            // Use SearchConfig multipliers instead of hardcoded values
+            return victimValue * SearchConfig.MVV_MULTIPLIER - attackerValue * SearchConfig.LVA_MULTIPLIER;
         } catch (Exception e) {
-            return 100; // Basic capture bonus
+            return SearchConfig.DEFAULT_CAPTURE_BONUS;
         }
     }
 
@@ -202,37 +139,37 @@ public class MoveOrdering {
         try {
             long toBit = GameState.bit(move.to);
 
-            // Guard capture = highest priority
+            // Guard capture = highest value
             if ((state.redGuard & toBit) != 0 || (state.blueGuard & toBit) != 0) {
-                return 1000;
+                return SearchConfig.GUARD_CAPTURE_VALUE;
             }
 
-            // Tower capture = material value (height)
+            // Tower capture = height-based value
             boolean isRed = state.redToMove;
             int victimHeight = isRed ? state.blueStackHeights[move.to] : state.redStackHeights[move.to];
-            return victimHeight * 100;
+            return victimHeight * SearchConfig.TOWER_HEIGHT_VALUE;
         } catch (Exception e) {
-            return 100; // Default victim value
+            return SearchConfig.DEFAULT_VICTIM_VALUE;
         }
     }
 
     private int getAttackerValue(Move move, GameState state) {
         try {
-            // Guard = low value (should attack preferably)
+            // Guard = low value (prefer guard attacks)
             if (isGuardMoveS(move, state)) {
-                return 10;
+                return SearchConfig.GUARD_ATTACKER_VALUE;
             }
 
             // Tower = height value
             boolean isRed = state.redToMove;
             int attackerHeight = isRed ? state.redStackHeights[move.from] : state.blueStackHeights[move.from];
-            return attackerHeight;
+            return attackerHeight * SearchConfig.TOWER_HEIGHT_VALUE;
         } catch (Exception e) {
-            return 50; // Default attacker value
+            return SearchConfig.DEFAULT_ATTACKER_VALUE;
         }
     }
 
-    // === SAFE HISTORY SCORING ===
+    // === HISTORY SCORING WITH SEARCHCONFIG ===
 
     private int getUnifiedHistoryScore(Move move, GameState state) {
         try {
@@ -240,22 +177,21 @@ public class MoveOrdering {
 
             int historyScore = 0;
 
-            // Standard History Table
             if (move.from < historyTable.length && move.to < historyTable[move.from].length) {
-                historyScore = historyTable[move.from][move.to] / 100;
+                historyScore = historyTable[move.from][move.to] / SearchConfig.HISTORY_SCORE_DIVISOR;
             }
 
-            return Math.min(historyScore, HISTORY_MAX_SCORE);
+            return Math.min(historyScore, SearchConfig.HISTORY_MAX_SCORE);
         } catch (Exception e) {
             return 0;
         }
     }
 
-    // === SAFE KILLER MOVE MANAGEMENT ===
+    // === KILLER MOVES WITH SEARCHCONFIG ===
 
     private boolean isKillerMove(Move move, int depth) {
         try {
-            if (depth >= killerMoves.length) return false;
+            if (depth >= SearchConfig.MAX_KILLER_DEPTH) return false;
             return move.equals(killerMoves[depth][0]) || move.equals(killerMoves[depth][1]);
         } catch (Exception e) {
             return false;
@@ -264,10 +200,10 @@ public class MoveOrdering {
 
     private int getKillerPriority(Move move, int depth) {
         try {
-            if (depth >= killerMoves.length) return 0;
+            if (depth >= SearchConfig.MAX_KILLER_DEPTH) return 0;
 
-            if (move.equals(killerMoves[depth][0])) return KILLER_1_PRIORITY;
-            if (move.equals(killerMoves[depth][1])) return KILLER_2_PRIORITY;
+            if (move.equals(killerMoves[depth][0])) return SearchConfig.KILLER_1_PRIORITY;
+            if (move.equals(killerMoves[depth][1])) return SearchConfig.KILLER_2_PRIORITY;
 
             return 0;
         } catch (Exception e) {
@@ -275,7 +211,7 @@ public class MoveOrdering {
         }
     }
 
-    // === SAFE POSITIONAL SCORING ===
+    // === POSITIONAL SCORING WITH SEARCHCONFIG ===
 
     private int getBasicPositionalScore(Move move, GameState state) {
         try {
@@ -283,20 +219,20 @@ public class MoveOrdering {
 
             // Central squares preference
             if (isCentralSquare(move.to)) {
-                score += 50;
+                score += SearchConfig.CENTRAL_SQUARE_BONUS;
             }
 
-            // Guard advancement to enemy castle
+            // Guard advancement
             if (isGuardMoveS(move, state)) {
                 score += getGuardAdvancementScore(move, state);
             }
 
             // Development from back rank
             if (isDevelopmentMove(move, state)) {
-                score += 30;
+                score += SearchConfig.DEVELOPMENT_BONUS;
             }
 
-            return Math.min(score, POSITIONAL_MAX_SCORE);
+            return Math.min(score, SearchConfig.POSITIONAL_MAX_SCORE);
         } catch (Exception e) {
             return 0;
         }
@@ -309,21 +245,17 @@ public class MoveOrdering {
             int targetRank = isRed ? 0 : 6;
 
             int distance = Math.abs(toRank - targetRank);
-            return Math.max(0, (7 - distance) * 15);
+            return Math.max(0, (7 - distance) * SearchConfig.GUARD_ADVANCEMENT_MULTIPLIER);
         } catch (Exception e) {
             return 0;
         }
     }
 
-    // === CRITICAL FIX: SAFE HELPER METHODS ===
+    // === HELPER METHODS WITH SEARCHCONFIG ===
 
-    /**
-     * FIXED: Safe capture detection with null-check
-     */
     private boolean isCaptureS(Move move, GameState state) {
         try {
             if (move == null || state == null) return false;
-
             long toBit = GameState.bit(move.to);
             return ((state.redTowers | state.blueTowers | state.redGuard | state.blueGuard) & toBit) != 0;
         } catch (Exception e) {
@@ -331,13 +263,9 @@ public class MoveOrdering {
         }
     }
 
-    /**
-     * FIXED: Safe guard move detection with null-check
-     */
     private boolean isGuardMoveS(Move move, GameState state) {
         try {
             if (move == null || state == null) return false;
-
             boolean isRed = state.redToMove;
             long guardBit = isRed ? state.redGuard : state.blueGuard;
             return guardBit != 0 && move.from == Long.numberOfTrailingZeros(guardBit);
@@ -359,30 +287,24 @@ public class MoveOrdering {
     private boolean isDevelopmentMove(Move move, GameState state) {
         try {
             if (move == null || state == null) return false;
-
             boolean isRed = state.redToMove;
             int fromRank = GameState.rank(move.from);
             int toRank = GameState.rank(move.to);
-
             return isRed ? (fromRank == 6 && toRank < 6) : (fromRank == 0 && toRank > 0);
         } catch (Exception e) {
             return false;
         }
     }
 
-    // === FIXED UPDATE METHODS ===
+    // === UPDATE METHODS WITH SEARCHCONFIG ===
 
     /**
-     * CRITICAL FIX: Killer move storage without null state call
+     * Store killer move using SearchConfig parameters
      */
     public void storeKillerMove(Move move, int depth) {
         try {
-            if (move == null || depth >= killerMoves.length) return;
+            if (move == null || depth >= SearchConfig.MAX_KILLER_DEPTH) return;
 
-            // FIXED: Removed isCapture(move, null) call!
-            // Killer moves can be any non-null move
-
-            // Only update if not already first killer
             if (!move.equals(killerMoves[depth][0])) {
                 killerMoves[depth][1] = killerMoves[depth][0];
                 killerMoves[depth][0] = move;
@@ -395,28 +317,18 @@ public class MoveOrdering {
     }
 
     /**
-     * FIXED: History update with proper null-checks
+     * Update history using SearchConfig parameters
      */
     public void updateHistory(Move move, int depth, GameState state) {
         try {
-            // NULL-CHECKS first
-            if (move == null || state == null) {
-                return; // Silent return for optimization methods
-            }
+            if (move == null || state == null || !state.isValid()) return;
+            if (isCaptureS(move, state)) return; // Only for quiet moves
 
-            if (!state.isValid()) {
-                return; // Silent return for optimization methods
-            }
-
-            // Only update for quiet moves
-            if (isCaptureS(move, state)) return;
-
-            // Update standard history table
             if (move.from < historyTable.length && move.to < historyTable[move.from].length) {
                 historyTable[move.from][move.to] += depth * depth;
 
-                // Overflow prevention
-                if (historyTable[move.from][move.to] > HISTORY_MAX) {
+                // Use SearchConfig for overflow prevention
+                if (historyTable[move.from][move.to] > SearchConfig.HISTORY_MAX_VALUE) {
                     ageHistoryTable();
                 }
             }
@@ -427,29 +339,13 @@ public class MoveOrdering {
         }
     }
 
-    /**
-     * Store PV move for next iteration
-     */
-    public void storePVMove(Move move, int depth) {
-        try {
-            if (move != null && depth < pvLine.length) {
-                pvLine[depth] = move;
-            }
-        } catch (Exception e) {
-            System.err.println("❌ ERROR: PV move storage failed: " + e.getMessage());
-        }
-    }
+    // === MAINTENANCE WITH SEARCHCONFIG ===
 
-    // === MAINTENANCE METHODS ===
-
-    /**
-     * Age history table to prevent overflow
-     */
     private void ageHistoryTable() {
         try {
             for (int i = 0; i < GameState.NUM_SQUARES; i++) {
                 for (int j = 0; j < GameState.NUM_SQUARES; j++) {
-                    historyTable[i][j] /= 2;
+                    historyTable[i][j] /= SearchConfig.HISTORY_AGING_FACTOR;
                 }
             }
         } catch (Exception e) {
@@ -458,68 +354,60 @@ public class MoveOrdering {
     }
 
     /**
-     * Reset for new search
+     * Reset using SearchConfig thresholds
      */
     public void resetForNewSearch() {
         try {
             killerAge++;
-            if (killerAge > SearchConfig.HISTORY_AGING_THRESHOLD) {
+            if (killerAge > SearchConfig.KILLER_AGING_THRESHOLD) {
                 killerMoves = new Move[SearchConfig.MAX_KILLER_DEPTH][SearchConfig.KILLER_MOVE_SLOTS];
                 killerAge = 0;
+                System.out.println("🔧 Killer moves reset (age threshold: " + SearchConfig.KILLER_AGING_THRESHOLD + ")");
             }
         } catch (Exception e) {
             System.err.println("❌ ERROR: Reset for new search failed: " + e.getMessage());
         }
     }
 
-    /**
-     * Clear all data
-     */
-    public void clear() {
+    // === FALLBACK METHODS ===
+
+    private int scoreBasic(Move move, int depth, TTEntry ttEntry) {
         try {
-            initializeTables();
+            if (ttEntry != null && move.equals(ttEntry.bestMove)) {
+                return SearchConfig.MOVE_ORDERING_TT_PRIORITY;
+            }
+            if (isKillerMove(move, depth)) {
+                return getKillerPriority(move, depth);
+            }
+            return move.amountMoved * SearchConfig.ACTIVITY_BONUS;
         } catch (Exception e) {
-            System.err.println("❌ ERROR: Clear failed: " + e.getMessage());
+            return 0;
         }
     }
 
-    // === LEGACY COMPATIBILITY METHODS ===
-
-
-    /**
-     * Legacy updateHistoryOnCutoff
-     */
-    public void updateHistoryOnCutoff(Move move, GameState state, int depth) {
-        updateHistory(move, depth, state);
+    private void orderMovesBasic(List<Move> moves) {
+        try {
+            moves.sort((a, b) -> {
+                if (a == null && b == null) return 0;
+                if (a == null) return 1;
+                if (b == null) return -1;
+                return Integer.compare(b.amountMoved, a.amountMoved);
+            });
+        } catch (Exception e) {
+            System.err.println("❌ ERROR: Basic move ordering failed: " + e.getMessage());
+        }
     }
 
-    // === BACKWARD COMPATIBILITY ===
+    // === STATISTICS WITH SEARCHCONFIG INFO ===
 
-    /**
-     * DEPRECATED: Old isCapture method - kept for compatibility
-     * Now safely handles null state
-     */
-    private boolean isCapture(Move move, GameState state) {
-        return isCaptureS(move, state);
-    }
-
-    private boolean isGuardMove(Move move, GameState state) {
-        return isGuardMoveS(move, state);
-    }
-
-    // === STATISTICS ===
-
-    /**
-     * Get statistics with error handling
-     */
     public String getStatistics() {
         try {
             int killerCount = 0;
             int historyCount = 0;
 
-            for (int i = 0; i < killerMoves.length; i++) {
+            for (int i = 0; i < SearchConfig.MAX_KILLER_DEPTH && i < killerMoves.length; i++) {
                 if (killerMoves[i][0] != null) killerCount++;
-                if (killerMoves[i][1] != null) killerCount++;
+                if (SearchConfig.KILLER_MOVE_SLOTS > 1 && killerMoves[i][1] != null) killerCount++;
             }
 
             for (int i = 0; i < GameState.NUM_SQUARES; i++) {
@@ -528,17 +416,66 @@ public class MoveOrdering {
                 }
             }
 
-            return String.format("SafeMoveOrdering: %d killers, %d history entries, age=%d",
-                    killerCount, historyCount, killerAge);
+            return String.format("MoveOrdering[Config]: %d killers, %d history, age=%d, max_depth=%d, slots=%d",
+                    killerCount, historyCount, killerAge, SearchConfig.MAX_KILLER_DEPTH, SearchConfig.KILLER_MOVE_SLOTS);
         } catch (Exception e) {
-            return "SafeMoveOrdering: Statistics unavailable due to error";
+            return "MoveOrdering[Config]: Statistics unavailable due to error";
         }
     }
 
-    // === COMPATIBILITY GETTERS ===
+    // === CONFIGURATION VALIDATION ===
 
+    private void validateSearchConfig() {
+        boolean valid = true;
+
+        if (SearchConfig.MAX_KILLER_DEPTH <= 0) {
+            System.err.println("❌ Invalid MAX_KILLER_DEPTH: " + SearchConfig.MAX_KILLER_DEPTH);
+            valid = false;
+        }
+
+        if (SearchConfig.KILLER_MOVE_SLOTS <= 0 || SearchConfig.KILLER_MOVE_SLOTS > 10) {
+            System.err.println("❌ Invalid KILLER_MOVE_SLOTS: " + SearchConfig.KILLER_MOVE_SLOTS);
+            valid = false;
+        }
+
+        if (SearchConfig.HISTORY_MAX_VALUE <= 0) {
+            System.err.println("❌ Invalid HISTORY_MAX_VALUE: " + SearchConfig.HISTORY_MAX_VALUE);
+            valid = false;
+        }
+
+        if (valid) {
+            System.out.println("✅ MoveOrdering SearchConfig integration validated");
+        }
+    }
+
+    // === LEGACY COMPATIBILITY ===
+
+    public void clear() {
+        initializeTables();
+    }
 
     public void resetKillerMoves() {
         resetForNewSearch();
+    }
+
+    public void updateHistoryOnCutoff(Move move, GameState state, int depth) {
+        updateHistory(move, depth, state);
+    }
+
+    public void storePVMove(Move move, int depth) {
+        try {
+            if (move != null && depth < SearchConfig.MAX_KILLER_DEPTH && depth < pvLine.length) {
+                pvLine[depth] = move;
+            }
+        } catch (Exception e) {
+            System.err.println("❌ ERROR: PV move storage failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Public interface for scoring (using SearchConfig)
+     */
+    public int scoreMove(Move move, GameState state, int depth, TTEntry ttEntry) {
+        return scoreMoveSafe(move, state, depth, ttEntry);
     }
 }

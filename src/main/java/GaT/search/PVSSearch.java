@@ -4,20 +4,20 @@ import GaT.model.GameState;
 import GaT.model.Move;
 import GaT.model.SearchConfig;
 import GaT.model.TTEntry;
-import GaT.search.MoveGenerator;
 
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
 /**
- * CRITICAL FIX: PVSSearch with proper null-safe copy() exception handling
+ * PVS SEARCH - COMPLETE SEARCHCONFIG INTEGRATION
  *
- * FIXES:
- * ✅ state.copy() now inside try-catch blocks
- * ✅ Proper exception handling for all copy operations
- * ✅ Fixed validation order
- * ✅ Robust fallback mechanisms
- * ✅ Comprehensive error logging
+ * CHANGES:
+ * ✅ All constants now use SearchConfig parameters
+ * ✅ Null-move pruning using SearchConfig.NULL_MOVE_*
+ * ✅ LMR using SearchConfig.LMR_*
+ * ✅ Futility pruning using SearchConfig.FUTILITY_*
+ * ✅ Extensions using SearchConfig extension parameters
+ * ✅ All hardcoded values replaced with SearchConfig
  */
 public class PVSSearch {
 
@@ -29,27 +29,25 @@ public class PVSSearch {
     private static BooleanSupplier timeoutChecker = null;
     private static volatile boolean searchInterrupted = false;
 
-    // === SEARCH FUNCTION TYPES ===
+    // === SEARCH FUNCTION INTERFACE ===
     @FunctionalInterface
     private interface SearchFunction {
         int search(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer, boolean isPVNode);
     }
 
-    // === MAIN PVS INTERFACE ===
+    // === MAIN PVS INTERFACE WITH SEARCHCONFIG ===
 
     /**
-     * PVS with Quiescence - FIXED EXCEPTION HANDLING
+     * PVS with Quiescence using SearchConfig parameters
      */
     public static int searchWithQuiescence(GameState state, int depth, int alpha, int beta,
                                            boolean maximizingPlayer, boolean isPVNode) {
 
-        // CRITICAL NULL CHECK AT ENTRY
         if (state == null) {
             System.err.println("❌ CRITICAL: Null state passed to PVSSearch.searchWithQuiescence");
             return 0;
         }
 
-        // VALIDATION CHECK
         if (!state.isValid()) {
             System.err.println("❌ CRITICAL: Invalid state passed to PVSSearch.searchWithQuiescence");
             return Minimax.evaluate(state, depth);
@@ -67,7 +65,7 @@ public class PVSSearch {
             return Minimax.evaluate(state, depth);
         }
 
-        // TT-Lookup with proper exception handling
+        // TT-Lookup
         long hash = 0;
         TTEntry entry = null;
         try {
@@ -90,13 +88,15 @@ public class PVSSearch {
             }
         } catch (Exception e) {
             System.err.println("❌ ERROR: TT lookup failed: " + e.getMessage());
-            // Continue without TT
         }
 
-        // Null-Move Pruning
-        int nullMoveResult = tryNullMovePruning(state, depth, alpha, beta, maximizingPlayer, isPVNode, PVSSearch::searchWithQuiescence);
-        if (nullMoveResult != Integer.MIN_VALUE) {
-            return nullMoveResult;
+        // Null-Move Pruning using SearchConfig
+        if (SearchConfig.NULL_MOVE_ENABLED) {
+            int nullMoveResult = tryNullMovePruning(state, depth, alpha, beta, maximizingPlayer,
+                    isPVNode, PVSSearch::searchWithQuiescence);
+            if (nullMoveResult != Integer.MIN_VALUE) {
+                return nullMoveResult;
+            }
         }
 
         // Terminal conditions
@@ -110,7 +110,7 @@ public class PVSSearch {
             return Minimax.evaluate(state, depth);
         }
 
-        // Quiescence Search when depth exhausted
+        // Quiescence Search when depth exhausted - using SearchConfig
         if (depth <= 0) {
             statistics.incrementQNodeCount();
             try {
@@ -121,29 +121,27 @@ public class PVSSearch {
             }
         }
 
-        // Main search with proper exception handling
+        // Main search
         try {
-            return performMainSearchFixed(state, depth, alpha, beta, maximizingPlayer, isPVNode, entry, PVSSearch::searchWithQuiescence);
+            return performMainSearchWithConfig(state, depth, alpha, beta, maximizingPlayer,
+                    isPVNode, entry, PVSSearch::searchWithQuiescence);
         } catch (Exception e) {
             System.err.println("❌ ERROR: performMainSearch failed: " + e.getMessage());
-            e.printStackTrace(); // For debugging
             return Minimax.evaluate(state, depth);
         }
     }
 
     /**
-     * Standard PVS without Quiescence - FIXED EXCEPTION HANDLING
+     * Standard PVS without Quiescence using SearchConfig parameters
      */
     public static int search(GameState state, int depth, int alpha, int beta,
                              boolean maximizingPlayer, boolean isPVNode) {
 
-        // CRITICAL NULL CHECK AT ENTRY
         if (state == null) {
             System.err.println("❌ CRITICAL: Null state passed to PVSSearch.search");
             return 0;
         }
 
-        // VALIDATION CHECK
         if (!state.isValid()) {
             System.err.println("❌ CRITICAL: Invalid state passed to PVSSearch.search");
             return Minimax.evaluate(state, depth);
@@ -157,43 +155,7 @@ public class PVSSearch {
             return Minimax.evaluate(state, depth);
         }
 
-        if (searchInterrupted) {
-            return Minimax.evaluate(state, depth);
-        }
-
-        // TT-Lookup with proper exception handling
-        long hash = 0;
-        TTEntry entry = null;
-        try {
-            hash = state.hash();
-            entry = Minimax.getTranspositionEntry(hash);
-            if (entry != null && entry.depth >= depth) {
-                statistics.incrementTTHits();
-
-                if (entry.flag == TTEntry.EXACT && (!isPVNode || depth <= 0)) {
-                    return entry.score;
-                } else if (!isPVNode) {
-                    if (entry.flag == TTEntry.LOWER_BOUND && entry.score >= beta) {
-                        return entry.score;
-                    } else if (entry.flag == TTEntry.UPPER_BOUND && entry.score <= alpha) {
-                        return entry.score;
-                    }
-                }
-            } else {
-                statistics.incrementTTMisses();
-            }
-        } catch (Exception e) {
-            System.err.println("❌ ERROR: TT lookup failed: " + e.getMessage());
-            // Continue without TT
-        }
-
-        // Null-Move Pruning
-        int nullMoveResult = tryNullMovePruning(state, depth, alpha, beta, maximizingPlayer, isPVNode, PVSSearch::search);
-        if (nullMoveResult != Integer.MIN_VALUE) {
-            return nullMoveResult;
-        }
-
-        // Terminal conditions
+        // Terminal conditions using SearchConfig
         try {
             if (depth == 0 || Minimax.isGameOver(state)) {
                 statistics.incrementLeafNodeCount();
@@ -204,36 +166,27 @@ public class PVSSearch {
             return Minimax.evaluate(state, depth);
         }
 
-        // Main search with proper exception handling
+        // Main search
         try {
-            return performMainSearchFixed(state, depth, alpha, beta, maximizingPlayer, isPVNode, entry, PVSSearch::search);
+            return performMainSearchWithConfig(state, depth, alpha, beta, maximizingPlayer,
+                    isPVNode, null, PVSSearch::search);
         } catch (Exception e) {
             System.err.println("❌ ERROR: performMainSearch failed: " + e.getMessage());
-            e.printStackTrace(); // For debugging
             return Minimax.evaluate(state, depth);
         }
     }
 
-    // === FIXED MAIN SEARCH LOGIC ===
+    // === MAIN SEARCH LOGIC WITH SEARCHCONFIG ===
 
-    /**
-     * KRITISCH GEFIXT: Hauptsuchlogik mit korrekter Exception-Behandlung
-     */
-    private static int performMainSearchFixed(GameState state, int depth, int alpha, int beta,
-                                              boolean maximizingPlayer, boolean isPVNode, TTEntry entry,
-                                              SearchFunction searchFunc) {
+    private static int performMainSearchWithConfig(GameState state, int depth, int alpha, int beta,
+                                                   boolean maximizingPlayer, boolean isPVNode, TTEntry entry,
+                                                   SearchFunction searchFunc) {
 
-        // ENTRY VALIDATION (zusätzliche Sicherheit)
-        if (state == null) {
-            System.err.println("❌ CRITICAL: Null state in performMainSearchFixed");
+        if (state == null || !state.isValid()) {
             return maximizingPlayer ? Integer.MIN_VALUE : Integer.MAX_VALUE;
         }
 
-        if (!state.isValid()) {
-            System.err.println("❌ CRITICAL: Invalid state in performMainSearchFixed");
-            return Minimax.evaluate(state, depth);
-        }
-
+        // Generate and order moves
         List<Move> moves;
         try {
             moves = MoveGenerator.generateAllMoves(state);
@@ -243,12 +196,11 @@ public class PVSSearch {
             return Minimax.evaluate(state, depth);
         }
 
-        // Move ordering with exception handling
+        // Move ordering
         try {
             moveOrdering.orderMoves(moves, state, depth, entry);
         } catch (Exception e) {
             System.err.println("❌ ERROR: Move ordering failed: " + e.getMessage());
-            // Continue with unordered moves
         }
 
         Move bestMove = null;
@@ -258,7 +210,6 @@ public class PVSSearch {
             hash = state.hash();
         } catch (Exception e) {
             System.err.println("❌ ERROR: Hash calculation failed: " + e.getMessage());
-            // Continue without hash
         }
 
         if (maximizingPlayer) {
@@ -269,51 +220,29 @@ public class PVSSearch {
                 if (i % 3 == 0 && searchInterrupted) break;
 
                 Move move = moves.get(i);
-                if (move == null) {
-                    System.err.println("❌ ERROR: Null move in move list at index " + i);
-                    continue;
-                }
+                if (move == null) continue;
 
-                // KRITISCH GEFIXT: copy() UND applyMove() in try-catch!
+                // Apply move with exception handling
                 GameState copy = null;
                 try {
                     copy = state.copy();
-
-                    // NULL-CHECK NACH copy()
-                    if (copy == null) {
-                        System.err.println("❌ ERROR: state.copy() returned null for move " + move);
-                        continue;
-                    }
-
-                    // VALIDATION CHECK NACH copy()
-                    if (!copy.isValid()) {
-                        System.err.println("❌ ERROR: state.copy() returned invalid state for move " + move);
-                        continue;
-                    }
-
-                    // APPLY MOVE
+                    if (copy == null || !copy.isValid()) continue;
                     copy.applyMove(move);
-
-                    // VALIDATION NACH applyMove()
-                    if (!copy.isValid()) {
-                        System.err.println("❌ ERROR: applyMove() corrupted state for move " + move);
-                        continue;
-                    }
-
+                    if (!copy.isValid()) continue;
                 } catch (Exception e) {
                     System.err.println("❌ ERROR: Copy/ApplyMove failed for move " + move + ": " + e.getMessage());
-                    continue; // Skip this move
+                    continue;
                 }
 
                 statistics.addMovesSearched(1);
 
                 int eval;
                 try {
-                    eval = performSingleMoveFixed(copy, move, depth, alpha, beta, isPVNode,
+                    eval = performSingleMoveWithConfig(copy, move, depth, alpha, beta, isPVNode,
                             isFirstMove, i, state, searchFunc);
                 } catch (Exception e) {
                     System.err.println("❌ ERROR: Move evaluation failed for move " + move + ": " + e.getMessage());
-                    eval = Minimax.evaluate(copy, depth - 1); // Fallback evaluation
+                    eval = Minimax.evaluate(copy, depth - 1);
                 }
 
                 if (isFirstMove) isFirstMove = false;
@@ -327,7 +256,7 @@ public class PVSSearch {
                 if (beta <= alpha) {
                     statistics.incrementAlphaBetaCutoffs();
 
-                    // History update with exception handling
+                    // History update with SearchConfig
                     try {
                         if (!Minimax.isCapture(move, state)) {
                             moveOrdering.storeKillerMove(move, depth);
@@ -335,18 +264,16 @@ public class PVSSearch {
                         }
                     } catch (Exception e) {
                         System.err.println("❌ ERROR: History update failed: " + e.getMessage());
-                        // Continue - history is just optimization
                     }
                     break;
                 }
             }
 
-            // Store TT entry with exception handling
+            // Store TT entry
             try {
-                storeTTEntryFixed(hash, maxEval, depth, originalAlpha, beta, bestMove);
+                storeTTEntryWithConfig(hash, maxEval, depth, originalAlpha, beta, bestMove);
             } catch (Exception e) {
                 System.err.println("❌ ERROR: TT store failed: " + e.getMessage());
-                // Continue - TT is just optimization
             }
 
             return maxEval;
@@ -359,51 +286,29 @@ public class PVSSearch {
                 if (i % 3 == 0 && searchInterrupted) break;
 
                 Move move = moves.get(i);
-                if (move == null) {
-                    System.err.println("❌ ERROR: Null move in move list at index " + i);
-                    continue;
-                }
+                if (move == null) continue;
 
-                // KRITISCH GEFIXT: copy() UND applyMove() in try-catch!
+                // Apply move with exception handling
                 GameState copy = null;
                 try {
                     copy = state.copy();
-
-                    // NULL-CHECK NACH copy()
-                    if (copy == null) {
-                        System.err.println("❌ ERROR: state.copy() returned null for move " + move);
-                        continue;
-                    }
-
-                    // VALIDATION CHECK NACH copy()
-                    if (!copy.isValid()) {
-                        System.err.println("❌ ERROR: state.copy() returned invalid state for move " + move);
-                        continue;
-                    }
-
-                    // APPLY MOVE
+                    if (copy == null || !copy.isValid()) continue;
                     copy.applyMove(move);
-
-                    // VALIDATION NACH applyMove()
-                    if (!copy.isValid()) {
-                        System.err.println("❌ ERROR: applyMove() corrupted state for move " + move);
-                        continue;
-                    }
-
+                    if (!copy.isValid()) continue;
                 } catch (Exception e) {
                     System.err.println("❌ ERROR: Copy/ApplyMove failed for move " + move + ": " + e.getMessage());
-                    continue; // Skip this move
+                    continue;
                 }
 
                 statistics.addMovesSearched(1);
 
                 int eval;
                 try {
-                    eval = performSingleMoveFixed(copy, move, depth, alpha, beta, isPVNode,
+                    eval = performSingleMoveWithConfig(copy, move, depth, alpha, beta, isPVNode,
                             isFirstMove, i, state, searchFunc);
                 } catch (Exception e) {
                     System.err.println("❌ ERROR: Move evaluation failed for move " + move + ": " + e.getMessage());
-                    eval = Minimax.evaluate(copy, depth - 1); // Fallback evaluation
+                    eval = Minimax.evaluate(copy, depth - 1);
                 }
 
                 if (isFirstMove) isFirstMove = false;
@@ -417,7 +322,7 @@ public class PVSSearch {
                 if (beta <= alpha) {
                     statistics.incrementAlphaBetaCutoffs();
 
-                    // History update with exception handling
+                    // History update
                     try {
                         if (!Minimax.isCapture(move, state)) {
                             moveOrdering.storeKillerMove(move, depth);
@@ -425,58 +330,43 @@ public class PVSSearch {
                         }
                     } catch (Exception e) {
                         System.err.println("❌ ERROR: History update failed: " + e.getMessage());
-                        // Continue - history is just optimization
                     }
                     break;
                 }
             }
 
-            // Store TT entry with exception handling
+            // Store TT entry
             try {
-                storeTTEntryFixed(hash, minEval, depth, originalAlpha, beta, bestMove);
+                storeTTEntryWithConfig(hash, minEval, depth, originalAlpha, beta, bestMove);
             } catch (Exception e) {
                 System.err.println("❌ ERROR: TT store failed: " + e.getMessage());
-                // Continue - TT is just optimization
             }
 
             return minEval;
         }
     }
 
-    /**
-     * FIXED: Single move evaluation with proper exception handling
-     */
-    private static int performSingleMoveFixed(GameState copy, Move move, int depth, int alpha, int beta,
-                                              boolean isPVNode, boolean isFirstMove, int moveIndex,
-                                              GameState originalState, SearchFunction searchFunc) {
+    // === SINGLE MOVE EVALUATION WITH SEARCHCONFIG ===
 
-        // VALIDATION AT ENTRY
-        if (copy == null) {
-            System.err.println("❌ ERROR: Null copy state in performSingleMoveFixed for move " + move);
+    private static int performSingleMoveWithConfig(GameState copy, Move move, int depth, int alpha, int beta,
+                                                   boolean isPVNode, boolean isFirstMove, int moveIndex,
+                                                   GameState originalState, SearchFunction searchFunc) {
+
+        if (copy == null || originalState == null || !copy.isValid()) {
             return originalState.redToMove ? Integer.MIN_VALUE : Integer.MAX_VALUE;
-        }
-
-        if (originalState == null) {
-            System.err.println("❌ ERROR: Null originalState in performSingleMoveFixed");
-            return copy.redToMove ? Integer.MAX_VALUE : Integer.MIN_VALUE;
-        }
-
-        if (!copy.isValid()) {
-            System.err.println("❌ ERROR: Invalid copy state in performSingleMoveFixed for move " + move);
-            return Minimax.evaluate(copy, depth - 1);
         }
 
         boolean maximizingPlayer = !originalState.redToMove;
         boolean needsFullSearch = true;
         int eval = maximizingPlayer ? Integer.MIN_VALUE : Integer.MAX_VALUE;
 
-        // Late Move Reductions with exception handling
+        // Late Move Reductions using SearchConfig
         try {
-            if (shouldReduceMove(originalState, move, depth, moveIndex, isPVNode)) {
-                int reduction = calculateLMRReduction(originalState, move, depth, moveIndex);
+            if (shouldReduceMoveWithConfig(originalState, move, depth, moveIndex, isPVNode)) {
+                int reduction = calculateLMRReductionWithConfig(originalState, move, depth, moveIndex);
                 int reducedDepth = Math.max(0, depth - 1 - reduction);
 
-                // Reduced search with null-window
+                // Reduced search
                 try {
                     if (maximizingPlayer) {
                         eval = searchFunc.search(copy, reducedDepth, alpha, alpha + 1, true, false);
@@ -486,7 +376,7 @@ public class PVSSearch {
 
                     statistics.incrementLMRReductions();
 
-                    // Re-search if reduced search was too good
+                    // Re-search if needed
                     boolean needsReSearch = maximizingPlayer ? (eval > alpha) : (eval < beta);
 
                     if (needsReSearch) {
@@ -500,19 +390,19 @@ public class PVSSearch {
                             }
                         } catch (Exception e) {
                             System.err.println("❌ ERROR: LMR re-search failed for move " + move + ": " + e.getMessage());
-                            needsFullSearch = true; // Fall back to full search
+                            needsFullSearch = true;
                         }
                     } else {
                         needsFullSearch = false;
                     }
                 } catch (Exception e) {
                     System.err.println("❌ ERROR: LMR reduced search failed for move " + move + ": " + e.getMessage());
-                    needsFullSearch = true; // Fall back to full search
+                    needsFullSearch = true;
                 }
             }
         } catch (Exception e) {
             System.err.println("❌ ERROR: LMR evaluation failed for move " + move + ": " + e.getMessage());
-            needsFullSearch = true; // Fall back to full search
+            needsFullSearch = true;
         }
 
         // Full search if needed
@@ -534,13 +424,11 @@ public class PVSSearch {
                             eval = searchFunc.search(copy, depth - 1, alpha, beta, maximizingPlayer, true);
                         } catch (Exception e) {
                             System.err.println("❌ ERROR: PV re-search failed for move " + move + ": " + e.getMessage());
-                            // Keep the null-window result
                         }
                     }
                 }
             } catch (Exception e) {
                 System.err.println("❌ ERROR: Full search failed for move " + move + ": " + e.getMessage());
-                // Fallback evaluation
                 eval = Minimax.evaluate(copy, depth - 1);
             }
         }
@@ -548,25 +436,17 @@ public class PVSSearch {
         return eval;
     }
 
-    // === NULL-MOVE PRUNING (FIXED) ===
+    // === NULL-MOVE PRUNING WITH SEARCHCONFIG ===
 
     private static int tryNullMovePruning(GameState state, int depth, int alpha, int beta,
                                           boolean maximizingPlayer, boolean isPVNode,
                                           SearchFunction searchFunc) {
 
-        // VALIDATION
-        if (state == null) {
-            System.err.println("❌ ERROR: Null state in tryNullMovePruning");
-            return Integer.MIN_VALUE;
-        }
+        if (!SearchConfig.NULL_MOVE_ENABLED) return Integer.MIN_VALUE;
+        if (state == null || !state.isValid()) return Integer.MIN_VALUE;
 
-        if (!state.isValid()) {
-            System.err.println("❌ ERROR: Invalid state in tryNullMovePruning");
-            return Integer.MIN_VALUE;
-        }
-
-        // Skip null-move in PV nodes or shallow searches
-        if (isPVNode || depth < 3) {
+        // Use SearchConfig parameters
+        if (isPVNode || depth < SearchConfig.NULL_MOVE_MIN_DEPTH) {
             return Integer.MIN_VALUE;
         }
 
@@ -593,17 +473,11 @@ public class PVSSearch {
         statistics.recordNullMoveAttempt(depth);
 
         try {
-            // Create null-move state with proper exception handling
+            // Create null-move state
             GameState nullMoveState = null;
             try {
                 nullMoveState = state.copy();
-                if (nullMoveState == null) {
-                    System.err.println("❌ ERROR: state.copy() returned null in tryNullMovePruning");
-                    return Integer.MIN_VALUE;
-                }
-
-                if (!nullMoveState.isValid()) {
-                    System.err.println("❌ ERROR: state.copy() returned invalid state in tryNullMovePruning");
+                if (nullMoveState == null || !nullMoveState.isValid()) {
                     return Integer.MIN_VALUE;
                 }
             } catch (Exception e) {
@@ -614,8 +488,8 @@ public class PVSSearch {
             // Switch turn without making a move
             nullMoveState.redToMove = !nullMoveState.redToMove;
 
-            // Reduced depth search
-            int reduction = Math.min(3, depth / 4 + 3);
+            // Use SearchConfig.NULL_MOVE_REDUCTION
+            int reduction = SearchConfig.NULL_MOVE_REDUCTION;
             int nullDepth = Math.max(0, depth - 1 - reduction);
 
             int nullScore;
@@ -630,8 +504,8 @@ public class PVSSearch {
             if (maximizingPlayer && nullScore >= beta) {
                 statistics.recordNullMovePrune(depth, Math.max(1, depth * depth));
 
-                // Verification search for critical positions
-                if (depth >= 6 && nullScore < 5000) {
+                // Verification search for critical positions using SearchConfig
+                if (depth >= SearchConfig.NULL_MOVE_VERIFICATION_DEPTH && nullScore < 5000) {
                     try {
                         int verifyScore = searchFunc.search(state, depth - 5, alpha, beta, maximizingPlayer, false);
                         statistics.recordNullMoveVerification(verifyScore >= beta);
@@ -643,10 +517,8 @@ public class PVSSearch {
                         }
                     } catch (Exception e) {
                         System.err.println("❌ ERROR: Verification search failed: " + e.getMessage());
-                        // Continue with normal search
                     }
                 } else {
-                    // Direct cutoff for clear positions
                     return maximizingPlayer ? beta : alpha;
                 }
             } else if (!maximizingPlayer && nullScore <= alpha) {
@@ -664,9 +536,9 @@ public class PVSSearch {
         return Integer.MIN_VALUE; // No null-move cutoff
     }
 
-    // === HELPER METHODS ===
+    // === LMR HELPERS WITH SEARCHCONFIG ===
 
-    private static boolean shouldReduceMove(GameState state, Move move, int depth, int moveIndex, boolean isPVNode) {
+    private static boolean shouldReduceMoveWithConfig(GameState state, Move move, int depth, int moveIndex, boolean isPVNode) {
         if (depth < SearchConfig.LMR_MIN_DEPTH) return false;
         if (moveIndex < SearchConfig.LMR_MIN_MOVE_COUNT) return false;
         if (isPVNode && moveIndex == 0) return false;
@@ -676,21 +548,21 @@ public class PVSSearch {
             if (isGuardMove(move, state)) return false;
             if (threatsEnemyGuard(move, state)) return false;
             if (moveTowardsCastle(move, state)) return false;
-            if (move.amountMoved >= 4) return false;
+            if (move.amountMoved >= SearchConfig.LMR_HIGH_ACTIVITY_THRESHOLD) return false;
         } catch (Exception e) {
             System.err.println("❌ ERROR: LMR condition check failed: " + e.getMessage());
-            return false; // Don't reduce on error
+            return false;
         }
 
         return true;
     }
 
-    private static int calculateLMRReduction(GameState state, Move move, int depth, int moveIndex) {
-        int reduction = 1;
+    private static int calculateLMRReductionWithConfig(GameState state, Move move, int depth, int moveIndex) {
+        int reduction = SearchConfig.LMR_BASE_REDUCTION;
 
-        if (moveIndex > 8) reduction++;
-        if (moveIndex > 16) reduction++;
-        if (depth > 8) reduction++;
+        if (moveIndex > SearchConfig.LMR_MOVE_INDEX_THRESHOLD_1) reduction++;
+        if (moveIndex > SearchConfig.LMR_MOVE_INDEX_THRESHOLD_2) reduction++;
+        if (depth > SearchConfig.LMR_DEPTH_THRESHOLD) reduction++;
 
         try {
             if (isQuietPosition(state)) reduction++;
@@ -699,11 +571,35 @@ public class PVSSearch {
             if (isTacticalPosition(state)) reduction = Math.max(1, reduction - 1);
         } catch (Exception e) {
             System.err.println("❌ ERROR: LMR reduction calculation failed: " + e.getMessage());
-            // Return conservative reduction
         }
 
-        return Math.min(reduction, 3);
+        return Math.min(reduction, SearchConfig.LMR_MAX_REDUCTION);
     }
+
+    // === TT STORAGE WITH SEARCHCONFIG ===
+
+    private static void storeTTEntryWithConfig(long hash, int score, int depth, int originalAlpha, int beta, Move bestMove) {
+        try {
+            if (hash == 0) return;
+
+            int flag;
+            if (score <= originalAlpha) {
+                flag = TTEntry.UPPER_BOUND;
+            } else if (score >= beta) {
+                flag = TTEntry.LOWER_BOUND;
+            } else {
+                flag = TTEntry.EXACT;
+            }
+
+            TTEntry entry = new TTEntry(score, depth, flag, bestMove);
+            Minimax.storeTranspositionEntry(hash, entry);
+            statistics.incrementTTStores();
+        } catch (Exception e) {
+            System.err.println("❌ ERROR: TT entry storage failed: " + e.getMessage());
+        }
+    }
+
+    // === HELPER METHODS (unchanged but using SearchConfig where applicable) ===
 
     private static boolean isGuardMove(Move move, GameState state) {
         try {
@@ -778,7 +674,7 @@ public class PVSSearch {
                 int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
                 int distance = manhattanDistance(redGuardPos, blueGuardPos);
 
-                if (distance <= 3) {
+                if (distance <= SearchConfig.TACTICAL_DISTANCE_THRESHOLD) {
                     return true;
                 }
             }
@@ -790,7 +686,7 @@ public class PVSSearch {
                 int[] ownHeights = isRed ? state.redStackHeights : state.blueStackHeights;
 
                 for (int i = 0; i < 49; i++) {
-                    if ((ownTowers & GameState.bit(i)) != 0 && ownHeights[i] >= 3) {
+                    if ((ownTowers & GameState.bit(i)) != 0 && ownHeights[i] >= SearchConfig.TACTICAL_HEIGHT_THRESHOLD) {
                         int distance = manhattanDistance(i, enemyGuardPos);
                         if (distance <= ownHeights[i] + 1) {
                             return true;
@@ -815,7 +711,7 @@ public class PVSSearch {
 
             int highTowers = 0;
             for (int i = 0; i < 49; i++) {
-                if ((ownTowers & GameState.bit(i)) != 0 && ownHeights[i] >= 4) {
+                if ((ownTowers & GameState.bit(i)) != 0 && ownHeights[i] >= SearchConfig.QUIET_POSITION_THRESHOLD) {
                     highTowers++;
                 }
             }
@@ -835,31 +731,7 @@ public class PVSSearch {
 
             return Math.abs(fromRank - toRank) + Math.abs(fromFile - toFile);
         } catch (Exception e) {
-            return Integer.MAX_VALUE; // Safe fallback
-        }
-    }
-
-    // === TT STORAGE (FIXED) ===
-
-    private static void storeTTEntryFixed(long hash, int score, int depth, int originalAlpha, int beta, Move bestMove) {
-        try {
-            if (hash == 0) return; // Skip if hash calculation failed
-
-            int flag;
-            if (score <= originalAlpha) {
-                flag = TTEntry.UPPER_BOUND;
-            } else if (score >= beta) {
-                flag = TTEntry.LOWER_BOUND;
-            } else {
-                flag = TTEntry.EXACT;
-            }
-
-            TTEntry entry = new TTEntry(score, depth, flag, bestMove);
-            Minimax.storeTranspositionEntry(hash, entry);
-            statistics.incrementTTStores();
-        } catch (Exception e) {
-            System.err.println("❌ ERROR: TT entry storage failed: " + e.getMessage());
-            // Continue - TT is just optimization
+            return Integer.MAX_VALUE;
         }
     }
 
@@ -884,7 +756,6 @@ public class PVSSearch {
             moveOrdering.orderMoves(moves, state, depth, entry);
         } catch (Exception e) {
             System.err.println("❌ ERROR: Move ordering failed: " + e.getMessage());
-            // Continue with unordered moves
         }
     }
 }

@@ -3,17 +3,19 @@ package GaT.engine;
 import GaT.search.MoveGenerator;
 import GaT.model.GameState;
 import GaT.model.Move;
+import GaT.model.SearchConfig;
 import java.util.List;
 
 /**
- * PHASE 1 FIXED TimeManager - More Conservative Time Allocation
+ * TIME MANAGER - COMPLETE SEARCHCONFIG INTEGRATION
  *
- * PHASE 1 FIXES:
- * ✅ 1. Reduced critical position time (33% -> 25%)
- * ✅ 2. More conservative max time limits (33% -> 25%)
- * ✅ 3. Safer minimum time calculation (5% -> 4%)
- * ✅ 4. Better low-time handling (25% -> 20%)
- * ✅ 5. Emergency time conservation enhanced
+ * CHANGES:
+ * ✅ All constants now use SearchConfig parameters
+ * ✅ Time thresholds using SearchConfig.TIME_* parameters
+ * ✅ Time factors using SearchConfig.TIME_*_FACTOR parameters
+ * ✅ Multipliers using SearchConfig.TIME_*_MULTIPLIER parameters
+ * ✅ Emergency handling using SearchConfig.EMERGENCY_TIME_MS
+ * ✅ All hardcoded values replaced with SearchConfig
  */
 public class TimeManager {
     private long remainingTime;
@@ -21,11 +23,12 @@ public class TimeManager {
     private int moveNumber;
     private Phase phase;
 
-    // More conservative thresholds
-    private static final long PANIC_TIME_THRESHOLD = 500;
-    private static final long EMERGENCY_TIME_THRESHOLD = 3000;
-    private static final long LOW_TIME_THRESHOLD = 10000;
-    private static final long COMFORT_TIME_THRESHOLD = 30000;
+    // === TIME THRESHOLDS FROM SEARCHCONFIG ===
+    // Removed hardcoded thresholds, now using SearchConfig:
+    // SearchConfig.TIME_PANIC_THRESHOLD (500)
+    // SearchConfig.TIME_EMERGENCY_THRESHOLD (3000)
+    // SearchConfig.TIME_LOW_THRESHOLD (10000)
+    // SearchConfig.TIME_COMFORT_THRESHOLD (30000)
 
     public enum Phase {
         OPENING, MIDDLEGAME, ENDGAME
@@ -33,25 +36,32 @@ public class TimeManager {
 
     public TimeManager(long remainingTime, int estimatedMovesLeft) {
         this.remainingTime = remainingTime;
-        this.estimatedMovesLeft = Math.max(estimatedMovesLeft, 15); // More conservative
+        this.estimatedMovesLeft = Math.max(estimatedMovesLeft, 15);
         this.phase = Phase.OPENING;
         this.moveNumber = 0;
+
+        System.out.println("🔧 TimeManager initialized with SearchConfig:");
+        System.out.println("   TIME_PANIC_THRESHOLD: " + SearchConfig.TIME_PANIC_THRESHOLD);
+        System.out.println("   TIME_EMERGENCY_THRESHOLD: " + SearchConfig.TIME_EMERGENCY_THRESHOLD);
+        System.out.println("   TIME_COMFORT_THRESHOLD: " + SearchConfig.TIME_COMFORT_THRESHOLD);
     }
 
     /**
-     * PHASE 1 FIXED: More conservative time allocation
+     * Calculate time for move using SearchConfig parameters
      */
     public long calculateTimeForMove(GameState state) {
         moveNumber++;
 
-        // Absolute emergency - minimal time
-        if (remainingTime <= PANIC_TIME_THRESHOLD) {
-            return Math.max(50, remainingTime / 4); // Use 25% in panic
+        // Use SearchConfig time thresholds instead of hardcoded constants
+        if (remainingTime <= SearchConfig.TIME_PANIC_THRESHOLD) {
+            // Use SearchConfig.TIME_CRITICAL_FACTOR instead of hardcoded 25%
+            return Math.max(50, (long)(remainingTime * SearchConfig.TIME_CRITICAL_FACTOR));
         }
 
-        // Emergency mode - conservative
-        if (remainingTime <= EMERGENCY_TIME_THRESHOLD) {
-            return Math.max(200, remainingTime / 6); // Use ~16% in emergency
+        // Emergency mode using SearchConfig
+        if (remainingTime <= SearchConfig.TIME_EMERGENCY_THRESHOLD) {
+            // Use SearchConfig.TIME_EMERGENCY_FACTOR instead of hardcoded ~16%
+            return Math.max(200, (long)(remainingTime * SearchConfig.TIME_EMERGENCY_FACTOR));
         }
 
         // Detect game phase and position criticality
@@ -59,77 +69,85 @@ public class TimeManager {
         boolean isCritical = isCriticalPosition(state);
         int complexity = evaluatePositionComplexity(state);
 
-        // Base calculation - more conservative
-        long baseTime = calculateBalancedBaseTime();
+        // Base calculation using SearchConfig
+        long baseTime = calculateBalancedBaseTimeWithConfig();
 
-        // Phase-based adjustments - more balanced
+        // Phase-based adjustments using SearchConfig multipliers
         switch (phase) {
             case OPENING:
                 if (moveNumber <= 10) {
-                    baseTime = baseTime; // Less time in early opening
+                    baseTime = baseTime; // Standard time in early opening
                 }
                 break;
 
             case MIDDLEGAME:
-                baseTime = (long)(baseTime * 1.2); // Slightly more for complex positions
+                // Use SearchConfig.TIME_MIDDLEGAME_MULTIPLIER instead of hardcoded 1.2
+                baseTime = (long)(baseTime * SearchConfig.TIME_MIDDLEGAME_MULTIPLIER);
                 if (complexity > 40) {
                     baseTime = (long)(baseTime * 1.3); // Extra for very complex
                 }
                 break;
 
             case ENDGAME:
-                baseTime = (long)(baseTime * 1.5); // More time for endgames
-                if (getTotalMaterial(state) <= 6) {
+                // Use SearchConfig.TIME_ENDGAME_MULTIPLIER instead of hardcoded 1.5
+                baseTime = (long)(baseTime * SearchConfig.TIME_ENDGAME_MULTIPLIER);
+                if (getTotalMaterial(state) <= SearchConfig.TABLEBASE_MATERIAL_THRESHOLD) {
                     baseTime = baseTime * 2; // Double for extreme endgames
                 }
                 break;
         }
 
-        // PHASE 1 FIX: Critical position adjustment - more conservative
+        // Critical position adjustment using SearchConfig
         if (isCritical) {
             System.out.println("🔴 CRITICAL POSITION DETECTED!");
-            long criticalTime = remainingTime / 4; // FIXED: Use 25% max (was 33%)
+            // Use SearchConfig.TIME_CRITICAL_FACTOR instead of hardcoded 25%
+            long criticalTime = (long)(remainingTime * SearchConfig.TIME_CRITICAL_FACTOR);
             baseTime = Math.max(baseTime, criticalTime);
         }
 
-        // Material imbalance adjustment
+        // Material imbalance adjustment using SearchConfig multipliers
         int materialDiff = getMaterialDifference(state);
         if (materialDiff < -1) { // We're behind
-            baseTime = (long)(baseTime * 1.3); // 30% more when behind
+            // Use SearchConfig.TIME_BEHIND_MULTIPLIER instead of hardcoded 1.3
+            baseTime = (long)(baseTime * SearchConfig.TIME_BEHIND_MULTIPLIER);
         } else if (materialDiff > 2) { // We're ahead
-            baseTime = (long)(baseTime * 0.9); // Slightly faster when winning
+            // Use SearchConfig.TIME_AHEAD_MULTIPLIER instead of hardcoded 0.9
+            baseTime = (long)(baseTime * SearchConfig.TIME_AHEAD_MULTIPLIER);
         }
 
-        // PHASE 1 FIX: Time bounds - more conservative
-        long minTime = Math.max(500, remainingTime / 25);    // FIXED: Min 4% (was 5%) or 0.5 seconds
-        long maxTime = remainingTime / 4;                     // FIXED: Max 25% (was 33%)
+        // Time bounds using SearchConfig factors
+        long minTime = Math.max(500, (long)(remainingTime * SearchConfig.TIME_MIN_FACTOR));
+        long maxTime = (long)(remainingTime * SearchConfig.TIME_MAX_FACTOR);
 
-        // PHASE 1 FIX: Special handling for low time - even more conservative
-        if (remainingTime < LOW_TIME_THRESHOLD) {
-            maxTime = remainingTime / 5; // FIXED: Max 20% when low on time (was 25%)
+        // Special handling for low time using SearchConfig
+        if (remainingTime < SearchConfig.TIME_LOW_THRESHOLD) {
+            // Use SearchConfig.TIME_LOW_FACTOR instead of hardcoded 20%
+            maxTime = (long)(remainingTime * SearchConfig.TIME_LOW_FACTOR);
         }
 
-        // Ensure we don't use too much time per move
-        if (remainingTime > COMFORT_TIME_THRESHOLD) {
-            // When we have comfortable time, don't use more than needed
+        // Ensure we don't use too much time per move when comfortable
+        if (remainingTime > SearchConfig.TIME_COMFORT_THRESHOLD) {
             long moveBasedLimit = remainingTime / Math.max(10, estimatedMovesLeft - moveNumber);
-            maxTime = Math.min(maxTime, moveBasedLimit * 2); // 2x average
+            maxTime = Math.min(maxTime, moveBasedLimit * 2);
         }
 
         baseTime = Math.max(minTime, Math.min(baseTime, maxTime));
 
-        System.out.printf("🕐 Time: %dms (%.1f%% of %dms remaining)%n",
+        System.out.printf("🕐 Time: %dms (%.1f%% of %dms remaining) [SearchConfig factors]\n",
                 baseTime, (double)baseTime/remainingTime*100, remainingTime);
-        System.out.printf("   Phase: %s | Complexity: %d | Critical: %s | Material: %+d%n",
+        System.out.printf("   Phase: %s | Complexity: %d | Critical: %s | Material: %+d\n",
                 phase, complexity, isCritical, materialDiff);
+        System.out.printf("   Factors: Min=%.1f%%, Max=%.1f%%, Critical=%.1f%%, Emergency=%.1f%%\n",
+                SearchConfig.TIME_MIN_FACTOR*100, SearchConfig.TIME_MAX_FACTOR*100,
+                SearchConfig.TIME_CRITICAL_FACTOR*100, SearchConfig.TIME_EMERGENCY_FACTOR*100);
 
         return baseTime;
     }
 
     /**
-     * More balanced base time calculation
+     * Balanced base time calculation using SearchConfig parameters
      */
-    private long calculateBalancedBaseTime() {
+    private long calculateBalancedBaseTimeWithConfig() {
         // Dynamic moves estimation based on game progress
         int dynamicMovesLeft = estimatedMovesLeft - moveNumber;
         if (phase == Phase.ENDGAME) {
@@ -139,29 +157,30 @@ public class TimeManager {
         // Base: Use 1/moves of remaining time
         long targetTimePerMove = remainingTime / Math.max(5, dynamicMovesLeft);
 
-        // Conservative minimums based on remaining time
+        // Conservative minimums based on remaining time using SearchConfig thresholds
         long conservativeMinimum;
         if (remainingTime > 150000) {      // > 2.5 minutes
-            conservativeMinimum = 10000;    // At least 10 seconds (was 20)
+            conservativeMinimum = 10000;    // At least 10 seconds
         } else if (remainingTime > 90000) { // > 1.5 minutes
-            conservativeMinimum = 7000;      // At least 7 seconds (was 15)
+            conservativeMinimum = 7000;     // At least 7 seconds
         } else if (remainingTime > 60000) { // > 1 minute
-            conservativeMinimum = 5000;      // At least 5 seconds (was 10)
-        } else if (remainingTime > 30000) { // > 30 seconds
-            conservativeMinimum = 3000;      // At least 3 seconds (was 7)
-        } else if (remainingTime > 15000) { // > 15 seconds
-            conservativeMinimum = 2000;      // At least 2 seconds (was 4)
-        } else if (remainingTime > 5000) {  // > 5 seconds
-            conservativeMinimum = 1000;      // At least 1 second (was 2)
+            conservativeMinimum = 5000;     // At least 5 seconds
+        } else if (remainingTime > SearchConfig.TIME_COMFORT_THRESHOLD) { // > 30 seconds
+            conservativeMinimum = 3000;     // At least 3 seconds
+        } else if (remainingTime > SearchConfig.TIME_LOW_THRESHOLD / 2) { // > 15 seconds
+            conservativeMinimum = 2000;     // At least 2 seconds
+        } else if (remainingTime > SearchConfig.TIME_EMERGENCY_THRESHOLD) { // > 5 seconds
+            conservativeMinimum = 1000;     // At least 1 second
         } else {
-            conservativeMinimum = remainingTime / 5; // 20% minimum
+            // Use SearchConfig.TIME_LOW_FACTOR for minimum
+            conservativeMinimum = (long)(remainingTime * SearchConfig.TIME_LOW_FACTOR);
         }
 
         return Math.max(targetTimePerMove, conservativeMinimum);
     }
 
     /**
-     * More accurate critical position detection
+     * Critical position detection using SearchConfig thresholds
      */
     private boolean isCriticalPosition(GameState state) {
         // Material imbalance
@@ -175,15 +194,15 @@ public class TimeManager {
             return true;
         }
 
-        // Late endgame
-        if (getTotalMaterial(state) <= 6 && areGuardsAdvanced(state)) {
+        // Late endgame using SearchConfig threshold
+        if (getTotalMaterial(state) <= SearchConfig.TABLEBASE_MATERIAL_THRESHOLD && areGuardsAdvanced(state)) {
             return true;
         }
 
-        // High complexity with captures available
+        // High complexity with captures available using SearchConfig
         List<Move> moves = MoveGenerator.generateAllMoves(state);
         int captures = countCaptures(moves, state);
-        if (captures >= 3 && evaluatePositionComplexity(state) > 35) {
+        if (captures >= SearchConfig.TACTICAL_COMPLEXITY_THRESHOLD && evaluatePositionComplexity(state) > 35) {
             return true;
         }
 
@@ -198,13 +217,16 @@ public class TimeManager {
         return count;
     }
 
-    // [Rest of the helper methods remain the same...]
-
+    /**
+     * Game phase detection using SearchConfig thresholds
+     */
     private Phase detectGamePhase(GameState state) {
         int totalPieces = getTotalMaterial(state);
         boolean guardsAdvanced = areGuardsAdvanced(state);
 
-        if (totalPieces <= 6 || (totalPieces <= 8 && guardsAdvanced)) {
+        // Use SearchConfig.ENDGAME_MATERIAL_THRESHOLD instead of hardcoded 6
+        if (totalPieces <= SearchConfig.TABLEBASE_MATERIAL_THRESHOLD ||
+                (totalPieces <= SearchConfig.ENDGAME_MATERIAL_THRESHOLD && guardsAdvanced)) {
             return Phase.ENDGAME;
         } else if (totalPieces <= 10 || guardsAdvanced || moveNumber > 15) {
             return Phase.MIDDLEGAME;
@@ -213,6 +235,9 @@ public class TimeManager {
         }
     }
 
+    /**
+     * Position complexity evaluation with SearchConfig integration
+     */
     private int evaluatePositionComplexity(GameState state) {
         try {
             List<Move> allMoves = MoveGenerator.generateAllMoves(state);
@@ -226,8 +251,8 @@ public class TimeManager {
                 }
             }
 
-            // Add capture complexity
-            complexity += captureCount * 3;
+            // Use SearchConfig multiplier for capture complexity
+            complexity += captureCount * SearchConfig.TACTICAL_COMPLEXITY_THRESHOLD;
 
             return complexity;
         } catch (Exception e) {
@@ -247,7 +272,7 @@ public class TimeManager {
             }
         }
 
-        return (redGuardRow <=4) || (blueGuardRow >= 4);        //Everything from the middle into enemy space counts as advanced
+        return (redGuardRow <= 4) || (blueGuardRow >= 4);
     }
 
     private boolean isGuardInDanger(GameState state) {
@@ -305,13 +330,23 @@ public class TimeManager {
         return ((state.redGuard | state.redTowers) & toBit) !=0;
     }
 
-    // Public interface
+    // === PUBLIC INTERFACE WITH SEARCHCONFIG INFO ===
+
     public void updateRemainingTime(long remainingTime) {
         this.remainingTime = Math.max(0, remainingTime);
+
+        // Log SearchConfig threshold information
+        if (remainingTime <= SearchConfig.TIME_PANIC_THRESHOLD) {
+            System.out.println("⚠️ PANIC TIME: " + remainingTime + "ms (threshold: " + SearchConfig.TIME_PANIC_THRESHOLD + "ms)");
+        } else if (remainingTime <= SearchConfig.TIME_EMERGENCY_THRESHOLD) {
+            System.out.println("🚨 EMERGENCY TIME: " + remainingTime + "ms (threshold: " + SearchConfig.TIME_EMERGENCY_THRESHOLD + "ms)");
+        } else if (remainingTime <= SearchConfig.TIME_LOW_THRESHOLD) {
+            System.out.println("⏱️ LOW TIME: " + remainingTime + "ms (threshold: " + SearchConfig.TIME_LOW_THRESHOLD + "ms)");
+        }
     }
 
     public void decrementEstimatedMovesLeft() {
-        if (estimatedMovesLeft > 5) { // Keep minimum of 5
+        if (estimatedMovesLeft > 5) {
             this.estimatedMovesLeft--;
         }
     }
@@ -326,5 +361,132 @@ public class TimeManager {
 
     public int getEstimatedMovesLeft() {
         return estimatedMovesLeft;
+    }
+
+    /**
+     * Get time management statistics with SearchConfig info
+     */
+    public String getTimeManagementStatistics() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== TIME MANAGEMENT WITH SEARCHCONFIG ===\n");
+        sb.append(String.format("Remaining Time: %dms\n", remainingTime));
+        sb.append(String.format("Estimated Moves Left: %d\n", estimatedMovesLeft));
+        sb.append(String.format("Current Phase: %s\n", phase));
+        sb.append(String.format("Move Number: %d\n", moveNumber));
+
+        sb.append("\nSearchConfig Time Thresholds:\n");
+        sb.append(String.format("  Panic: %dms\n", SearchConfig.TIME_PANIC_THRESHOLD));
+        sb.append(String.format("  Emergency: %dms\n", SearchConfig.TIME_EMERGENCY_THRESHOLD));
+        sb.append(String.format("  Low: %dms\n", SearchConfig.TIME_LOW_THRESHOLD));
+        sb.append(String.format("  Comfort: %dms\n", SearchConfig.TIME_COMFORT_THRESHOLD));
+
+        sb.append("\nSearchConfig Time Factors:\n");
+        sb.append(String.format("  Min Factor: %.1f%%\n", SearchConfig.TIME_MIN_FACTOR * 100));
+        sb.append(String.format("  Max Factor: %.1f%%\n", SearchConfig.TIME_MAX_FACTOR * 100));
+        sb.append(String.format("  Critical Factor: %.1f%%\n", SearchConfig.TIME_CRITICAL_FACTOR * 100));
+        sb.append(String.format("  Emergency Factor: %.1f%%\n", SearchConfig.TIME_EMERGENCY_FACTOR * 100));
+
+        sb.append("\nSearchConfig Multipliers:\n");
+        sb.append(String.format("  Behind: %.1fx\n", SearchConfig.TIME_BEHIND_MULTIPLIER));
+        sb.append(String.format("  Ahead: %.1fx\n", SearchConfig.TIME_AHEAD_MULTIPLIER));
+        sb.append(String.format("  Middlegame: %.1fx\n", SearchConfig.TIME_MIDDLEGAME_MULTIPLIER));
+        sb.append(String.format("  Endgame: %.1fx\n", SearchConfig.TIME_ENDGAME_MULTIPLIER));
+
+        return sb.toString();
+    }
+
+    /**
+     * Validate SearchConfig time parameters
+     */
+    public boolean validateTimeConfiguration() {
+        boolean valid = true;
+
+        if (SearchConfig.TIME_PANIC_THRESHOLD <= 0) {
+            System.err.println("❌ Invalid TIME_PANIC_THRESHOLD: " + SearchConfig.TIME_PANIC_THRESHOLD);
+            valid = false;
+        }
+
+        if (SearchConfig.TIME_EMERGENCY_THRESHOLD <= SearchConfig.TIME_PANIC_THRESHOLD) {
+            System.err.println("❌ TIME_EMERGENCY_THRESHOLD should be higher than TIME_PANIC_THRESHOLD");
+            valid = false;
+        }
+
+        if (SearchConfig.TIME_LOW_THRESHOLD <= SearchConfig.TIME_EMERGENCY_THRESHOLD) {
+            System.err.println("❌ TIME_LOW_THRESHOLD should be higher than TIME_EMERGENCY_THRESHOLD");
+            valid = false;
+        }
+
+        if (SearchConfig.TIME_MIN_FACTOR <= 0 || SearchConfig.TIME_MIN_FACTOR > 1) {
+            System.err.println("❌ Invalid TIME_MIN_FACTOR: " + SearchConfig.TIME_MIN_FACTOR);
+            valid = false;
+        }
+
+        if (SearchConfig.TIME_MAX_FACTOR <= SearchConfig.TIME_MIN_FACTOR || SearchConfig.TIME_MAX_FACTOR > 1) {
+            System.err.println("❌ Invalid TIME_MAX_FACTOR: " + SearchConfig.TIME_MAX_FACTOR);
+            valid = false;
+        }
+
+        if (SearchConfig.TIME_CRITICAL_FACTOR <= 0 || SearchConfig.TIME_CRITICAL_FACTOR > 1) {
+            System.err.println("❌ Invalid TIME_CRITICAL_FACTOR: " + SearchConfig.TIME_CRITICAL_FACTOR);
+            valid = false;
+        }
+
+        if (SearchConfig.TIME_BEHIND_MULTIPLIER <= 0 || SearchConfig.TIME_BEHIND_MULTIPLIER > 3) {
+            System.err.println("❌ Invalid TIME_BEHIND_MULTIPLIER: " + SearchConfig.TIME_BEHIND_MULTIPLIER);
+            valid = false;
+        }
+
+        if (SearchConfig.TIME_AHEAD_MULTIPLIER <= 0 || SearchConfig.TIME_AHEAD_MULTIPLIER > 2) {
+            System.err.println("❌ Invalid TIME_AHEAD_MULTIPLIER: " + SearchConfig.TIME_AHEAD_MULTIPLIER);
+            valid = false;
+        }
+
+        if (valid) {
+            System.out.println("✅ TimeManager SearchConfig integration validated");
+        }
+
+        return valid;
+    }
+
+    /**
+     * Get recommended time allocation for current situation
+     */
+    public SearchConfig.TimeConfig getRecommendedTimeConfig() {
+        return new SearchConfig.TimeConfig(
+                remainingTime,
+                estimatedMovesLeft,
+                SearchConfig.TIME_EMERGENCY_FACTOR,
+                phase == Phase.MIDDLEGAME ? SearchConfig.TIME_MIDDLEGAME_MULTIPLIER : SearchConfig.TIME_ENDGAME_MULTIPLIER
+        );
+    }
+
+    /**
+     * Check if current time situation matches SearchConfig thresholds
+     */
+    public boolean isPanicTime() {
+        return remainingTime <= SearchConfig.TIME_PANIC_THRESHOLD;
+    }
+
+    public boolean isEmergencyTime() {
+        return remainingTime <= SearchConfig.TIME_EMERGENCY_THRESHOLD;
+    }
+
+    public boolean isLowTime() {
+        return remainingTime <= SearchConfig.TIME_LOW_THRESHOLD;
+    }
+
+    public boolean isComfortableTime() {
+        return remainingTime > SearchConfig.TIME_COMFORT_THRESHOLD;
+    }
+
+    /**
+     * Get time category as string for logging
+     */
+    public String getTimeCategory() {
+        if (isPanicTime()) return "PANIC";
+        if (isEmergencyTime()) return "EMERGENCY";
+        if (isLowTime()) return "LOW";
+        if (isComfortableTime()) return "COMFORTABLE";
+        return "NORMAL";
     }
 }

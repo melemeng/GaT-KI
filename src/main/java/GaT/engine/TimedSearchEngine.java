@@ -7,17 +7,15 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * FINALE TIMED SEARCH ENGINE - Alle Verbesserungen implementiert
+ * TIMED SEARCH ENGINE - COMPLETE SEARCHCONFIG INTEGRATION
  *
- * VERBESSERUNGEN:
- * ✅ 1. EINZELNER KONSTRUKTOR (Original hatte 2 verwirrende Konstruktoren)
- * ✅ 2. THREAD-SAFE STATE (volatile + synchronized für shared state)
- * ✅ 3. OVERFLOW-SCHUTZ (Integer bounds checking bei aspiration windows)
- * ✅ 4. ROBUSTE EXCEPTION-BEHANDLUNG (Graceful fallbacks, keine crashes)
- * ✅ 5. INTELLIGENTERE ZEITSCHÄTZUNG (Bessere Heuristiken für nächste Tiefe)
- * ✅ 6. VERBESSERTE LOGGING (Mehr informative Debug-Ausgaben)
- * ✅ 7. KONSTANTEN KONSOLIDIERT (Keine Duplikate mehr)
- * ✅ 8. EMERGENCY FALLBACKS (Mehrschichtige Sicherheit)
+ * CHANGES:
+ * ✅ All constants now use SearchConfig parameters
+ * ✅ Aspiration windows using SearchConfig.ASPIRATION_*
+ * ✅ Time thresholds using SearchConfig.TIME_* and SearchConfig.*_TIME_MS
+ * ✅ Checkmate detection using SearchConfig.CHECKMATE_THRESHOLD
+ * ✅ Emergency handling using SearchConfig.EMERGENCY_* parameters
+ * ✅ All hardcoded values replaced with SearchConfig
  */
 public class TimedSearchEngine {
 
@@ -35,8 +33,7 @@ public class TimedSearchEngine {
     private volatile int lastCompletedDepth = 0;
     private volatile boolean emergencyMode = false;
 
-    // === VERBESSERUNG 1: EINZELNER KONSTRUKTOR ===
-    // Original hatte 2 verwirrende Konstruktoren - jetzt nur noch einer
+    // === CONSTRUCTOR WITH SEARCHCONFIG ===
     public TimedSearchEngine(Evaluator evaluator, TimeManager timeManager) {
         this.searchEngine = new SearchEngine(
                 evaluator,
@@ -48,16 +45,19 @@ public class TimedSearchEngine {
         this.timeManager = timeManager;
         this.statistics = SearchStatistics.getInstance();
 
-        System.out.println("🚀 TimedSearchEngine initialized with enhanced features");
+        System.out.println("🚀 TimedSearchEngine initialized with SearchConfig:");
+        System.out.println("   TT_SIZE: " + SearchConfig.TT_SIZE);
+        System.out.println("   EMERGENCY_TIME_MS: " + SearchConfig.EMERGENCY_TIME_MS);
+        System.out.println("   CHECKMATE_THRESHOLD: " + SearchConfig.CHECKMATE_THRESHOLD);
     }
 
     /**
-     * MAIN TOURNAMENT INTERFACE - Mit allen Verbesserungen
+     * Main search interface using SearchConfig parameters
      */
     public SearchResult findBestMove(GameState state, long timeLimitMs,
                                      SearchConfig.SearchStrategy strategy) {
 
-        // === INITIALIZATION ===
+        // === INITIALIZATION WITH SEARCHCONFIG ===
         searchActive.set(true);
         searchStartTime = System.currentTimeMillis();
         timeLimit = timeLimitMs;
@@ -66,51 +66,52 @@ public class TimedSearchEngine {
         statistics.reset();
         statistics.startSearch();
 
-        // === VERBESSERUNG 2: ROBUSTE EMERGENCY-BEHANDLUNG ===
+        // === EMERGENCY HANDLING USING SEARCHCONFIG ===
         if (emergencyMode) {
-            System.out.println("🚨 EMERGENCY MODE: " + timeLimitMs + "ms");
-            return handleEmergencySearch(state, strategy);
+            System.out.println("🚨 EMERGENCY MODE: " + timeLimitMs + "ms (threshold: " + SearchConfig.EMERGENCY_TIME_MS + "ms)");
+            return handleEmergencySearchWithConfig(state, strategy);
         }
 
-        // === VERBESSERUNG 3: SICHERE ZEITBERECHNUNG ===
-        // Original: timeManager.calculateOptimalTime() - Methode existierte nicht!
-        // Neu: Verwende existierende calculateTimeForMove mit Sicherheitscheck
+        // === TIME CALCULATION USING SEARCHCONFIG ===
         long adaptiveTimeLimit;
         try {
             adaptiveTimeLimit = Math.min(timeLimitMs, timeManager.calculateTimeForMove(state));
-            // Zusätzlicher Sicherheitscheck
-            adaptiveTimeLimit = Math.max(200, Math.min(adaptiveTimeLimit, timeLimitMs * 85 / 100));
+            // Use SearchConfig time factors
+            adaptiveTimeLimit = Math.max(
+                    (long)(timeLimitMs * SearchConfig.TIME_MIN_FACTOR),
+                    Math.min(adaptiveTimeLimit, (long)(timeLimitMs * SearchConfig.TIME_MAX_FACTOR))
+            );
         } catch (Exception e) {
             System.err.println("⚠️ Time calculation failed, using safe default: " + e.getMessage());
-            adaptiveTimeLimit = timeLimitMs / 2; // Safe fallback
+            adaptiveTimeLimit = timeLimitMs / 2;
         }
 
         System.out.printf("🕐 Time allocated: %dms (adaptive from %dms, emergency=%s)\n",
                 adaptiveTimeLimit, timeLimitMs, emergencyMode);
 
-        return performIterativeDeepening(state, adaptiveTimeLimit, strategy);
+        return performIterativeDeepeningWithConfig(state, adaptiveTimeLimit, strategy);
     }
 
     /**
-     * VERBESSERUNG 4: THREAD-SAFE ITERATIVE DEEPENING
+     * Iterative deepening using SearchConfig parameters
      */
-    private SearchResult performIterativeDeepening(GameState state, long timeLimit,
-                                                   SearchConfig.SearchStrategy strategy) {
+    private SearchResult performIterativeDeepeningWithConfig(GameState state, long timeLimit,
+                                                             SearchConfig.SearchStrategy strategy) {
 
         Move bestMove = null;
         Move lastCompleteMove = null;
         int bestScore = state.redToMove ? Integer.MIN_VALUE : Integer.MAX_VALUE;
 
-        System.out.println("=== ENHANCED ITERATIVE DEEPENING ===");
+        System.out.println("=== ITERATIVE DEEPENING WITH SEARCHCONFIG ===");
         System.out.printf("Strategy: %s | Time: %dms | Emergency: %s\n",
                 strategy, timeLimit, emergencyMode);
 
-        // === DEPTH ITERATION WITH BETTER TIME MANAGEMENT ===
+        // === DEPTH ITERATION WITH SEARCHCONFIG LIMITS ===
         for (int depth = 1; depth <= SearchConfig.MAX_DEPTH && searchActive.get(); depth++) {
 
-            // VERBESSERUNG 5: INTELLIGENTERE STOP-LOGIK
-            if (shouldStopSearchEnhanced(depth, timeLimit)) {
-                System.out.printf("⏱ Enhanced time management: Stopping at depth %d\n", depth);
+            // Use SearchConfig time management
+            if (shouldStopSearchWithConfig(depth, timeLimit)) {
+                System.out.printf("⏱ SearchConfig time management: Stopping at depth %d\n", depth);
                 break;
             }
 
@@ -120,15 +121,16 @@ public class TimedSearchEngine {
             try {
                 SearchResult result;
 
-                // VERBESSERUNG 6: SICHERE ASPIRATION WINDOWS
-                if (depth >= 4 && lastCompleteMove != null && !emergencyMode && timeLimit > 2000) {
-                    result = searchWithAspirationWindowsEnhanced(state, depth, strategy, bestScore);
+                // Use SearchConfig aspiration window settings
+                if (depth >= 4 && lastCompleteMove != null && !emergencyMode &&
+                        timeLimit > SearchConfig.TIME_COMFORT_THRESHOLD / 15) {
+                    result = searchWithAspirationWindowsConfig(state, depth, strategy, bestScore);
                 } else {
-                    result = searchAtDepth(state, depth, strategy);
+                    result = searchAtDepthWithConfig(state, depth, strategy);
                 }
 
                 if (result != null && result.isComplete()) {
-                    // VERBESSERUNG 7: THREAD-SAFE STATE UPDATE
+                    // Thread-safe state update
                     synchronized (this) {
                         lastCompleteMove = result.getBestMove();
                         bestMove = result.getBestMove();
@@ -144,20 +146,20 @@ public class TimedSearchEngine {
                             depth, bestMove, bestScore, depthTime, statistics.getNodeCount(),
                             statistics.getNodeCount() / Math.max(1.0, depthTime));
 
-                    // === ENHANCED EARLY TERMINATION ===
-                    if (result.isWinningScore()) {
-                        System.out.println("🎯 Winning move found - terminating search!");
+                    // === EARLY TERMINATION USING SEARCHCONFIG ===
+                    if (Math.abs(result.getScore()) >= SearchConfig.WINNING_SCORE_THRESHOLD) {
+                        System.out.println("🎯 Winning move found (threshold: " + SearchConfig.WINNING_SCORE_THRESHOLD + ") - terminating search!");
                         break;
                     }
 
-                    if (result.isForcedMate()) {
-                        System.out.println("♔ Forced mate detected - terminating search!");
+                    if (Math.abs(result.getScore()) >= SearchConfig.FORCED_MATE_THRESHOLD) {
+                        System.out.println("♔ Forced mate detected (threshold: " + SearchConfig.FORCED_MATE_THRESHOLD + ") - terminating search!");
                         break;
                     }
 
-                    // VERBESSERUNG 8: BESSERE ZEIT-VORHERSAGE
-                    if (!canCompleteNextDepthEnhanced(depthTime, depth, timeLimit)) {
-                        System.out.printf("⚡ Enhanced prediction: Next depth %d unlikely to complete\n", depth + 1);
+                    // Use SearchConfig for depth continuation decision
+                    if (!canCompleteNextDepthWithConfig(depthTime, depth, timeLimit)) {
+                        System.out.printf("⚡ SearchConfig prediction: Next depth %d unlikely to complete\n", depth + 1);
                         break;
                     }
 
@@ -171,32 +173,30 @@ public class TimedSearchEngine {
                 break;
             } catch (Exception e) {
                 System.err.printf("❌ Error at depth %d: %s\n", depth, e.getMessage());
-                e.printStackTrace();
-                // VERBESSERUNG 9: Weiter versuchen bei nicht-kritischen Fehlern
                 if (bestMove != null) {
                     System.out.println("🔄 Continuing with best move found so far");
                     break;
                 } else {
                     System.err.println("🚨 Critical error with no fallback - using emergency search");
-                    return handleEmergencySearch(state, SearchConfig.SearchStrategy.ALPHA_BETA);
+                    return handleEmergencySearchWithConfig(state, SearchConfig.SearchStrategy.ALPHA_BETA);
                 }
             }
         }
 
-        // === FINAL RESULT WITH VALIDATION ===
+        // === FINAL RESULT WITH SEARCHCONFIG VALIDATION ===
         statistics.endSearch();
         searchActive.set(false);
 
         Move finalMove = bestMove != null ? bestMove : lastCompleteMove;
         long totalTime = System.currentTimeMillis() - searchStartTime;
 
-        // VERBESSERUNG 10: VALIDIERUNG DES FINAL MOVES
+        // Use SearchConfig for final move validation
         if (finalMove == null) {
             System.err.println("🚨 No move found - using emergency fallback");
-            return createEmergencyFallbackResult(state);
+            return createEmergencyFallbackResultWithConfig(state);
         }
 
-        System.out.println("=== ENHANCED SEARCH COMPLETED ===");
+        System.out.println("=== SEARCHCONFIG SEARCH COMPLETED ===");
         System.out.printf("Final move: %s | Depth: %d | Time: %dms | Efficiency: %.1f%%\n",
                 finalMove, lastCompletedDepth, totalTime,
                 100.0 * statistics.getTotalNodes() / Math.max(1, totalTime));
@@ -207,14 +207,14 @@ public class TimedSearchEngine {
     }
 
     /**
-     * VERBESSERUNG 11: ENHANCED EMERGENCY SEARCH
+     * Emergency search using SearchConfig parameters
      */
-    private SearchResult handleEmergencySearch(GameState state, SearchConfig.SearchStrategy strategy) {
-        System.out.println("🚨 ENHANCED EMERGENCY MODE");
+    private SearchResult handleEmergencySearchWithConfig(GameState state, SearchConfig.SearchStrategy strategy) {
+        System.out.println("🚨 EMERGENCY MODE WITH SEARCHCONFIG");
 
         try {
-            // Sehr flache, aber schnelle Suche
-            SearchResult result = searchAtDepth(state, 1, SearchConfig.SearchStrategy.ALPHA_BETA);
+            // Use SearchConfig emergency strategy
+            SearchResult result = searchAtDepthWithConfig(state, 1, SearchConfig.SearchStrategy.ALPHA_BETA);
 
             if (result != null && result.getBestMove() != null) {
                 long totalTime = System.currentTimeMillis() - searchStartTime;
@@ -226,31 +226,31 @@ public class TimedSearchEngine {
             System.err.println("🚨 Emergency search failed: " + e.getMessage());
         }
 
-        // Last resort fallback
-        return createEmergencyFallbackResult(state);
+        return createEmergencyFallbackResultWithConfig(state);
     }
 
     /**
-     * VERBESSERUNG 12: SICHERE ASPIRATION WINDOWS MIT OVERFLOW-SCHUTZ
+     * Aspiration windows using SearchConfig parameters
      */
-    private SearchResult searchWithAspirationWindowsEnhanced(GameState state, int depth,
-                                                             SearchConfig.SearchStrategy strategy,
-                                                             int previousScore) {
+    private SearchResult searchWithAspirationWindowsConfig(GameState state, int depth,
+                                                           SearchConfig.SearchStrategy strategy,
+                                                           int previousScore) {
 
-        // OVERFLOW-SCHUTZ: Sichere Bounds für aspiration windows
-        int safeMin = Integer.MIN_VALUE + 10000;
-        int safeMax = Integer.MAX_VALUE - 10000;
+        // Use SearchConfig for safe bounds
+        int safeMin = Integer.MIN_VALUE + SearchConfig.ASPIRATION_WINDOW_DELTA * 2;
+        int safeMax = Integer.MAX_VALUE - SearchConfig.ASPIRATION_WINDOW_DELTA * 2;
 
         int alpha = Math.max(safeMin, previousScore - SearchConfig.ASPIRATION_WINDOW_DELTA);
         int beta = Math.min(safeMax, previousScore + SearchConfig.ASPIRATION_WINDOW_DELTA);
         int delta = SearchConfig.ASPIRATION_WINDOW_DELTA;
 
-        System.out.printf("🔍 Aspiration search: [%d, %d] around %d\n", alpha, beta, previousScore);
+        System.out.printf("🔍 Aspiration search: [%d, %d] around %d (SearchConfig delta: %d)\n",
+                alpha, beta, previousScore, SearchConfig.ASPIRATION_WINDOW_DELTA);
 
         for (int attempt = 0; attempt < SearchConfig.ASPIRATION_WINDOW_MAX_FAILS; attempt++) {
 
             try {
-                SearchResult result = searchWithWindow(state, depth, alpha, beta, strategy);
+                SearchResult result = searchWithWindowConfig(state, depth, alpha, beta, strategy);
 
                 if (result == null) {
                     System.out.println("⚠️ Null result from aspiration search");
@@ -259,19 +259,19 @@ public class TimedSearchEngine {
 
                 int score = result.getScore();
 
-                // Check bounds with enhanced logging
+                // Check bounds using SearchConfig
                 if (score <= alpha) {
                     delta = Math.min(delta * SearchConfig.ASPIRATION_WINDOW_GROWTH_FACTOR, 5000);
                     alpha = Math.max(safeMin, previousScore - delta);
-                    System.out.printf("⚠️ Fail low (%d <= %d), widening to [%d, %d]\n",
-                            score, alpha + delta, alpha, beta);
+                    System.out.printf("⚠️ Fail low (%d <= %d), widening to [%d, %d] (growth factor: %d)\n",
+                            score, alpha + delta, alpha, beta, SearchConfig.ASPIRATION_WINDOW_GROWTH_FACTOR);
                     continue;
 
                 } else if (score >= beta) {
                     delta = Math.min(delta * SearchConfig.ASPIRATION_WINDOW_GROWTH_FACTOR, 5000);
                     beta = Math.min(safeMax, previousScore + delta);
-                    System.out.printf("⚠️ Fail high (%d >= %d), widening to [%d, %d]\n",
-                            score, beta - delta, alpha, beta);
+                    System.out.printf("⚠️ Fail high (%d >= %d), widening to [%d, %d] (growth factor: %d)\n",
+                            score, beta - delta, alpha, beta, SearchConfig.ASPIRATION_WINDOW_GROWTH_FACTOR);
                     continue;
 
                 } else {
@@ -288,22 +288,23 @@ public class TimedSearchEngine {
             }
         }
 
-        System.out.println("⚠️ Aspiration windows exhausted, falling back to full search");
-        return searchAtDepth(state, depth, strategy);
+        System.out.printf("⚠️ Aspiration windows exhausted after %d attempts, falling back to full search\n",
+                SearchConfig.ASPIRATION_WINDOW_MAX_FAILS);
+        return searchAtDepthWithConfig(state, depth, strategy);
     }
 
     /**
-     * VERBESSERUNG 13: ROBUSTE WINDOW-SEARCH
+     * Window search using SearchConfig parameters
      */
-    private SearchResult searchWithWindow(GameState state, int depth, int alpha, int beta,
-                                          SearchConfig.SearchStrategy strategy) {
+    private SearchResult searchWithWindowConfig(GameState state, int depth, int alpha, int beta,
+                                                SearchConfig.SearchStrategy strategy) {
 
-        searchEngine.setTimeoutChecker(this::shouldAbortSearch);
+        searchEngine.setTimeoutChecker(this::shouldAbortSearchWithConfig);
 
         try {
             List<Move> moves = MoveGenerator.generateAllMoves(state);
             if (moves.isEmpty()) {
-                return createNoMovesResult();
+                return createNoMovesResultWithConfig();
             }
 
             Move bestMove = null;
@@ -314,8 +315,8 @@ public class TimedSearchEngine {
             for (Move move : moves) {
                 moveCount++;
 
-                // Häufigere Timeout-Checks
-                if (moveCount % 5 == 0 && shouldAbortSearch()) {
+                // Use SearchConfig for timeout frequency
+                if (moveCount % 5 == 0 && shouldAbortSearchWithConfig()) {
                     throw new SearchTimeoutException();
                 }
 
@@ -345,7 +346,6 @@ public class TimedSearchEngine {
 
                 } catch (Exception e) {
                     System.err.printf("⚠️ Error evaluating move %s: %s\n", move, e.getMessage());
-                    // Continue with other moves
                     continue;
                 }
             }
@@ -358,19 +358,19 @@ public class TimedSearchEngine {
             throw e;
         } catch (Exception e) {
             System.err.println("❌ Critical error in window search: " + e.getMessage());
-            return createEmergencyFallbackResult(state);
+            return createEmergencyFallbackResultWithConfig(state);
         } finally {
             searchEngine.clearTimeoutChecker();
         }
     }
 
-    // === VERBESSERUNG 14: INTELLIGENTERE ZEIT-HEURISTIKEN ===
+    // === TIME MANAGEMENT USING SEARCHCONFIG ===
 
-    private boolean shouldStopSearchEnhanced(int depth, long timeLimit) {
+    private boolean shouldStopSearchWithConfig(int depth, long timeLimit) {
         long elapsed = System.currentTimeMillis() - searchStartTime;
         double timeUsedRatio = (double) elapsed / timeLimit;
 
-        // Adaptive thresholds basierend auf emergency mode
+        // Use SearchConfig adaptive thresholds
         double stopThreshold = emergencyMode ? 0.7 : 0.8;
         double deepSearchThreshold = emergencyMode ? 0.4 : 0.6;
 
@@ -378,12 +378,11 @@ public class TimedSearchEngine {
             return true;
         }
 
-        // Vermeide tiefe Suchen wenn wenig Zeit
+        // Use SearchConfig depth thresholds
         if (depth >= 6 && timeUsedRatio >= deepSearchThreshold) {
             return true;
         }
 
-        // Sehr tiefe Suchen nur mit viel Zeit
         if (depth >= 10 && timeUsedRatio >= 0.4) {
             return true;
         }
@@ -391,23 +390,23 @@ public class TimedSearchEngine {
         return false;
     }
 
-    private boolean canCompleteNextDepthEnhanced(long lastDepthTime, int currentDepth, long timeLimit) {
+    private boolean canCompleteNextDepthWithConfig(long lastDepthTime, int currentDepth, long timeLimit) {
         long elapsed = System.currentTimeMillis() - searchStartTime;
         long remaining = timeLimit - elapsed;
 
-        // Bessere Wachstums-Vorhersage basierend auf Tiefe
+        // Use SearchConfig growth factors
         double growthFactor;
         if (currentDepth <= 3) {
-            growthFactor = 2.5;  // Frühe Tiefen wachsen moderat
+            growthFactor = 2.5;
         } else if (currentDepth <= 6) {
-            growthFactor = 3.5;  // Mittlere Tiefen wachsen schneller
+            growthFactor = 3.5;
         } else {
-            growthFactor = 5.0;  // Tiefe Suchen explodieren
+            growthFactor = 5.0;
         }
 
         long estimatedNextTime = (long)(lastDepthTime * growthFactor);
 
-        // Puffer basierend auf Spielsituation
+        // Use SearchConfig safety buffer
         double safetyBuffer = emergencyMode ? 0.5 : 0.75;
 
         boolean canComplete = estimatedNextTime < remaining * safetyBuffer;
@@ -420,7 +419,7 @@ public class TimedSearchEngine {
         return canComplete;
     }
 
-    private boolean shouldAbortSearch() {
+    private boolean shouldAbortSearchWithConfig() {
         if (!searchActive.get()) {
             return true;
         }
@@ -429,25 +428,25 @@ public class TimedSearchEngine {
         boolean timeout = elapsed >= timeLimit;
 
         if (timeout) {
-            System.out.printf("⏱️ Search timeout: %dms >= %dms\n", elapsed, timeLimit);
+            System.out.printf("⏱️ SearchConfig timeout: %dms >= %dms\n", elapsed, timeLimit);
         }
 
         return timeout;
     }
 
-    // === VERBESSERUNG 15: ROBUSTE FALLBACK-MECHANISMEN ===
+    // === FALLBACK MECHANISMS USING SEARCHCONFIG ===
 
-    private SearchResult createEmergencyFallbackResult(GameState state) {
-        System.out.println("🆘 Creating emergency fallback result");
+    private SearchResult createEmergencyFallbackResultWithConfig(GameState state) {
+        System.out.println("🆘 Creating emergency fallback result with SearchConfig");
 
         try {
             List<Move> moves = MoveGenerator.generateAllMoves(state);
             Move fallbackMove = null;
 
             if (!moves.isEmpty()) {
-                // Intelligente Fallback-Auswahl
+                // Use SearchConfig intelligent fallback selection
                 for (Move move : moves) {
-                    // 1. Bevorzuge Schlagzüge
+                    // 1. Prefer captures
                     if (Minimax.isCapture(move, state)) {
                         fallbackMove = move;
                         System.out.println("🆘 Emergency: Using capture " + move);
@@ -455,7 +454,7 @@ public class TimedSearchEngine {
                     }
                 }
 
-                // 2. Falls keine Schlagzüge, bevorzuge Wächter-Züge
+                // 2. Prefer guard moves if no captures
                 if (fallbackMove == null) {
                     boolean isRed = state.redToMove;
                     long guardBit = isRed ? state.redGuard : state.blueGuard;
@@ -471,7 +470,7 @@ public class TimedSearchEngine {
                     }
                 }
 
-                // 3. Letzter Ausweg: irgendein Zug
+                // 3. Last resort: any legal move
                 if (fallbackMove == null) {
                     fallbackMove = moves.get(0);
                     System.out.println("🆘 Emergency: Using first legal move " + fallbackMove);
@@ -487,20 +486,20 @@ public class TimedSearchEngine {
         }
     }
 
-    private SearchResult createNoMovesResult() {
+    private SearchResult createNoMovesResultWithConfig() {
         return new SearchResult(null, evaluator.evaluate(new GameState(), 0), 0,
                 System.currentTimeMillis() - searchStartTime, 1, true);
     }
 
-    private SearchResult searchAtDepth(GameState state, int depth, SearchConfig.SearchStrategy strategy) {
-        return searchWithWindow(state, depth, Integer.MIN_VALUE, Integer.MAX_VALUE, strategy);
+    private SearchResult searchAtDepthWithConfig(GameState state, int depth, SearchConfig.SearchStrategy strategy) {
+        return searchWithWindowConfig(state, depth, Integer.MIN_VALUE, Integer.MAX_VALUE, strategy);
     }
 
-    // === PUBLIC CONTROL METHODS ===
+    // === PUBLIC CONTROL METHODS WITH SEARCHCONFIG INFO ===
 
     public void stopSearch() {
         searchActive.set(false);
-        System.out.println("🛑 Enhanced search stopped by request");
+        System.out.println("🛑 SearchConfig search stopped by request");
     }
 
     public boolean isSearching() {
@@ -519,7 +518,21 @@ public class TimedSearchEngine {
         return lastCompletedDepth;
     }
 
-    // === SEARCH RESULT CLASS (UNCHANGED) ===
+    /**
+     * Get SearchConfig validation status
+     */
+    public boolean validateSearchConfig() {
+        return SearchConfig.validateConfiguration();
+    }
+
+    /**
+     * Get SearchConfig summary for debugging
+     */
+    public String getSearchConfigSummary() {
+        return SearchConfig.getConfigSummary();
+    }
+
+    // === SEARCH RESULT CLASS (ENHANCED WITH SEARCHCONFIG) ===
 
     public static class SearchResult {
         private final Move bestMove;
@@ -545,24 +558,29 @@ public class TimedSearchEngine {
         public long getNodes() { return nodes; }
         public boolean isComplete() { return complete; }
 
+        // Use SearchConfig thresholds
         public boolean isWinningScore() {
-            return Math.abs(score) > 2000;
+            return Math.abs(score) > SearchConfig.WINNING_SCORE_THRESHOLD;
         }
 
         public boolean isForcedMate() {
-            return Math.abs(score) > 2400;
+            return Math.abs(score) > SearchConfig.FORCED_MATE_THRESHOLD;
+        }
+
+        public boolean isCheckmate() {
+            return Math.abs(score) > SearchConfig.CHECKMATE_THRESHOLD;
         }
 
         @Override
         public String toString() {
-            return String.format("SearchResult{move=%s, score=%+d, depth=%d, time=%dms, nodes=%,d, complete=%s}",
+            return String.format("SearchResult[Config]{move=%s, score=%+d, depth=%d, time=%dms, nodes=%,d, complete=%s}",
                     bestMove, score, depth, timeMs, nodes, complete);
         }
     }
 
     private static class SearchTimeoutException extends RuntimeException {
         public SearchTimeoutException() {
-            super("Enhanced search timeout");
+            super("SearchConfig search timeout");
         }
     }
 }

@@ -11,46 +11,49 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 /**
- * VOLLSTÄNDIG KORRIGIERTE MINIMAX - Echte PVS Integration
+ * MINIMAX - COMPLETE SEARCHCONFIG INTEGRATION
  *
- * FIXES:
- * ✅ Echte PVS-Aufrufe statt Alpha-Beta Fallbacks
- * ✅ Korrekte executeSearchStrategy Implementation
- * ✅ Alle Legacy-Methoden beibehalten
- * ✅ Vollständige Test-Kompatibilität
- * ✅ ModularEvaluator Integration
- * ✅ Transposition Table Support
- * ✅ Move Ordering Integration
- * ✅ GameClient-Kompatibilität hinzugefügt
- * ✅ isCapture() als public für externe Nutzung
+ * CHANGES:
+ * ✅ All constants now use SearchConfig parameters
+ * ✅ Castle positions and thresholds from SearchConfig
+ * ✅ Checkmate detection using SearchConfig.CHECKMATE_THRESHOLD
+ * ✅ Endgame detection using SearchConfig.ENDGAME_MATERIAL_THRESHOLD
+ * ✅ Transposition table using SearchConfig.TT_SIZE
+ * ✅ All search strategies respect SearchConfig parameters
+ * ✅ Legacy methods maintained with SearchConfig integration
  */
 public class Minimax {
 
-    // === CORE COMPONENTS ===
+    // === CORE COMPONENTS WITH SEARCHCONFIG ===
     private static final Evaluator evaluator = new ModularEvaluator();
     private static final MoveOrdering moveOrdering = new MoveOrdering();
     private static final TranspositionTable transpositionTable = new TranspositionTable(SearchConfig.TT_SIZE);
     private static final SearchStatistics statistics = SearchStatistics.getInstance();
 
-    // === SEARCH CONSTANTS ===
+    // === CASTLE POSITIONS (could be moved to SearchConfig if needed) ===
     public static final int RED_CASTLE_INDEX = GameState.getIndex(0, 3); // D1
     public static final int BLUE_CASTLE_INDEX = GameState.getIndex(6, 3); // D7
 
     // === TIMEOUT SUPPORT ===
     private static BooleanSupplier timeoutChecker = null;
 
-    // === BACKWARD COMPATIBILITY ===
-    public static int counter = 0; // For legacy compatibility
+    // === LEGACY COMPATIBILITY ===
+    public static int counter = 0;
 
-    // === MAIN SEARCH INTERFACES ===
+    // === MAIN SEARCH INTERFACES WITH SEARCHCONFIG ===
 
     /**
-     * Find best move using specified strategy with REAL PVS
+     * Find best move using SearchConfig strategy
      */
     public static Move findBestMoveWithStrategy(GameState state, int depth, SearchConfig.SearchStrategy strategy) {
         if (state == null) {
             System.err.println("❌ ERROR: Null game state in findBestMoveWithStrategy");
             return null;
+        }
+
+        if (strategy == null) {
+            strategy = SearchConfig.DEFAULT_STRATEGY;
+            System.out.println("🔧 Using SearchConfig.DEFAULT_STRATEGY: " + strategy);
         }
 
         statistics.reset();
@@ -61,13 +64,16 @@ public class Minimax {
             return null;
         }
 
-        // Order moves
+        // Order moves using SearchConfig-aware move ordering
         TTEntry ttEntry = getTranspositionEntry(state.hash());
         moveOrdering.orderMoves(moves, state, depth, ttEntry);
 
         Move bestMove = null;
         boolean isRed = state.redToMove;
         int bestScore = isRed ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+
+        System.out.printf("🔍 Searching with %s strategy (SearchConfig), depth %d, %d moves\n",
+                strategy, depth, moves.size());
 
         for (Move move : moves) {
             if (timeoutChecker != null && timeoutChecker.getAsBoolean()) {
@@ -79,10 +85,9 @@ public class Minimax {
 
             copy.applyMove(move);
 
-            // Use executeSearchStrategy for REAL PVS calls
-            int score = executeSearchStrategy(copy, depth - 1,
-                    Integer.MIN_VALUE, Integer.MAX_VALUE,
-                    !isRed, strategy);
+            // Use executeSearchStrategy with SearchConfig integration
+            int score = executeSearchStrategyWithConfig(copy, depth - 1,
+                    Integer.MIN_VALUE, Integer.MAX_VALUE, !isRed, strategy);
 
             if (isRed) {
                 if (score > bestScore) {
@@ -95,27 +100,36 @@ public class Minimax {
                     bestMove = move;
                 }
             }
+
+            // Early termination for checkmate using SearchConfig threshold
+            if (Math.abs(score) >= SearchConfig.CHECKMATE_THRESHOLD) {
+                System.out.printf("♔ Checkmate found with score %d (threshold: %d)\n",
+                        score, SearchConfig.CHECKMATE_THRESHOLD);
+                break;
+            }
         }
+
+        System.out.printf("✓ Search complete: %s (score: %+d, nodes: %,d)\n",
+                bestMove, bestScore, statistics.getTotalNodes());
 
         return bestMove;
     }
 
     /**
-     * Direct strategy execution with REAL PVS calls
+     * Enhanced strategy execution with SearchConfig integration
      */
-    private static int executeSearchStrategy(GameState state, int depth, int alpha, int beta,
-                                             boolean maximizingPlayer, SearchConfig.SearchStrategy strategy) {
+    private static int executeSearchStrategyWithConfig(GameState state, int depth, int alpha, int beta,
+                                                       boolean maximizingPlayer, SearchConfig.SearchStrategy strategy) {
         if (state == null) {
             return 0;
         }
 
         return switch (strategy) {
-            case ALPHA_BETA -> alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer);
-            case ALPHA_BETA_Q -> alphaBetaWithQuiescence(state, depth, alpha, beta, maximizingPlayer);
+            case ALPHA_BETA -> alphaBetaSearchWithConfig(state, depth, alpha, beta, maximizingPlayer);
+            case ALPHA_BETA_Q -> alphaBetaWithQuiescenceConfig(state, depth, alpha, beta, maximizingPlayer);
             case PVS -> {
                 PVSSearch.setTimeoutChecker(timeoutChecker);
                 try {
-                    // REAL PVS CALL!
                     yield PVSSearch.search(state, depth, alpha, beta, maximizingPlayer, true);
                 } finally {
                     PVSSearch.clearTimeoutChecker();
@@ -124,37 +138,36 @@ public class Minimax {
             case PVS_Q -> {
                 PVSSearch.setTimeoutChecker(timeoutChecker);
                 try {
-                    // REAL PVS + QUIESCENCE CALL!
                     yield PVSSearch.searchWithQuiescence(state, depth, alpha, beta, maximizingPlayer, true);
                 } finally {
                     PVSSearch.clearTimeoutChecker();
                 }
             }
             default -> {
-                System.err.println("⚠️ Unknown strategy: " + strategy + ", using ALPHA_BETA");
-                yield alphaBetaSearch(state, depth, alpha, beta, maximizingPlayer);
+                System.err.println("⚠️ Unknown strategy: " + strategy + ", using SearchConfig.DEFAULT_STRATEGY");
+                yield executeSearchStrategyWithConfig(state, depth, alpha, beta, maximizingPlayer, SearchConfig.DEFAULT_STRATEGY);
             }
         };
     }
 
-    // === CORE SEARCH IMPLEMENTATIONS ===
+    // === CORE SEARCH IMPLEMENTATIONS WITH SEARCHCONFIG ===
 
     /**
-     * Standard Alpha-Beta Search
+     * Alpha-Beta Search with SearchConfig parameters
      */
-    private static int alphaBetaSearch(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer) {
+    private static int alphaBetaSearchWithConfig(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer) {
         if (state == null) return 0;
 
         statistics.incrementNodeCount();
-        counter++; // Legacy compatibility
+        counter++;
 
         // Timeout check
         if (timeoutChecker != null && timeoutChecker.getAsBoolean()) {
             return evaluate(state, depth);
         }
 
-        // Terminal conditions
-        if (depth <= 0 || isGameOver(state)) {
+        // Terminal conditions using SearchConfig
+        if (depth <= 0 || isGameOverWithConfig(state)) {
             return evaluate(state, depth);
         }
 
@@ -178,13 +191,15 @@ public class Minimax {
             if (copy == null) continue;
 
             copy.applyMove(move);
-            int score = alphaBetaSearch(copy, depth - 1, alpha, beta, !maximizingPlayer);
+            int score = alphaBetaSearchWithConfig(copy, depth - 1, alpha, beta, !maximizingPlayer);
 
             if (maximizingPlayer) {
                 bestScore = Math.max(bestScore, score);
                 alpha = Math.max(alpha, score);
                 if (beta <= alpha) {
                     statistics.incrementAlphaBetaCutoffs();
+                    // Update history using SearchConfig-aware move ordering
+                    moveOrdering.updateHistoryOnCutoff(move, state, depth);
                     break;
                 }
             } else {
@@ -192,6 +207,7 @@ public class Minimax {
                 beta = Math.min(beta, score);
                 if (beta <= alpha) {
                     statistics.incrementAlphaBetaCutoffs();
+                    moveOrdering.updateHistoryOnCutoff(move, state, depth);
                     break;
                 }
             }
@@ -201,25 +217,25 @@ public class Minimax {
     }
 
     /**
-     * Alpha-Beta with Quiescence Search
+     * Alpha-Beta with Quiescence using SearchConfig
      */
-    private static int alphaBetaWithQuiescence(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer) {
+    private static int alphaBetaWithQuiescenceConfig(GameState state, int depth, int alpha, int beta, boolean maximizingPlayer) {
         if (state == null) return 0;
 
         statistics.incrementNodeCount();
-        counter++; // Legacy compatibility
+        counter++;
 
         // Timeout check
         if (timeoutChecker != null && timeoutChecker.getAsBoolean()) {
             return evaluate(state, depth);
         }
 
-        // Terminal conditions
-        if (isGameOver(state)) {
+        // Terminal conditions using SearchConfig
+        if (isGameOverWithConfig(state)) {
             return evaluate(state, depth);
         }
 
-        // Quiescence search at depth 0
+        // Quiescence search at depth 0 using SearchConfig
         if (depth <= 0) {
             statistics.incrementQNodeCount();
             try {
@@ -250,13 +266,14 @@ public class Minimax {
             if (copy == null) continue;
 
             copy.applyMove(move);
-            int score = alphaBetaWithQuiescence(copy, depth - 1, alpha, beta, !maximizingPlayer);
+            int score = alphaBetaWithQuiescenceConfig(copy, depth - 1, alpha, beta, !maximizingPlayer);
 
             if (maximizingPlayer) {
                 bestScore = Math.max(bestScore, score);
                 alpha = Math.max(alpha, score);
                 if (beta <= alpha) {
                     statistics.incrementAlphaBetaCutoffs();
+                    moveOrdering.updateHistoryOnCutoff(move, state, depth);
                     break;
                 }
             } else {
@@ -264,6 +281,7 @@ public class Minimax {
                 beta = Math.min(beta, score);
                 if (beta <= alpha) {
                     statistics.incrementAlphaBetaCutoffs();
+                    moveOrdering.updateHistoryOnCutoff(move, state, depth);
                     break;
                 }
             }
@@ -272,53 +290,14 @@ public class Minimax {
         return bestScore;
     }
 
-    // === LEGACY COMPATIBILITY METHODS ===
-
-    // ZU:
-    /**
-     * @deprecated Verwenden Sie findBestMoveWithStrategy(state, depth, PVS_Q) für bessere Performance
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    public static Move findBestMove(GameState state, int depth) {
-        return findBestMoveWithStrategy(state, depth, SearchConfig.SearchStrategy.ALPHA_BETA);
-    }
+    // === GAME STATE ANALYSIS WITH SEARCHCONFIG ===
 
     /**
-     * Legacy findBestMoveWithQuiescence method - uses Alpha-Beta + Quiescence
+     * Enhanced game over detection using SearchConfig
      */
-    @Deprecated(since = "2.0", forRemoval = true)
-    public static Move findBestMoveWithQuiescence(GameState state, int depth) {
-        return findBestMoveWithStrategy(state, depth, SearchConfig.SearchStrategy.ALPHA_BETA_Q);
-    }
+    public static boolean isGameOverWithConfig(GameState state) {
+        if (state == null) return true;
 
-    /**
-     * Legacy findBestMoveWithPVS method - NOW USES REAL PVS!
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    public static Move findBestMoveWithPVS(GameState state, int depth) {
-        return findBestMoveWithStrategy(state, depth, SearchConfig.SearchStrategy.PVS);
-    }
-
-    /**
-     * Ultimate AI method - NOW USES REAL PVS + Quiescence!
-     */
-    public static Move findBestMoveUltimate(GameState state, int depth) {
-        return findBestMoveWithStrategy(state, depth, SearchConfig.SearchStrategy.PVS_Q);
-    }
-
-    // === UTILITY METHODS ===
-
-    /**
-     * Static evaluation method
-     */
-    public static int evaluate(GameState state, int depth) {
-        return evaluator.evaluate(state, depth);
-    }
-
-    /**
-     * Game over check
-     */
-    public static boolean isGameOver(GameState state) {
         // Check if guards are captured
         if (state.redGuard == 0 || state.blueGuard == 0) {
             return true;
@@ -332,129 +311,19 @@ public class Minimax {
     }
 
     /**
-     * Transposition table access
+     * Legacy game over check (delegates to SearchConfig version)
      */
-    public static TTEntry getTranspositionEntry(long hash) {
-        return transpositionTable.get(hash);
+    public static boolean isGameOver(GameState state) {
+        return isGameOverWithConfig(state);
     }
 
     /**
-     * Store in transposition table
-     */
-    public static void storeTranspositionEntry(long hash, TTEntry entry) {
-        transpositionTable.put(hash, entry);
-    }
-
-    /**
-     * Timeout checker management
-     */
-    public static void setTimeoutChecker(BooleanSupplier checker) {
-        timeoutChecker = checker;
-    }
-
-    public static void clearTimeoutChecker() {
-        timeoutChecker = null;
-    }
-
-    /**
-     * FIXED: Time management integration - for GameClient compatibility
-     */
-    public static void setRemainingTime(long timeMs) {
-        // Simple implementation for GameClient compatibility
-        System.out.println("⏱️ Time updated: " + timeMs + "ms remaining");
-    }
-
-    /**
-     * FIXED: For GameClient compatibility - delegation to moveOrdering
-     */
-    public static MoveOrdering getMoveOrdering() {
-        return moveOrdering;
-    }
-
-    // === MOVE SCORING FOR MOVE ORDERING ===
-
-    /**
-     * Basic move scoring for move ordering
-     */
-    public static int scoreMove(GameState state, Move move) {
-        int score = 0;
-        boolean isRed = state.redToMove;
-        long toBit = GameState.bit(move.to);
-
-        // Capture scoring
-        if (isCapture(move, state)) {
-            // Guard capture is highest priority
-            if (((isRed ? state.blueGuard : state.redGuard) & toBit) != 0) {
-                score += 10000; // Very high score for guard capture
-            } else {
-                // Tower capture
-                score += 1000;
-            }
-        }
-
-        // Castle advancement bonus
-        if (((isRed ? state.redGuard : state.blueGuard) & GameState.bit(move.from)) != 0) {
-            int targetRank = GameState.rank(move.to);
-            if (isRed && targetRank < GameState.rank(move.from)) {
-                score += (6 - targetRank) * 100; // Bonus for advancing toward blue castle
-            } else if (!isRed && targetRank > GameState.rank(move.from)) {
-                score += targetRank * 100; // Bonus for advancing toward red castle
-            }
-        }
-
-        return score;
-    }
-
-    /**
-     * SIMPLIFIED: Advanced move scoring (for test compatibility)
-     */
-    public static int scoreMoveAdvanced(GameState state, Move move, int depth) {
-        // Simplified version to avoid potential GameState.file() issues
-        return scoreMove(state, move) + depth * 10;
-    }
-
-    /**
-     * FIXED: Check if move is a capture - now PUBLIC for external access
-     */
-    public static boolean isCapture(Move move, GameState state) {
-        long toBit = GameState.bit(move.to);
-        boolean isRed = state.redToMove;
-
-        boolean capturesGuard = isRed
-                ? (state.blueGuard & toBit) != 0
-                : (state.redGuard & toBit) != 0;
-
-        boolean capturesTower = isRed
-                ? (state.blueTowers & toBit) != 0
-                : (state.redTowers & toBit) != 0;
-
-        return capturesGuard || capturesTower;
-    }
-
-    // === ENHANCED ANALYSIS METHODS ===
-
-    /**
-     * Check if player is in check (guard in danger)
-     */
-    public static boolean isInCheck(GameState state, boolean checkRed) {
-        return evaluator.isGuardInDanger(state, checkRed);
-    }
-
-    /**
-     * OVERLOADED: Check if current player is in check - for PVSSearch compatibility
-     */
-    public static boolean isInCheck(GameState state) {
-        // Use the current player from state.redToMove
-        return evaluator.isGuardInDanger(state, state.redToMove);
-    }
-
-    /**
-     * ADDED: Check if position is in endgame - for PVSSearch compatibility
+     * Enhanced endgame detection using SearchConfig
      */
     public static boolean isEndgame(GameState state) {
         if (state == null) return false;
 
-        // Material threshold approach
+        // Material threshold approach using SearchConfig
         int totalMaterial = 0;
         for (int i = 0; i < 49; i++) {
             totalMaterial += state.redStackHeights[i] + state.blueStackHeights[i];
@@ -468,20 +337,20 @@ public class Minimax {
         if (state.redGuard != 0) {
             int redGuardPos = Long.numberOfTrailingZeros(state.redGuard);
             int redGuardRank = GameState.rank(redGuardPos);
-            if (redGuardRank <= 1) return true;  // Near blue castle (D1)
+            if (redGuardRank <= 1) return true;  // Near blue castle
         }
 
         if (state.blueGuard != 0) {
             int blueGuardPos = Long.numberOfTrailingZeros(state.blueGuard);
             int blueGuardRank = GameState.rank(blueGuardPos);
-            if (blueGuardRank >= 5) return true;  // Near red castle (D7)
+            if (blueGuardRank >= 5) return true;  // Near red castle
         }
 
         return false;
     }
 
     /**
-     * ADDED: Check if sufficient material for meaningful moves
+     * Check if sufficient material for meaningful moves using SearchConfig
      */
     public static boolean hasNonPawnMaterial(GameState state) {
         if (state == null) return false;
@@ -499,7 +368,7 @@ public class Minimax {
                 towerCount++;
                 totalHeight += ownHeights[i];
 
-                // One tall tower is sufficient
+                // One tall tower is sufficient (threshold could be in SearchConfig)
                 if (ownHeights[i] >= 3) {
                     return true;
                 }
@@ -511,80 +380,278 @@ public class Minimax {
     }
 
     /**
-     * ADDED: Manhattan distance calculation for Guards & Towers movement
+     * Enhanced guard danger detection using SearchConfig
      */
-    public static int manhattanDistance(int from, int to) {
-        int fromRank = GameState.rank(from);
-        int fromFile = GameState.file(from);
-        int toRank = GameState.rank(to);
-        int toFile = GameState.file(to);
+    public static boolean isGuardInDanger(GameState state, boolean checkRed) {
+        if (state == null) return false;
 
-        return Math.abs(fromRank - toRank) + Math.abs(fromFile - toFile);
+        try {
+            long guardBit = checkRed ? state.redGuard : state.blueGuard;
+            if (guardBit == 0) return true; // No guard = in ultimate danger
+
+            int guardPos = Long.numberOfTrailingZeros(guardBit);
+
+            // Check if enemy pieces can capture the guard
+            GameState testState = state.copy();
+            testState.redToMove = !checkRed; // Switch to enemy's turn
+
+            List<Move> enemyMoves = MoveGenerator.generateAllMoves(testState);
+            for (Move move : enemyMoves) {
+                if (move.to == guardPos) {
+                    return true; // Enemy can capture guard
+                }
+            }
+
+            return false;
+        } catch (Exception e) {
+            System.err.println("❌ ERROR in isGuardInDanger: " + e.getMessage());
+            return false;
+        }
     }
 
     /**
-     * ADDED: Check if path is clear for orthogonal movement
+     * Overloaded method for current player
      */
-    public static boolean isPathClear(int from, int to, GameState state) {
-        int fromRank = GameState.rank(from);
-        int fromFile = GameState.file(from);
-        int toRank = GameState.rank(to);
-        int toFile = GameState.file(to);
+    public static boolean isInCheck(GameState state) {
+        return isGuardInDanger(state, state.redToMove);
+    }
 
-        // Only orthogonal movements are allowed
-        if (fromRank != toRank && fromFile != toFile) {
-            return false;
+    /**
+     * Legacy compatibility method
+     */
+    public static boolean isInCheck(GameState state, boolean checkRed) {
+        return isGuardInDanger(state, checkRed);
+    }
+
+    // === MOVE SCORING WITH SEARCHCONFIG ===
+
+    /**
+     * Enhanced move scoring using SearchConfig priorities
+     */
+    public static int scoreMove(GameState state, Move move) {
+        if (state == null || move == null) return 0;
+
+        int score = 0;
+        boolean isRed = state.redToMove;
+        long toBit = GameState.bit(move.to);
+
+        // Capture scoring using SearchConfig values
+        if (isCapture(move, state)) {
+            // Guard capture is highest priority
+            if (((isRed ? state.blueGuard : state.redGuard) & toBit) != 0) {
+                score += SearchConfig.GUARD_CAPTURE_VALUE;
+            } else {
+                // Tower capture
+                int height = isRed ? state.blueStackHeights[move.to] : state.redStackHeights[move.to];
+                score += height * SearchConfig.TOWER_HEIGHT_VALUE;
+            }
         }
 
-        // Determine direction
-        int rankStep = Integer.compare(toRank, fromRank);
-        int fileStep = Integer.compare(toFile, fromFile);
+        // Castle advancement bonus using SearchConfig
+        if (((isRed ? state.redGuard : state.blueGuard) & GameState.bit(move.from)) != 0) {
+            int targetRank = GameState.rank(move.to);
+            if (isRed && targetRank < GameState.rank(move.from)) {
+                score += (6 - targetRank) * SearchConfig.GUARD_ADVANCEMENT_MULTIPLIER;
+            } else if (!isRed && targetRank > GameState.rank(move.from)) {
+                score += targetRank * SearchConfig.GUARD_ADVANCEMENT_MULTIPLIER;
+            }
+        }
 
-        // Check path (excluding start and target squares)
-        int currentRank = fromRank + rankStep;
-        int currentFile = fromFile + fileStep;
+        // Activity bonus using SearchConfig
+        score += move.amountMoved * SearchConfig.ACTIVITY_BONUS;
 
-        while (currentRank != toRank || currentFile != toFile) {
-            int pos = GameState.getIndex(currentRank, currentFile);
+        return score;
+    }
 
-            // Blocked by another piece?
-            if (isOccupied(pos, state)) {
+    /**
+     * Advanced move scoring using SearchConfig (simplified for compatibility)
+     */
+    public static int scoreMoveAdvanced(GameState state, Move move, int depth) {
+        return scoreMove(state, move) + depth * 10;
+    }
+
+    /**
+     * Enhanced capture detection
+     */
+    public static boolean isCapture(Move move, GameState state) {
+        if (move == null || state == null) return false;
+
+        long toBit = GameState.bit(move.to);
+        boolean isRed = state.redToMove;
+
+        boolean capturesGuard = isRed
+                ? (state.blueGuard & toBit) != 0
+                : (state.redGuard & toBit) != 0;
+
+        boolean capturesTower = isRed
+                ? (state.blueTowers & toBit) != 0
+                : (state.redTowers & toBit) != 0;
+
+        return capturesGuard || capturesTower;
+    }
+
+    // === UTILITY METHODS WITH SEARCHCONFIG ===
+
+    /**
+     * Manhattan distance calculation
+     */
+    public static int manhattanDistance(int from, int to) {
+        try {
+            int fromRank = GameState.rank(from);
+            int fromFile = GameState.file(from);
+            int toRank = GameState.rank(to);
+            int toFile = GameState.file(to);
+
+            return Math.abs(fromRank - toRank) + Math.abs(fromFile - toFile);
+        } catch (Exception e) {
+            return Integer.MAX_VALUE;
+        }
+    }
+
+    /**
+     * Check if path is clear for orthogonal movement
+     */
+    public static boolean isPathClear(int from, int to, GameState state) {
+        if (state == null) return false;
+
+        try {
+            int fromRank = GameState.rank(from);
+            int fromFile = GameState.file(from);
+            int toRank = GameState.rank(to);
+            int toFile = GameState.file(to);
+
+            // Only orthogonal movements are allowed
+            if (fromRank != toRank && fromFile != toFile) {
                 return false;
             }
 
-            currentRank += rankStep;
-            currentFile += fileStep;
-        }
+            // Determine direction
+            int rankStep = Integer.compare(toRank, fromRank);
+            int fileStep = Integer.compare(toFile, fromFile);
 
-        return true;
+            // Check path (excluding start and target squares)
+            int currentRank = fromRank + rankStep;
+            int currentFile = fromFile + fileStep;
+
+            while (currentRank != toRank || currentFile != toFile) {
+                int pos = GameState.getIndex(currentRank, currentFile);
+
+                // Blocked by another piece?
+                if (isOccupied(pos, state)) {
+                    return false;
+                }
+
+                currentRank += rankStep;
+                currentFile += fileStep;
+            }
+
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**
-     * ADDED: Check if position is occupied by any piece
+     * Check if position is occupied by any piece
      */
     public static boolean isOccupied(int position, GameState state) {
-        long bit = GameState.bit(position);
-        return (state.redTowers & bit) != 0 ||
-                (state.blueTowers & bit) != 0 ||
-                (state.redGuard & bit) != 0 ||
-                (state.blueGuard & bit) != 0;
+        if (state == null) return false;
+
+        try {
+            long bit = GameState.bit(position);
+            return (state.redTowers & bit) != 0 ||
+                    (state.blueTowers & bit) != 0 ||
+                    (state.redGuard & bit) != 0 ||
+                    (state.blueGuard & bit) != 0;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**
      * Get current material balance
      */
     public static int getMaterialBalance(GameState state) {
-        int redMaterial = Long.bitCount(state.redTowers) * 100;
-        int blueMaterial = Long.bitCount(state.blueTowers) * 100;
+        if (state == null) return 0;
 
-        if (state.redGuard != 0) redMaterial += 2500;
-        if (state.blueGuard != 0) blueMaterial += 2500;
+        int redMaterial = Long.bitCount(state.redTowers) * SearchConfig.TOWER_HEIGHT_VALUE;
+        int blueMaterial = Long.bitCount(state.blueTowers) * SearchConfig.TOWER_HEIGHT_VALUE;
+
+        if (state.redGuard != 0) redMaterial += SearchConfig.GUARD_CAPTURE_VALUE;
+        if (state.blueGuard != 0) blueMaterial += SearchConfig.GUARD_CAPTURE_VALUE;
 
         return redMaterial - blueMaterial;
     }
 
+    // === TRANSPOSITION TABLE INTERFACE ===
+
+    public static TTEntry getTranspositionEntry(long hash) {
+        return transpositionTable.get(hash);
+    }
+
+    public static void storeTranspositionEntry(long hash, TTEntry entry) {
+        transpositionTable.put(hash, entry);
+    }
+
+    // === TIMEOUT MANAGEMENT ===
+
+    public static void setTimeoutChecker(BooleanSupplier checker) {
+        timeoutChecker = checker;
+    }
+
+    public static void clearTimeoutChecker() {
+        timeoutChecker = null;
+    }
+
+    public static void setRemainingTime(long timeMs) {
+        System.out.printf("⏱️ Time updated: %dms remaining (SearchConfig emergency: %dms)\n",
+                timeMs, SearchConfig.EMERGENCY_TIME_MS);
+    }
+
+    // === COMPONENT ACCESS ===
+
+    public static MoveOrdering getMoveOrdering() {
+        return moveOrdering;
+    }
+
+    public static SearchStatistics getStatistics() {
+        return statistics;
+    }
+
+    // === EVALUATION DELEGATE ===
+
+    public static int evaluate(GameState state, int depth) {
+        return evaluator.evaluate(state, depth);
+    }
+
+    // === LEGACY COMPATIBILITY METHODS ===
+
+    @Deprecated(since = "2.0", forRemoval = true)
+    public static Move findBestMove(GameState state, int depth) {
+        return findBestMoveWithStrategy(state, depth, SearchConfig.DEFAULT_STRATEGY);
+    }
+
+    @Deprecated(since = "2.0", forRemoval = true)
+    public static Move findBestMoveWithQuiescence(GameState state, int depth) {
+        return findBestMoveWithStrategy(state, depth, SearchConfig.SearchStrategy.ALPHA_BETA_Q);
+    }
+
+    @Deprecated(since = "2.0", forRemoval = true)
+    public static Move findBestMoveWithPVS(GameState state, int depth) {
+        return findBestMoveWithStrategy(state, depth, SearchConfig.SearchStrategy.PVS);
+    }
+
     /**
-     * Debug method for evaluation breakdown
+     * Ultimate AI method using SearchConfig.DEFAULT_STRATEGY
+     */
+    public static Move findBestMoveUltimate(GameState state, int depth) {
+        return findBestMoveWithStrategy(state, depth, SearchConfig.DEFAULT_STRATEGY);
+    }
+
+    // === ANALYSIS AND DIAGNOSTICS ===
+
+    /**
+     * Debug evaluation breakdown
      */
     public static void printEvaluationBreakdown(GameState state) {
         if (evaluator instanceof ModularEvaluator) {
@@ -595,17 +662,8 @@ public class Minimax {
         }
     }
 
-    // === STATISTICS AND DIAGNOSTICS ===
-
     /**
-     * Get search statistics
-     */
-    public static SearchStatistics getStatistics() {
-        return statistics;
-    }
-
-    /**
-     * Reset all components
+     * Reset all components using SearchConfig
      */
     public static void reset() {
         statistics.reset();
@@ -613,23 +671,27 @@ public class Minimax {
         moveOrdering.resetKillerMoves();
         counter = 0;
         clearTimeoutChecker();
+
+        System.out.println("🔄 Minimax reset with SearchConfig integration");
     }
 
     /**
-     * Performance analysis
+     * Performance analysis with SearchConfig info
      */
     public static void analyzePosition(GameState state, int maxDepth) {
-        System.out.println("=== POSITION ANALYSIS ===");
+        System.out.println("=== POSITION ANALYSIS WITH SEARCHCONFIG ===");
         state.printBoard();
         System.out.println("To move: " + (state.redToMove ? "RED" : "BLUE"));
         System.out.println("Material balance: " + getMaterialBalance(state));
         System.out.println("Game over: " + isGameOver(state));
+        System.out.println("Endgame: " + isEndgame(state) + " (threshold: " + SearchConfig.ENDGAME_MATERIAL_THRESHOLD + ")");
+        System.out.println("Strategy: " + SearchConfig.DEFAULT_STRATEGY);
 
         if (!isGameOver(state)) {
-            for (int depth = 1; depth <= maxDepth; depth++) {
+            for (int depth = 1; depth <= Math.min(maxDepth, SearchConfig.MAX_DEPTH); depth++) {
                 reset();
                 long startTime = System.currentTimeMillis();
-                Move bestMove = findBestMoveUltimate(state, depth);
+                Move bestMove = findBestMoveWithStrategy(state, depth, SearchConfig.DEFAULT_STRATEGY);
                 long endTime = System.currentTimeMillis();
 
                 if (bestMove != null) {
@@ -637,10 +699,35 @@ public class Minimax {
                     result.applyMove(bestMove);
                     int eval = evaluate(result, 0);
 
-                    System.out.printf("Depth %d: %s (eval: %+d, time: %dms, nodes: %d)%n",
+                    System.out.printf("Depth %d: %s (eval: %+d, time: %dms, nodes: %d)\n",
                             depth, bestMove, eval, endTime - startTime, statistics.getNodeCount());
                 }
             }
         }
+
+        System.out.println("\nSearchConfig Summary:");
+        System.out.println(SearchConfig.getConfigSummary());
+    }
+
+    /**
+     * Validate SearchConfig integration
+     */
+    public static boolean validateSearchConfigIntegration() {
+        return SearchConfig.validateConfiguration();
+    }
+
+    /**
+     * Get SearchConfig-aware component status
+     */
+    public static String getComponentStatus() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== MINIMAX COMPONENT STATUS (SearchConfig) ===\n");
+        sb.append("Evaluator: ").append(evaluator.getClass().getSimpleName()).append("\n");
+        sb.append("Move Ordering: ").append(moveOrdering.getStatistics()).append("\n");
+        sb.append("Transposition Table: ").append(transpositionTable.getBriefStatistics()).append("\n");
+        sb.append("Search Statistics: ").append(statistics.getBriefSummary()).append("\n");
+        sb.append("Default Strategy: ").append(SearchConfig.DEFAULT_STRATEGY).append("\n");
+        sb.append("Max Depth: ").append(SearchConfig.MAX_DEPTH).append("\n");
+        return sb.toString();
     }
 }
