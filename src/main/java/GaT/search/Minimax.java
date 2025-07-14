@@ -28,8 +28,8 @@ public class Minimax {
     private static final SearchStatistics statistics = SearchStatistics.getInstance();
 
     // === CASTLE POSITIONS ===
-    public static final int RED_CASTLE_INDEX = GameState.getIndex(0, 3); // D1
-    public static final int BLUE_CASTLE_INDEX = GameState.getIndex(6, 3); // D7
+    public static final int RED_CASTLE_INDEX = GameState.getIndex(6, 3); // D7
+    public static final int BLUE_CASTLE_INDEX = GameState.getIndex(0, 3); // D1
 
     // === TIMEOUT SUPPORT ===
     private static BooleanSupplier timeoutChecker = null;

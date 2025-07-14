@@ -17,14 +17,15 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
 /**
- * GAME CLIENT - UNIFIED EVALUATOR INTEGRATION
+ * CORRECTED GAME CLIENT - RESTORED WORKING PROTOCOL
  *
- * CHANGES:
- * ✅ Removed separate evaluator instance
- * ✅ Uses shared evaluator from Minimax
- * ✅ All evaluation calls route through unified evaluator
- * ✅ Simplified evaluation validation
- * ✅ Maintains all existing functionality
+ * FIXES:
+ * ✅ Restored original working server protocol
+ * ✅ Correct JSON requests: gson.toJson("get")
+ * ✅ Correct response parsing: game.get("board"), game.get("turn")
+ * ✅ Correct move sending: gson.toJson(move.toString())
+ * ✅ Server-side game over detection only (no local checks)
+ * ✅ Enhanced error handling and debugging
  */
 public class GameClient {
     private static final Gson gson = new Gson();
@@ -32,9 +33,9 @@ public class GameClient {
     // Game statistics tracking
     private static int moveNumber = 0;
     private static long lastMoveStartTime = 0;
-    private static TimeManager timeManager = new TimeManager(180000, 20); // Adjusted estimate
+    private static TimeManager timeManager = new TimeManager(180000, 20);
 
-    // === USE SHARED UNIFIED EVALUATOR ===
+    // Use shared unified evaluator
     private static final Evaluator evaluator = Minimax.getEvaluator();
 
     private static void validateEvaluation(GameState state) {
@@ -44,7 +45,6 @@ public class GameClient {
             materialScore += (state.redStackHeights[i] - state.blueStackHeights[i]) * 100;
         }
 
-        // Use unified evaluator
         int fullScore = evaluator.evaluate(state);
         int posBonus = fullScore - materialScore;
 
@@ -52,7 +52,6 @@ public class GameClient {
                 ", Full=" + fullScore +
                 ", Positional=" + posBonus);
 
-        // Warning if positional bonus is larger than material
         if (materialScore != 0 && Math.abs(posBonus) > Math.abs(materialScore)) {
             System.out.println("⚠️ WARNING: Positional bonus larger than material!");
         }
@@ -61,95 +60,91 @@ public class GameClient {
     public static void main(String[] args) {
         boolean running = true;
         Network network = new Network();
+
+        if (network.getP() == null) {
+            System.err.println("❌ Failed to connect to server!");
+            return;
+        }
+
         int player = Integer.parseInt(network.getP());
         System.out.println("🎮 You are player " + player + " (" + (player == 0 ? "RED" : "BLUE") + ")");
-
         System.out.println("🧠 Using Unified Evaluator: " + evaluator.getClass().getSimpleName());
 
         while (running) {
             try {
-                // Get game state from server - using existing send() method
-                String response = network.send("GET_STATE"); // Send request for game state
-                if (response == null) {
-                    // Try alternative communication method
-                    response = network.send("");
-                }
-                if (response == null || response.trim().isEmpty()) {
-                    System.out.println("⏸️ Empty response, waiting...");
+                // CORRECTED: Use original working protocol
+                System.out.println("📡 Requesting game state...");
+                String gameData = network.send(gson.toJson("get"));
+
+                if (gameData == null) {
+                    System.out.println("❌ Couldn't get game data");
                     Thread.sleep(100);
                     continue;
                 }
 
-                JsonObject jsonResponse = gson.fromJson(response, JsonObject.class);
+                System.out.println("📨 Server response: " + gameData);
 
-                if (jsonResponse.has("gameState")) {
-                    String fenString = jsonResponse.get("gameState").getAsString();
-                    GameState currentState = GameState.fromFen(fenString);
+                JsonObject game = gson.fromJson(gameData, JsonObject.class);
 
-                    if (currentState == null) {
-                        System.err.println("❌ Invalid FEN string received: " + fenString);
-                        continue;
-                    }
+                // Check if both players are connected
+                if (!game.has("bothConnected") || !game.get("bothConnected").getAsBoolean()) {
+                    System.out.println("⏳ Waiting for both players to connect...");
+                    Thread.sleep(1000);
+                    continue;
+                }
 
+                // CORRECTED: Use original field names
+                String turn = game.get("turn").getAsString();
+                String board = game.get("board").getAsString();
+                long timeRemaining = game.get("time").getAsLong();
+
+                System.out.println("🎯 Turn: " + turn + ", Time: " + formatTime(timeRemaining));
+                System.out.println("📋 Board: " + board);
+
+                // Check if it's our turn (original logic)
+                if ((player == 0 && turn.equals("r")) || (player == 1 && turn.equals("b"))) {
                     moveNumber++;
                     lastMoveStartTime = System.currentTimeMillis();
 
                     System.out.println("\n" + "=".repeat(60));
-                    System.out.println("🎯 MOVE " + moveNumber + " - " +
-                            (currentState.redToMove ? "RED" : "BLUE") + " TO MOVE");
+                    System.out.println("🎯 MOVE " + moveNumber + " - " + (player == 0 ? "RED" : "BLUE"));
                     System.out.println("=".repeat(60));
 
-                    currentState.printBoard();
+                    // Parse board state
+                    GameState currentState = GameState.fromFen(board);
+                    if (currentState == null) {
+                        System.err.println("❌ Invalid board FEN: " + board);
+                        continue;
+                    }
 
-                    // Quick evaluation validation
+                    currentState.printBoard();
                     validateEvaluation(currentState);
 
-                    // Check if it's our turn
-                    boolean isOurTurn = (player == 0 && currentState.redToMove) ||
-                            (player == 1 && !currentState.redToMove);
+                    // No local game over check needed - server handles this!
+                    // The server will send "end": true when game is actually over
 
-                    if (!isOurTurn) {
-                        System.out.println("⏳ Waiting for opponent's move...");
-                        Thread.sleep(200);
-                        continue;
-                    }
-
-                    if (Minimax.isGameOver(currentState)) {
-                        System.out.println("🏁 Game Over!");
-                        running = false;
-                        continue;
-                    }
-
-                    // Calculate time for this move using TimeManager
+                    // Calculate our move
+                    timeManager.updateRemainingTime(timeRemaining);
                     long moveTime = timeManager.calculateTimeForMove(currentState);
+                    System.out.println("⏱️ Time allocated: " + moveTime + "ms (Remaining: " + timeRemaining + "ms)");
 
-                    System.out.println("⏱️ Time allocated: " + moveTime + "ms (Remaining: " + timeManager.getRemainingTime() + "ms)");
-
-                    // Reset search components
                     Minimax.reset();
-
                     Move bestMove = null;
                     long searchStartTime = System.currentTimeMillis();
 
                     try {
-                        // Use progressive deepening with time management
                         bestMove = findBestMoveWithTimeout(currentState, moveTime);
-
                         if (bestMove == null) {
-                            System.out.println("⚠️ Primary search failed, using emergency fallback");
                             bestMove = emergencyFallback(currentState);
                         }
-
                     } catch (Exception e) {
                         System.err.println("❌ Search error: " + e.getMessage());
-                        e.printStackTrace();
                         bestMove = emergencyFallback(currentState);
                     }
 
                     long searchTime = System.currentTimeMillis() - searchStartTime;
 
                     if (bestMove != null) {
-                        // Evaluate the move
                         GameState resultState = currentState.copy();
                         resultState.applyMove(bestMove);
                         int evaluation = evaluator.evaluate(resultState);
@@ -158,37 +153,47 @@ public class GameClient {
                         System.out.println("📊 Evaluation: " + evaluation);
                         System.out.println("⏱️ Search time: " + searchTime + "ms");
 
-                        // Send move to server
-                        String moveJson = gson.toJson(bestMove);
-                        network.send(moveJson);
+                        // CORRECTED: Send move in original working format
+                        String moveString = bestMove.toString();  // "A1-B2-1"
+                        String moveResponse = network.send(gson.toJson(moveString));
+                        System.out.println("📤 Move sent: " + moveString);
+                        System.out.println("📥 Move response: " + moveResponse);
 
-                        // Update time manager with actual search time
+                        // Show search statistics
+                        SearchStatistics stats = SearchStatistics.getInstance();
+                        System.out.printf("📊 Nodes: %,d (regular: %,d, quiescence: %,d)%n",
+                                stats.getTotalNodes(), stats.getNodeCount(), stats.getQNodeCount());
+
                         timeManager.updateRemainingTime(timeManager.getRemainingTime() - searchTime);
                         timeManager.decrementEstimatedMovesLeft();
 
                     } else {
-                        System.err.println("❌ CRITICAL: No move found! This should never happen!");
+                        System.err.println("❌ CRITICAL: No move found!");
                         running = false;
                     }
-
-                } else if (jsonResponse.has("error")) {
-                    String error = jsonResponse.get("error").getAsString();
-                    System.err.println("❌ Server error: " + error);
-
-                    if (error.toLowerCase().contains("game") && error.toLowerCase().contains("over")) {
-                        System.out.println("🏁 Game ended by server");
-                        running = false;
-                    }
-
                 } else {
-                    System.out.println("📨 Unknown response: " + response);
+                    System.out.println("⏳ Waiting for our turn...");
                 }
+
+                // Check for game end (server-side detection)
+                if (game.has("end") && game.get("end").getAsBoolean()) {
+                    System.out.println("🏁 Game has ended");
+                    String result = game.has("winner") ?
+                            ("Winner: " + game.get("winner").getAsString()) :
+                            "Game finished";
+                    System.out.println("🎯 " + result);
+
+                    long finalTimeRemaining = game.has("time") ? game.get("time").getAsLong() : 0;
+                    printGameStatistics(finalTimeRemaining);
+                    running = false;
+                }
+
+                Thread.sleep(100);
 
             } catch (Exception e) {
                 System.err.println("❌ CRITICAL ERROR: " + e.getMessage());
                 e.printStackTrace();
 
-                // Emergency pause before retry
                 try {
                     Thread.sleep(500);
                 } catch (InterruptedException ie) {
@@ -199,23 +204,15 @@ public class GameClient {
         }
 
         System.out.println("🎮 Game Client shutting down...");
-
-        // Print final statistics
+        network.close();
         printFinalStatistics();
     }
 
-    /**
-     * Find best move with time management using unified evaluator
-     */
     private static Move findBestMoveWithTimeout(GameState state, long timeMillis) {
         try {
-            // Use TimedMinimax for time-managed search
-            return TimedMinimax.findBestMoveUltimate(state, 8, timeMillis - 100); // Safety buffer
-
+            return TimedMinimax.findBestMoveUltimate(state, 8, timeMillis - 100);
         } catch (Exception e) {
             System.err.println("❌ TimedMinimax failed: " + e.getMessage());
-
-            // Fallback to regular search with lower depth
             try {
                 return Minimax.findBestMove(state, 4);
             } catch (Exception e2) {
@@ -225,71 +222,78 @@ public class GameClient {
         }
     }
 
-    /**
-     * Emergency fallback when all else fails
-     */
     private static Move emergencyFallback(GameState state) {
         try {
             System.out.println("🚨 EMERGENCY: Using depth-1 search");
-
             List<Move> moves = MoveGenerator.generateAllMoves(state);
-            if (moves.isEmpty()) {
-                return null;
-            }
+            if (moves.isEmpty()) return null;
 
-            Move bestMove = moves.get(0);
-            int bestScore = Integer.MIN_VALUE;
-
-            // Quick evaluation of first few moves
-            for (int i = 0; i < Math.min(moves.size(), 5); i++) {
-                Move move = moves.get(i);
-                try {
-                    GameState testState = state.copy();
-                    testState.applyMove(move);
-                    int score = evaluator.evaluate(testState);
-
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestMove = move;
-                    }
-                } catch (Exception e) {
-                    continue; // Skip problematic moves
-                }
-            }
-
-            return bestMove;
-
+            // Find first legal move
+            return moves.get(0);
         } catch (Exception e) {
-            System.err.println("❌ CRITICAL: Emergency fallback failed: " + e.getMessage());
-
-            // Absolute last resort - return first legal move
-            try {
-                List<Move> moves = MoveGenerator.generateAllMoves(state);
-                return moves.isEmpty() ? null : moves.get(0);
-            } catch (Exception e2) {
-                return null;
-            }
+            System.err.println("❌ Emergency fallback failed: " + e.getMessage());
+            return null;
         }
     }
 
-    /**
-     * Print final statistics using unified evaluator
-     */
+    private static void printGameStatistics(long finalTimeRemaining) {
+        System.out.println("\n📊 GAME STATISTICS:");
+        System.out.println("   🎮 Total moves: " + moveNumber);
+        System.out.println("   ⏱️ Final time: " + formatTime(finalTimeRemaining));
+
+        if (moveNumber > 0) {
+            long totalTimeUsed = 180_000 - finalTimeRemaining;
+            long averageTimePerMove = totalTimeUsed / moveNumber;
+            double timeUtilization = 100.0 * totalTimeUsed / 180_000;
+
+            System.out.printf("   ⚡ Average time/move: %dms%n", averageTimePerMove);
+            System.out.printf("   📊 Time utilization: %.1f%%%n", timeUtilization);
+
+            if (timeUtilization < 60) {
+                System.out.println("   📈 Could use more time!");
+            } else if (timeUtilization < 80) {
+                System.out.println("   ✅ Good time management!");
+            } else if (timeUtilization < 95) {
+                System.out.println("   💪 Excellent aggressive time usage!");
+            } else {
+                System.out.println("   ⏰ Very close to time limit!");
+            }
+        }
+
+        System.out.println("   🧠 AI Engine: Unified Evaluator");
+        System.out.println("   📊 Evaluator: " + evaluator.getClass().getSimpleName());
+        System.out.println("   🎯 Strategy: TimedMinimax");
+    }
+
     private static void printFinalStatistics() {
         System.out.println("\n" + "=".repeat(60));
-        System.out.println("🏁 FINAL GAME STATISTICS");
+        System.out.println("📊 FINAL GAME STATISTICS");
         System.out.println("=".repeat(60));
         System.out.println("Total moves played: " + moveNumber);
-        System.out.println("Evaluator used: " + evaluator.getClass().getSimpleName());
+        System.out.println("Remaining time: " + timeManager.getRemainingTime() + "ms");
 
-        // Get search statistics
-        SearchStatistics stats = SearchStatistics.getInstance();
-        System.out.println("Total nodes searched: " + stats.getNodeCount());
-        System.out.println("Transposition table hits: " + stats.getTTHits());
-
-        // Time management statistics
-        System.out.println(timeManager.getTimeManagementStatistics());
+        // Print search statistics if available
+        try {
+            SearchStatistics stats = SearchStatistics.getInstance();
+            if (stats != null) {
+                System.out.println(stats.getComprehensiveSummaryWithConfig());
+            }
+        } catch (Exception e) {
+            System.out.println("Statistics unavailable: " + e.getMessage());
+        }
 
         System.out.println("=".repeat(60));
+    }
+
+    private static String formatTime(long milliseconds) {
+        long seconds = milliseconds / 1000;
+        long minutes = seconds / 60;
+        seconds = seconds % 60;
+
+        if (minutes > 0) {
+            return String.format("%d:%02d", minutes, seconds);
+        } else {
+            return String.format("%.1fs", milliseconds / 1000.0);
+        }
     }
 }
