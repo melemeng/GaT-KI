@@ -96,7 +96,7 @@ public class SearchConfig {
     public static final int ACTIVITY_BONUS = 5;
 
     // === QUIESCENCE SEARCH CONFIGURATION ===
-    public static final int MAX_Q_DEPTH = 12;
+    public static final int MAX_Q_DEPTH = 16;
     public static final int MAX_TACTICAL_RECURSION = 2;
     public static final int Q_DELTA_MARGIN = 150;
     public static final int Q_FUTILITY_THRESHOLD = 78;
@@ -120,12 +120,6 @@ public class SearchConfig {
     public static final int TACTICAL_DISTANCE_THRESHOLD = 3;
     public static final int TACTICAL_HEIGHT_THRESHOLD = 3;
     public static final int QUIET_POSITION_THRESHOLD = 4;
-
-    // === EVALUATION WEIGHTS ===
-    public static final int MATERIAL_WEIGHT = 100;
-    public static final int POSITIONAL_WEIGHT = 50;
-    public static final int SAFETY_WEIGHT = 75;
-    public static final int MOBILITY_WEIGHT = 25;
 
     // === GAME PHASE THRESHOLDS ===
     public static final int ENDGAME_MATERIAL_THRESHOLD = 8;
