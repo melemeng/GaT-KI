@@ -26,7 +26,7 @@ public class SearchConfig {
     public static final SearchStrategy DEFAULT_STRATEGY = SearchStrategy.PVS_Q;
 
     // === TRANSPOSITION TABLE ===
-    public static final int TT_SIZE = 2_000_000;
+    public static final int TT_SIZE = 8_000_000;
     public static final int TT_EVICTION_THRESHOLD = 1_500_000;
 
     // === ASPIRATION WINDOW PARAMETERS ===
@@ -37,7 +37,7 @@ public class SearchConfig {
     // === NULL-MOVE PRUNING CONFIGURATION ===
     public static final boolean NULL_MOVE_ENABLED = true;
     public static final int NULL_MOVE_MIN_DEPTH = 3;
-    public static final int NULL_MOVE_REDUCTION = 2;
+    public static final int NULL_MOVE_REDUCTION = 3;
     public static final int NULL_MOVE_VERIFICATION_DEPTH = 4;
 
     // === FUTILITY PRUNING CONFIGURATION ===
@@ -47,8 +47,8 @@ public class SearchConfig {
 
     // === LATE MOVE REDUCTIONS (LMR) ===
     public static final int LMR_MIN_DEPTH = 3;
-    public static final int LMR_MIN_MOVE_COUNT = 4;
-    public static final int LMR_BASE_REDUCTION = 1;
+    public static final int LMR_MIN_MOVE_COUNT = 3;
+    public static final int LMR_BASE_REDUCTION = 2;
     public static final int LMR_MAX_REDUCTION = 3;
     public static final int LMR_MOVE_INDEX_THRESHOLD_1 = 8;
     public static final int LMR_MOVE_INDEX_THRESHOLD_2 = 16;
@@ -96,9 +96,9 @@ public class SearchConfig {
     public static final int ACTIVITY_BONUS = 5;
 
     // === QUIESCENCE SEARCH CONFIGURATION ===
-    public static final int MAX_Q_DEPTH = 16;
+    public static final int MAX_Q_DEPTH = 4;
     public static final int MAX_TACTICAL_RECURSION = 2;
-    public static final int Q_DELTA_MARGIN = 150;
+    public static final int Q_DELTA_MARGIN = 300;
     public static final int Q_FUTILITY_THRESHOLD = 78;
     public static final int Q_HISTORY_UPDATE_DEPTH = 2;
 
