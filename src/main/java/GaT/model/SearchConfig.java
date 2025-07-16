@@ -25,18 +25,18 @@ public class SearchConfig {
     // === DEFAULT SEARCH STRATEGY ===
     public static final SearchStrategy DEFAULT_STRATEGY = SearchStrategy.PVS_Q;
 
-    // === TRANSPOSITION TABLE ===
-    public static final int TT_SIZE = 8_000_000;
-    public static final int TT_EVICTION_THRESHOLD = 1_500_000;
+    // === TRANSPOSITION TABLE - OPTIMIZED FOR 7x7 BOARD ===
+    public static final int TT_SIZE = 4_000_000;                  // Optimized (was 8M)
+    public static final int TT_EVICTION_THRESHOLD = 1_000_000;    // Proportionally smaller
 
-    // === ASPIRATION WINDOW PARAMETERS ===
-    public static final int ASPIRATION_WINDOW_DELTA = 50;
+    // === ASPIRATION WINDOW PARAMETERS - TUNED FOR TACTICAL GAME ===
+    public static final int ASPIRATION_WINDOW_DELTA = 35;         // Smaller (was 50)
     public static final int ASPIRATION_WINDOW_MAX_FAILS = 3;
-    public static final int ASPIRATION_WINDOW_GROWTH_FACTOR = 4;
+    public static final int ASPIRATION_WINDOW_GROWTH_FACTOR = 3;  // Smaller growth (was 4)
 
-    // === NULL-MOVE PRUNING CONFIGURATION ===
+    // === NULL-MOVE PRUNING - MORE CONSERVATIVE FOR TURM & WÄCHTER ===
     public static final boolean NULL_MOVE_ENABLED = true;
-    public static final int NULL_MOVE_MIN_DEPTH = 3;
+    public static final int NULL_MOVE_MIN_DEPTH = 4;              // More conservative (was 3)
     public static final int NULL_MOVE_REDUCTION = 3;
     public static final int NULL_MOVE_VERIFICATION_DEPTH = 4;
 
@@ -45,15 +45,15 @@ public class SearchConfig {
     public static final int[] FUTILITY_MARGINS = {0, 150, 300, 450};
     public static final int[] REVERSE_FUTILITY_MARGINS = {0, 120, 240, 360};
 
-    // === LATE MOVE REDUCTIONS (LMR) ===
-    public static final int LMR_MIN_DEPTH = 3;
-    public static final int LMR_MIN_MOVE_COUNT = 3;
-    public static final int LMR_BASE_REDUCTION = 2;
-    public static final int LMR_MAX_REDUCTION = 3;
-    public static final int LMR_MOVE_INDEX_THRESHOLD_1 = 8;
-    public static final int LMR_MOVE_INDEX_THRESHOLD_2 = 16;
-    public static final int LMR_DEPTH_THRESHOLD = 8;
-    public static final int LMR_HIGH_ACTIVITY_THRESHOLD = 4;
+    // === LATE MOVE REDUCTIONS (LMR) - TUNED FOR TURM & WÄCHTER ===
+    public static final int LMR_MIN_DEPTH = 3;               // Keep same (good for tactical game)
+    public static final int LMR_MIN_MOVE_COUNT = 2;          // More aggressive (was 3)
+    public static final int LMR_BASE_REDUCTION = 1;          // More conservative (was 2)
+    public static final int LMR_MAX_REDUCTION = 2;           // Reduced (was 3)
+    public static final int LMR_MOVE_INDEX_THRESHOLD_1 = 6;  // Keep same
+    public static final int LMR_MOVE_INDEX_THRESHOLD_2 = 12; // Keep same
+    public static final int LMR_DEPTH_THRESHOLD = 8;         // Keep same
+    public static final int LMR_HIGH_ACTIVITY_THRESHOLD = 4; // Important for large tower moves
 
     // === EXTENSIONS ===
     public static final int CHECK_EXTENSION_DEPTH = 1;
@@ -95,11 +95,11 @@ public class SearchConfig {
     public static final int POSITIONAL_MAX_SCORE = 500;
     public static final int ACTIVITY_BONUS = 5;
 
-    // === QUIESCENCE SEARCH CONFIGURATION ===
-    public static final int MAX_Q_DEPTH = 4;
-    public static final int MAX_TACTICAL_RECURSION = 2;
-    public static final int Q_DELTA_MARGIN = 300;
-    public static final int Q_FUTILITY_THRESHOLD = 78;
+    // === QUIESCENCE SEARCH - DEEPER FOR TACTICAL POSITIONS ===
+    public static final int MAX_Q_DEPTH = 6;                      // Deeper (was 4)
+    public static final int MAX_TACTICAL_RECURSION = 3;           // Increased (was 2)
+    public static final int Q_DELTA_MARGIN = 200;                 // Smaller (was 300)
+    public static final int Q_FUTILITY_THRESHOLD = 60;            // Smaller (was 78)
     public static final int Q_HISTORY_UPDATE_DEPTH = 2;
 
     // === QUIESCENCE SCORING ===
@@ -174,8 +174,9 @@ public class SearchConfig {
     public static final int MIN_SEARCH_DEPTH_ADAPTIVE = 1;
     public static final int MAX_ADAPTIVE_DEPTH_INCREASE = 2;
 
-    public static final long NODES_PER_SECOND_TARGET = 100_000;
-    public static final long MAX_NODES_PER_SEARCH = 1_000_000;
+    // === PERFORMANCE TARGETS - UPDATED FOR OPTIMIZED SEARCH ===
+    public static final long NODES_PER_SECOND_TARGET = 150_000;   // Higher target (was 100k)
+    public static final long MAX_NODES_PER_SEARCH = 750_000;      // More efficient search
 
     // === DEBUGGING AND TUNING PARAMETERS ===
     public static final boolean SEARCH_LOGGING_ENABLED = false;
@@ -185,6 +186,19 @@ public class SearchConfig {
     public static final boolean COLLECT_STATISTICS = true;
     public static final boolean EXPORT_STATISTICS_CSV = false;
 
+    // === GAME-SPECIFIC TUNING FOR TURM & WÄCHTER ===
+// Guard moves are critical in this game
+    public static final int GUARD_MOVE_BONUS = 50;                // NEW: Bonus for guard moves
+    public static final int CASTLE_APPROACH_BONUS = 100;          // NEW: Bonus for moves toward castle
+    public static final int TOWER_MOBILITY_THRESHOLD = 3;         // NEW: High mobility threshold
+
+    // Endgame detection (fewer pieces = different strategy)
+    public static final int ENDGAME_PIECE_THRESHOLD = 6;          // NEW: Total pieces for endgame
+    public static final double ENDGAME_TIME_FACTOR = 1.5;         // NEW: Spend more time in endgame
+
+    // Tactical position detection
+    public static final int TACTICAL_POSITION_THRESHOLD = 2;      // NEW: Captures/threats for tactical
+    public static final double TACTICAL_TIME_FACTOR = 1.3;       // NEW: More time for tactical positions
     // === SEARCH STRATEGY ENUM ===
     public enum SearchStrategy {
         ALPHA_BETA("Alpha-Beta"),
