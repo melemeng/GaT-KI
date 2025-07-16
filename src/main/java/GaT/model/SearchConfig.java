@@ -57,7 +57,7 @@ public class SearchConfig {
 
     // === EXTENSIONS ===
     public static final int CHECK_EXTENSION_DEPTH = 1;
-    public static final int MAX_EXTENSION_DEPTH = 10;
+    public static final int MAX_EXTENSION_DEPTH = 3;
 
     // === HISTORY HEURISTIC CONFIGURATION ===
     public static final int HISTORY_MAX_VALUE = 10000;
@@ -100,7 +100,7 @@ public class SearchConfig {
     public static final int MAX_TACTICAL_RECURSION = 3;           // Increased (was 2)
     public static final int Q_DELTA_MARGIN = 200;                 // Smaller (was 300)
     public static final int Q_FUTILITY_THRESHOLD = 60;            // Smaller (was 78)
-    public static final int Q_HISTORY_UPDATE_DEPTH = 2;
+    public static final int Q_HISTORY_UPDATE_DEPTH = 3;
 
     // === QUIESCENCE SCORING ===
     public static final int Q_CAPTURE_SCORE_MULTIPLIER = 10;
@@ -148,9 +148,9 @@ public class SearchConfig {
 
     // === CHECKMATE AND WIN DETECTION ===
     public static final int CHECKMATE_THRESHOLD = 10000;
-    public static final int FORCED_MATE_THRESHOLD = 2400;
-    public static final int WINNING_SCORE_THRESHOLD = 2000;
-    public static final int MIN_SEARCH_DEPTH = 5;
+    public static final int FORCED_MATE_THRESHOLD = 9500;
+    public static final int WINNING_SCORE_THRESHOLD = 8000;
+    public static final int MIN_SEARCH_DEPTH = 6;
 
     // === ADVANCED PRUNING PARAMETERS ===
     public static final boolean RAZORING_ENABLED = true;
@@ -175,7 +175,7 @@ public class SearchConfig {
     public static final int MAX_ADAPTIVE_DEPTH_INCREASE = 2;
 
     // === PERFORMANCE TARGETS - UPDATED FOR OPTIMIZED SEARCH ===
-    public static final long NODES_PER_SECOND_TARGET = 150_000;   // Higher target (was 100k)
+    public static final long NODES_PER_SECOND_TARGET = 500_000;   // Higher target (was 100k)
     public static final long MAX_NODES_PER_SEARCH = 750_000;      // More efficient search
 
     // === DEBUGGING AND TUNING PARAMETERS ===
@@ -199,6 +199,10 @@ public class SearchConfig {
     // Tactical position detection
     public static final int TACTICAL_POSITION_THRESHOLD = 2;      // NEW: Captures/threats for tactical
     public static final double TACTICAL_TIME_FACTOR = 1.3;       // NEW: More time for tactical positions
+
+
+
+
     // === SEARCH STRATEGY ENUM ===
     public enum SearchStrategy {
         ALPHA_BETA("Alpha-Beta"),

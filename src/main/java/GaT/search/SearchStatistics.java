@@ -1,5 +1,6 @@
 package GaT.search;
 
+import GaT.model.Move;
 import GaT.model.SearchConfig;
 import java.util.HashMap;
 import java.util.Map;
@@ -742,6 +743,11 @@ public class SearchStatistics {
                 getSearchConfigComplianceScore(), lastUsedStrategy,
                 SearchConfig.TT_SIZE, SearchConfig.NODES_PER_SECOND_TARGET);
     }
+
+    public void incrementRazorCutoffs() { /* implement */ }
+    public void incrementMultiCutPrunes() { /* implement */ }
+    public void incrementIIDAttempts() { /* implement */ }
+    //public boolean isKillerMove(Move move, int depth) { /* implement */ }
 
     /**
      * Standard toString delegates to SearchConfig version
