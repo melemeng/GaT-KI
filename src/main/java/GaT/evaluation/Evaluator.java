@@ -711,7 +711,7 @@ public class Evaluator {
     /**
      * Check if a square is empty
      */
-    private boolean isSquareEmpty(GameState state, int square) {
+    private static boolean isSquareEmpty(GameState state, int square) {
         return state.redStackHeights[square] == 0 &&
                 state.blueStackHeights[square] == 0 &&
                 (state.redGuard & GameState.bit(square)) == 0 &&
@@ -830,5 +830,62 @@ public class Evaluator {
             System.out.println("🚨 Emergency mode: Using simplified evaluation");
         }
         // You could store the time in a static field if needed for evaluation adjustments
+    }
+
+    /**
+     * Fast capture detection - leverages your existing isSquareEmpty/isEnemyPiece logic
+     */
+    public static boolean isCapture(Move move, GameState state) {
+        if (move == null || state == null) return false;
+
+        // Use your existing method: if target square is not empty, it's a capture
+        return !isSquareEmpty(state, move.to);
+    }
+
+    /**
+     * Fast piece value for MVV-LVA - uses your existing TOWER_VALUE constants
+     */
+    public static int getPieceValue(GameState state, int square) {
+        if (square < 0 || square >= GameState.NUM_SQUARES) return 0;
+
+        long squareBit = GameState.bit(square);
+
+        // Guard = highest value (use your existing GUARD_CAPTURE constant)
+        if ((state.redGuard & squareBit) != 0 || (state.blueGuard & squareBit) != 0) {
+            return 1000; // High value for MVV-LVA
+        }
+
+        // Tower = height-based value (use your existing TOWER_VALUE)
+        int redHeight = state.redStackHeights[square];
+        int blueHeight = state.blueStackHeights[square];
+        int totalHeight = redHeight + blueHeight;
+
+        return totalHeight * TOWER_VALUE;
+    }
+
+    /**
+     * Winning move detection - uses your existing RED_CASTLE/BLUE_CASTLE constants
+     */
+    public static boolean isWinningMove(Move move, GameState state) {
+        if (move == null || state == null) return false;
+
+        // Only guard moves can win by reaching castle
+        boolean isRedGuardMove = (state.redGuard & GameState.bit(move.from)) != 0;
+        boolean isBlueGuardMove = (state.blueGuard & GameState.bit(move.from)) != 0;
+
+        if (isRedGuardMove && move.to == BLUE_CASTLE) return true;
+        if (isBlueGuardMove && move.to == RED_CASTLE) return true;
+
+        return false;
+    }
+
+    /**
+     * Guard move detection - simple bit check
+     */
+    public static boolean isGuardMove(Move move, GameState state) {
+        if (move == null || state == null) return false;
+
+        long fromBit = GameState.bit(move.from);
+        return (state.redGuard & fromBit) != 0 || (state.blueGuard & fromBit) != 0;
     }
 }
