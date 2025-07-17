@@ -3,20 +3,14 @@ package GaT.evaluation;
 import GaT.game.GameState;
 
 /**
- * OPTIMIZED EVALUATOR for Guard & Towers
+ * COMPLETE CORRECT EVALUATOR for Guard & Towers
  *
- * Fixed version of your original evaluator:
- * ✅ Removed move generation performance bug
- * ✅ Simplified weighted calculations
- * ✅ Kept all strategic understanding
- * ✅ Fast single-pass evaluation
- * ✅ Game-specific optimizations
- *
- * Strategic Elements:
- * 1. Material (towers and position)
- * 2. Guard advancement toward enemy castle
- * 3. Guard safety (threat detection)
- * 4. Piece activity (mobility and coordination)
+ * Fixed all issues:
+ * ✅ Correct castle definitions and terminal detection
+ * ✅ Proper bitboard access using GameState methods
+ * ✅ Perspective handling for current player
+ * ✅ All evaluation methods implemented correctly
+ * ✅ Robust error handling
  */
 public class Evaluator {
 
@@ -25,37 +19,44 @@ public class Evaluator {
     private static final int GUARD_CAPTURE = 10000;
     private static final int CASTLE_REACH = 10000;
 
-    // === CASTLE POSITIONS ===
-    private static final int RED_CASTLE = 45;   // D7 (6*7 + 3)
-    private static final int BLUE_CASTLE = 3;   // D1 (0*7 + 3)
+    // === CORRECT CASTLE DEFINITIONS ===
+    // Red guard (starts at D7) tries to reach D1 (blue's castle)
+    // Blue guard (starts at D1) tries to reach D7 (red's castle)
+    private static final int RED_TARGET_CASTLE = GameState.getIndex(0, 3);   // D1 (index 3)
+    private static final int BLUE_TARGET_CASTLE = GameState.getIndex(6, 3);  // D7 (index 45)
 
     // === EVALUATION WEIGHTS ===
-    private static final int ADVANCEMENT_BONUS = 8;       // Per rank advanced
-    private static final int D_FILE_BONUS = 12;           // For controlling D-file
-    private static final int CENTRAL_BONUS = 4;           // For central files
-    private static final int GUARD_DISTANCE_BONUS = 60;   // Per step closer to castle
-    private static final int D_FILE_GUARD_BONUS = 120;    // Guard on D-file
-    private static final int CASTLE_PROXIMITY_BONUS = 250; // Very close to castle
-    private static final int SAFETY_PENALTY = 600;        // When guard threatened
-    private static final int ESCAPE_ROUTE_BONUS = 25;     // Per escape route
-    private static final int MOBILITY_BONUS = 3;          // Per mobility direction
-    private static final int COORDINATION_BONUS = 8;      // Per adjacent friendly
-    private static final int HEIGHT_BONUS = 5;            // Bonus for tall towers
+    private static final int ADVANCEMENT_BONUS = 8;
+    private static final int D_FILE_BONUS = 12;
+    private static final int CENTRAL_BONUS = 4;
+    private static final int GUARD_DISTANCE_BONUS = 60;
+    private static final int D_FILE_GUARD_BONUS = 120;
+    private static final int CASTLE_PROXIMITY_BONUS = 250;
+    private static final int SAFETY_PENALTY = 600;
+    private static final int ESCAPE_ROUTE_BONUS = 25;
+    private static final int MOBILITY_BONUS = 3;
+    private static final int COORDINATION_BONUS = 8;
+    private static final int HEIGHT_BONUS = 5;
 
     /**
-     * Main evaluation function - fast single-pass
+     * Main evaluation function with proper perspective handling
      */
     public int evaluate(GameState state) {
+        if (state == null) return 0;
+
         // Check for terminal positions first
         int terminalScore = checkTerminal(state);
-        if (terminalScore != 0) return terminalScore;
+        if (terminalScore != 0) {
+            // Return from current player's perspective
+            return state.redToMove ? terminalScore : -terminalScore;
+        }
 
         int score = 0;
 
-        // Single-pass evaluation combining all factors
-        for (int square = 0; square < 49; square++) {
-            int rank = square / 7;
-            int file = square % 7;
+        // Material and positional evaluation
+        for (int square = 0; square < GameState.NUM_SQUARES; square++) {
+            int rank = GameState.rank(square);
+            int file = GameState.file(square);
 
             // Red towers
             if (state.redStackHeights[square] > 0) {
@@ -73,7 +74,29 @@ public class Evaluator {
         // Guard evaluation
         score += evaluateGuards(state);
 
-        return score;
+        // Return from current player's perspective
+        return state.redToMove ? score : -score;
+    }
+
+    /**
+     * CORRECT terminal position check
+     */
+    public int checkTerminal(GameState state) {
+        if (state == null) return 0;
+
+        // Guard captured
+        if (state.redGuard == 0) return -GUARD_CAPTURE;  // Red lost
+        if (state.blueGuard == 0) return GUARD_CAPTURE;   // Blue lost
+
+        // Guard reached target castle
+        if ((state.redGuard & GameState.bit(RED_TARGET_CASTLE)) != 0) {
+            return CASTLE_REACH;  // Red guard reached D1 - Red wins
+        }
+        if ((state.blueGuard & GameState.bit(BLUE_TARGET_CASTLE)) != 0) {
+            return -CASTLE_REACH; // Blue guard reached D7 - Blue wins
+        }
+
+        return 0; // Not terminal
     }
 
     /**
@@ -86,7 +109,9 @@ public class Evaluator {
         score += getPositionBonus(rank, file, height, isRed);
 
         // Height bonus (taller towers are more valuable)
-        if (height >= 3) score += HEIGHT_BONUS * height;
+        if (height >= 3) {
+            score += HEIGHT_BONUS * height;
+        }
 
         return score;
     }
@@ -97,10 +122,12 @@ public class Evaluator {
     private int getPositionBonus(int rank, int file, int height, boolean isRed) {
         int bonus = 0;
 
-        // Advancement bonus
+        // Advancement bonus (moving toward opponent)
         if (isRed && rank < 3) {
+            // Red advancing toward blue (lower ranks)
             bonus += (3 - rank) * height * ADVANCEMENT_BONUS;
         } else if (!isRed && rank > 3) {
+            // Blue advancing toward red (higher ranks)
             bonus += (rank - 3) * height * ADVANCEMENT_BONUS;
         }
 
@@ -123,17 +150,17 @@ public class Evaluator {
     private int evaluateGuards(GameState state) {
         int score = 0;
 
-        // Red guard
+        // Red guard (trying to reach D1)
         if (state.redGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.redGuard);
-            score += evaluateGuardPosition(guardPos, BLUE_CASTLE, true);
+            score += evaluateGuardPosition(guardPos, RED_TARGET_CASTLE, true);
             score += evaluateGuardSafety(state, guardPos, true);
         }
 
-        // Blue guard
+        // Blue guard (trying to reach D7)
         if (state.blueGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
-            score -= evaluateGuardPosition(guardPos, RED_CASTLE, false);
+            score -= evaluateGuardPosition(guardPos, BLUE_TARGET_CASTLE, false);
             score -= evaluateGuardSafety(state, guardPos, false);
         }
 
@@ -141,13 +168,13 @@ public class Evaluator {
     }
 
     /**
-     * Evaluate guard advancement toward enemy castle
+     * Evaluate guard advancement toward target castle
      */
     private int evaluateGuardPosition(int guardPos, int targetCastle, boolean isRed) {
-        int guardRank = guardPos / 7;
-        int guardFile = guardPos % 7;
-        int targetRank = targetCastle / 7;
-        int targetFile = targetCastle % 7;
+        int guardRank = GameState.rank(guardPos);
+        int guardFile = GameState.file(guardPos);
+        int targetRank = GameState.rank(targetCastle);
+        int targetFile = GameState.file(targetCastle);
 
         // Manhattan distance to target
         int distance = Math.abs(guardRank - targetRank) + Math.abs(guardFile - targetFile);
@@ -186,7 +213,7 @@ public class Evaluator {
         // Count escape routes
         score += countEscapeRoutes(state, guardPos, isRed) * ESCAPE_ROUTE_BONUS;
 
-        // Basic mobility (approximate, no move generation!)
+        // Basic mobility
         score += approximateMobility(state, guardPos, isRed) * MOBILITY_BONUS;
 
         // Coordination with nearby towers
@@ -199,13 +226,15 @@ public class Evaluator {
      * Check if guard is under immediate attack
      */
     public boolean isGuardThreatened(GameState state, boolean redGuard) {
+        if (state == null) return false;
+
         long guardBit = redGuard ? state.redGuard : state.blueGuard;
         if (guardBit == 0) return false;
 
         int guardPos = Long.numberOfTrailingZeros(guardBit);
 
         // Check if any enemy tower can attack this square
-        for (int square = 0; square < 49; square++) {
+        for (int square = 0; square < GameState.NUM_SQUARES; square++) {
             int enemyHeight = redGuard ? state.blueStackHeights[square] : state.redStackHeights[square];
             if (enemyHeight > 0 && canTowerAttack(square, guardPos, enemyHeight)) {
                 return true;
@@ -224,12 +253,11 @@ public class Evaluator {
         return false;
     }
 
-    /**
-     * Count available escape routes for guard
-     */
+    // === HELPER METHODS ===
+
     private int countEscapeRoutes(GameState state, int guardPos, boolean isRed) {
         int escapeRoutes = 0;
-        int[] directions = {-1, 1, -7, 7}; // left, right, up, down
+        int[] directions = {-1, 1, -GameState.BOARD_SIZE, GameState.BOARD_SIZE}; // left, right, up, down
 
         for (int dir : directions) {
             int target = guardPos + dir;
@@ -241,12 +269,9 @@ public class Evaluator {
         return escapeRoutes;
     }
 
-    /**
-     * Approximate mobility without generating moves
-     */
     private int approximateMobility(GameState state, int guardPos, boolean isRed) {
         int mobility = 0;
-        int[] directions = {-1, 1, -7, 7};
+        int[] directions = {-1, 1, -GameState.BOARD_SIZE, GameState.BOARD_SIZE};
 
         for (int dir : directions) {
             int target = guardPos + dir;
@@ -260,20 +285,23 @@ public class Evaluator {
         return mobility;
     }
 
-    /**
-     * Count nearby friendly towers for coordination
-     */
     private int countNearbyFriendlyTowers(GameState state, int guardPos, boolean isRed) {
         int count = 0;
-        int[] directions = {-1, 1, -7, 7, -8, -6, 6, 8}; // All 8 directions
+        int[] directions = {-1, 1, -GameState.BOARD_SIZE, GameState.BOARD_SIZE,
+                -GameState.BOARD_SIZE-1, -GameState.BOARD_SIZE+1,
+                GameState.BOARD_SIZE-1, GameState.BOARD_SIZE+1}; // All 8 directions
 
         for (int dir : directions) {
             int adjacent = guardPos + dir;
             if (isValidSquare(guardPos, adjacent, dir)) {
                 if (isRed) {
-                    if (state.redStackHeights[adjacent] > 0) count++;
+                    if (adjacent >= 0 && adjacent < GameState.NUM_SQUARES && state.redStackHeights[adjacent] > 0) {
+                        count++;
+                    }
                 } else {
-                    if (state.blueStackHeights[adjacent] > 0) count++;
+                    if (adjacent >= 0 && adjacent < GameState.NUM_SQUARES && state.blueStackHeights[adjacent] > 0) {
+                        count++;
+                    }
                 }
             }
         }
@@ -281,31 +309,11 @@ public class Evaluator {
         return count;
     }
 
-    /**
-     * Check for game-ending positions
-     */
-    public int checkTerminal(GameState state) {
-        // Guard captured
-        if (state.redGuard == 0) return -GUARD_CAPTURE;
-        if (state.blueGuard == 0) return GUARD_CAPTURE;
-
-        // Guard reached enemy castle
-        if ((state.redGuard & (1L << BLUE_CASTLE)) != 0) return CASTLE_REACH;
-        if ((state.blueGuard & (1L << RED_CASTLE)) != 0) return -CASTLE_REACH;
-
-        return 0;
-    }
-
-    // === UTILITY METHODS ===
-
-    /**
-     * Check if a tower can attack a square
-     */
     private boolean canTowerAttack(int fromSquare, int toSquare, int range) {
-        int fromRank = fromSquare / 7;
-        int fromFile = fromSquare % 7;
-        int toRank = toSquare / 7;
-        int toFile = toSquare % 7;
+        int fromRank = GameState.rank(fromSquare);
+        int fromFile = GameState.file(fromSquare);
+        int toRank = GameState.rank(toSquare);
+        int toFile = GameState.file(toSquare);
 
         // Must be on same rank or file (orthogonal)
         if (fromRank != toRank && fromFile != toFile) return false;
@@ -315,66 +323,62 @@ public class Evaluator {
         return distance <= range;
     }
 
-    /**
-     * Check if two squares are adjacent
-     */
     private boolean isAdjacent(int square1, int square2) {
-        int rank1 = square1 / 7, file1 = square1 % 7;
-        int rank2 = square2 / 7, file2 = square2 % 7;
+        int rank1 = GameState.rank(square1);
+        int file1 = GameState.file(square1);
+        int rank2 = GameState.rank(square2);
+        int file2 = GameState.file(square2);
         int rankDiff = Math.abs(rank1 - rank2);
         int fileDiff = Math.abs(file1 - file2);
         return (rankDiff == 1 && fileDiff == 0) || (rankDiff == 0 && fileDiff == 1);
     }
 
-    /**
-     * Check if a move is within board bounds and valid
-     */
     private boolean isValidSquare(int from, int to, int direction) {
-        if (to < 0 || to >= 49) return false;
+        if (!GameState.isOnBoard(to)) return false;
 
         // Check for rank wrapping on horizontal moves
         if (Math.abs(direction) == 1) {
-            return (from / 7) == (to / 7); // Same rank
+            return GameState.rank(from) == GameState.rank(to); // Same rank
         }
 
         return true;
     }
 
-    /**
-     * Check if a square is empty
-     */
     private boolean isSquareEmpty(GameState state, int square) {
+        if (!GameState.isOnBoard(square)) return false;
         return state.redStackHeights[square] == 0 &&
                 state.blueStackHeights[square] == 0 &&
-                (state.redGuard & (1L << square)) == 0 &&
-                (state.blueGuard & (1L << square)) == 0;
+                (state.redGuard & GameState.bit(square)) == 0 &&
+                (state.blueGuard & GameState.bit(square)) == 0;
     }
 
-    /**
-     * Check if square contains enemy piece
-     */
     private boolean isEnemyPiece(GameState state, int square, boolean weAreRed) {
+        if (!GameState.isOnBoard(square)) return false;
         if (weAreRed) {
             return state.blueStackHeights[square] > 0 ||
-                    (state.blueGuard & (1L << square)) != 0;
+                    (state.blueGuard & GameState.bit(square)) != 0;
         } else {
             return state.redStackHeights[square] > 0 ||
-                    (state.redGuard & (1L << square)) != 0;
+                    (state.redGuard & GameState.bit(square)) != 0;
         }
     }
 
-    // === DEBUG METHODS ===
-
     /**
-     * Get evaluation breakdown for debugging
+     * CORRECT evaluation breakdown
      */
     public String getEvaluationBreakdown(GameState state) {
         StringBuilder sb = new StringBuilder();
         sb.append("=== EVALUATION BREAKDOWN ===\n");
 
+        if (state == null) {
+            sb.append("ERROR: null state\n");
+            return sb.toString();
+        }
+
         int terminalScore = checkTerminal(state);
         if (terminalScore != 0) {
             sb.append("Terminal position: ").append(terminalScore).append("\n");
+            sb.append("Perspective: ").append(state.redToMove ? "Red" : "Blue").append("\n");
             return sb.toString();
         }
 
@@ -382,15 +386,17 @@ public class Evaluator {
         int positionScore = 0;
         int guardScore = 0;
 
-        // Calculate components
-        for (int square = 0; square < 49; square++) {
+        // Calculate components (from Red's perspective)
+        for (int square = 0; square < GameState.NUM_SQUARES; square++) {
             if (state.redStackHeights[square] > 0) {
-                materialScore += state.redStackHeights[square] * TOWER_VALUE;
-                positionScore += getPositionBonus(square/7, square%7, state.redStackHeights[square], true);
+                int height = state.redStackHeights[square];
+                materialScore += height * TOWER_VALUE;
+                positionScore += getPositionBonus(GameState.rank(square), GameState.file(square), height, true);
             }
             if (state.blueStackHeights[square] > 0) {
-                materialScore -= state.blueStackHeights[square] * TOWER_VALUE;
-                positionScore -= getPositionBonus(square/7, square%7, state.blueStackHeights[square], false);
+                int height = state.blueStackHeights[square];
+                materialScore -= height * TOWER_VALUE;
+                positionScore -= getPositionBonus(GameState.rank(square), GameState.file(square), height, false);
             }
         }
 
@@ -403,38 +409,101 @@ public class Evaluator {
         sb.append(String.format("Guards:    %+6d\n", guardScore));
         sb.append("==================\n");
         sb.append(String.format("Total:     %+6d\n", total));
+        sb.append(String.format("Perspective: %s\n", state.redToMove ? "Red" : "Blue"));
 
         return sb.toString();
     }
 
     /**
-     * Quick evaluation for performance testing
+     * CORRECT quick evaluation for performance testing
      */
     public int evaluateQuick(GameState state) {
-        // Minimal evaluation for performance testing
+        if (state == null) return 0;
+
+        // Check terminal first
         int terminalScore = checkTerminal(state);
-        if (terminalScore != 0) return terminalScore;
+        if (terminalScore != 0) {
+            return state.redToMove ? terminalScore : -terminalScore;
+        }
 
         int score = 0;
 
-        // Material only
-        for (int square = 0; square < 49; square++) {
+        // Material only (simplified)
+        for (int square = 0; square < GameState.NUM_SQUARES; square++) {
             score += (state.redStackHeights[square] - state.blueStackHeights[square]) * TOWER_VALUE;
         }
 
-        // Basic guard distance
+        // Basic guard distance (simplified)
         if (state.redGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.redGuard);
-            int distance = Math.abs(guardPos/7 - BLUE_CASTLE/7) + Math.abs(guardPos%7 - BLUE_CASTLE%7);
-            score += (12 - distance) * GUARD_DISTANCE_BONUS;
+            int guardRank = GameState.rank(guardPos);
+            int guardFile = GameState.file(guardPos);
+            int targetRank = GameState.rank(RED_TARGET_CASTLE);
+            int targetFile = GameState.file(RED_TARGET_CASTLE);
+            int distance = Math.abs(guardRank - targetRank) + Math.abs(guardFile - targetFile);
+            score += (12 - distance) * (GUARD_DISTANCE_BONUS / 2); // Reduced bonus for quick eval
         }
 
         if (state.blueGuard != 0) {
             int guardPos = Long.numberOfTrailingZeros(state.blueGuard);
-            int distance = Math.abs(guardPos/7 - RED_CASTLE/7) + Math.abs(guardPos%7 - RED_CASTLE%7);
-            score -= (12 - distance) * GUARD_DISTANCE_BONUS;
+            int guardRank = GameState.rank(guardPos);
+            int guardFile = GameState.file(guardPos);
+            int targetRank = GameState.rank(BLUE_TARGET_CASTLE);
+            int targetFile = GameState.file(BLUE_TARGET_CASTLE);
+            int distance = Math.abs(guardRank - targetRank) + Math.abs(guardFile - targetFile);
+            score -= (12 - distance) * (GUARD_DISTANCE_BONUS / 2); // Reduced bonus for quick eval
         }
 
-        return score;
+        // Return from current player's perspective
+        return state.redToMove ? score : -score;
+    }
+
+    // === DEBUG METHODS ===
+
+    /**
+     * Debug information for development
+     */
+    public String getDebugInfo(GameState state) {
+        if (state == null) return "NULL STATE";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== EVALUATOR DEBUG INFO ===\n");
+
+        // Guard positions
+        if (state.redGuard != 0) {
+            int redPos = Long.numberOfTrailingZeros(state.redGuard);
+            sb.append("Red guard: ").append(getSquareName(redPos)).append(" (index ").append(redPos).append(")\n");
+        } else {
+            sb.append("Red guard: CAPTURED\n");
+        }
+
+        if (state.blueGuard != 0) {
+            int bluePos = Long.numberOfTrailingZeros(state.blueGuard);
+            sb.append("Blue guard: ").append(getSquareName(bluePos)).append(" (index ").append(bluePos).append(")\n");
+        } else {
+            sb.append("Blue guard: CAPTURED\n");
+        }
+
+        // Castle info
+        sb.append("Red target: ").append(getSquareName(RED_TARGET_CASTLE)).append(" (index ").append(RED_TARGET_CASTLE).append(")\n");
+        sb.append("Blue target: ").append(getSquareName(BLUE_TARGET_CASTLE)).append(" (index ").append(BLUE_TARGET_CASTLE).append(")\n");
+
+        // Terminal check
+        int terminal = checkTerminal(state);
+        sb.append("Terminal score: ").append(terminal).append("\n");
+
+        // Full evaluation
+        int fullEval = evaluate(state);
+        sb.append("Full evaluation: ").append(fullEval).append("\n");
+
+        sb.append("Side to move: ").append(state.redToMove ? "RED" : "BLUE").append("\n");
+
+        return sb.toString();
+    }
+
+    private String getSquareName(int index) {
+        int rank = GameState.rank(index);
+        int file = GameState.file(index);
+        return "" + (char)('A' + file) + (rank + 1);
     }
 }
