@@ -1,4 +1,4 @@
-package GaT.model;
+package GaT.game;
 
 public class TTEntry {
     public int score;

@@ -1,10 +1,9 @@
-import GaT.model.GameState;
-import GaT.model.TTEntry;
-import GaT.search.Minimax;
+import GaT.game.GameState;
+import GaT.game.TTEntry;
 import org.junit.Test;
 import static org.junit.Assert.*;
-import GaT.search.MoveGenerator;
-import GaT.model.Move;
+import GaT.game.MoveGenerator;
+import GaT.game.Move;
 import GaT.engine.TimedMinimax;
 import java.util.List;
 

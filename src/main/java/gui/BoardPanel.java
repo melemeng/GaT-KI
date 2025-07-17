@@ -1,186 +1,407 @@
 package gui;
 
-import GaT.model.GameState;
-import GaT.model.Move;
-import GaT.search.MoveGenerator;
-
+import GaT.game.GameState;
+import GaT.game.Move;
+import GaT.game.MoveGenerator;
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.List;
+import java.util.stream.Collectors;
 
+/**
+ * SIMPLIFIED BOARD PANEL for Guard & Towers
+ *
+ * Clean board rendering and interaction:
+ * ✅ Visual 7x7 board display
+ * ✅ Piece rendering (guards and towers)
+ * ✅ Move highlighting (selected square + legal moves)
+ * ✅ Castle square highlighting
+ * ✅ Click handling for move input
+ * ✅ Clean separation from game logic
+ *
+ * Removed complexity:
+ * ❌ Complex animations
+ * ❌ Excessive visual effects
+ * ❌ Over-engineered rendering
+ * ❌ Debug overlays
+ */
 public class BoardPanel extends JPanel {
-    private GameState state; // Remove final to allow updates
-    private final int squareSize = 80;
-    private final int labelSize = 30;  // Space for drawing labels
-    private final MoveConsumer moveConsumer;
 
-    private int selectedIndex = -1;
+    // === CONSTANTS ===
+    private static final int BOARD_SIZE = 7;
+    private static final int CELL_SIZE = 80;
+    private static final int BORDER_SIZE = 2;
 
-    public BoardPanel(GameState state, MoveConsumer moveConsumer) {
-        this.state = state;
-        this.moveConsumer = moveConsumer;
+    // === COLORS ===
+    private static final Color LIGHT_SQUARE = new Color(240, 217, 181);
+    private static final Color DARK_SQUARE = new Color(181, 136, 99);
+    private static final Color SELECTED_SQUARE = new Color(255, 255, 0, 120);
+    private static final Color LEGAL_MOVE = new Color(0, 255, 0, 100);
+    private static final Color CASTLE_BORDER = new Color(255, 215, 0); // Gold
+    private static final Color LAST_MOVE = new Color(255, 165, 0, 80); // Orange
 
+    // === PIECE COLORS ===
+    private static final Color RED_PIECE = new Color(200, 0, 0);
+    private static final Color BLUE_PIECE = new Color(0, 0, 200);
+    private static final Color PIECE_BORDER = Color.BLACK;
+
+    // === GAME STATE ===
+    private GameState gameState;
+    private int selectedSquare = -1;
+    private List<Move> legalMoves = null;
+    private Move lastMove = null;
+
+    // === INTERACTION ===
+    private BoardClickListener clickListener;
+
+    public interface BoardClickListener {
+        void onSquareClicked(int square);
+    }
+
+    public BoardPanel() {
+        setupPanel();
+        setupMouseListener();
+    }
+
+    // === SETUP ===
+
+    private void setupPanel() {
+        setPreferredSize(new Dimension(
+                BOARD_SIZE * CELL_SIZE + (BOARD_SIZE + 1) * BORDER_SIZE,
+                BOARD_SIZE * CELL_SIZE + (BOARD_SIZE + 1) * BORDER_SIZE
+        ));
+        setBackground(Color.DARK_GRAY);
+    }
+
+    private void setupMouseListener() {
         addMouseListener(new MouseAdapter() {
-            public void mousePressed(MouseEvent e) {
-                int file = (e.getX() - labelSize) / squareSize;
-                int rank = 6 - ((e.getY() - labelSize) / squareSize);
-
-                // Ensure click is within the board
-                if (file >= 0 && file < 7 && rank >= 0 && rank < 7) {
-                    int index = GameState.getIndex(rank, file);
-
-                    System.out.println("Selected square: " + index + " (rank=" + rank + ", file=" + file + ")");
-
-                    if (selectedIndex == -1) {
-                        selectedIndex = index;
-                        System.out.println("Selected from square: " + selectedIndex);
-                        repaint(); // Show selection
-                    } else {
-                        System.out.println("Trying move from " + selectedIndex + " to " + index);
-
-                        // Generate all legal moves and check if this move exists
-                        java.util.List<Move> legalMoves = MoveGenerator.generateAllMoves(BoardPanel.this.state);
-                        Move foundMove = null;
-
-                        for (Move move : legalMoves) {
-                            if (move.from == selectedIndex && move.to == index) {
-                                foundMove = move;
-                                break;
-                            }
-                        }
-
-                        if (foundMove != null) {
-                            System.out.println("Legal move found: " + foundMove);
-                            moveConsumer.onMove(foundMove);
-                        } else {
-                            System.out.println("No legal move found from " + selectedIndex + " to " + index);
-                            System.out.println("Current turn: " + (BoardPanel.this.state.redToMove ? "Red" : "Blue"));
-
-                            // Debug: Check what's at the from square
-                            long fromBit = GameState.bit(selectedIndex);
-                            boolean hasRedPiece = (BoardPanel.this.state.redGuard & fromBit) != 0 || (BoardPanel.this.state.redTowers & fromBit) != 0;
-                            boolean hasBluePiece = (BoardPanel.this.state.blueGuard & fromBit) != 0 || (BoardPanel.this.state.blueTowers & fromBit) != 0;
-                            System.out.println("From square " + selectedIndex + ": Red=" + hasRedPiece + ", Blue=" + hasBluePiece);
-
-                            // Debug: Show available moves from this square
-                            System.out.print("Available moves from " + selectedIndex + ": ");
-                            boolean foundAny = false;
-                            for (Move move : legalMoves) {
-                                if (move.from == selectedIndex) {
-                                    System.out.print(move + " ");
-                                    foundAny = true;
-                                }
-                            }
-                            if (!foundAny) {
-                                System.out.print("NONE");
-                            }
-                            System.out.println();
-                        }
-
-                        selectedIndex = -1;
-                        repaint(); // Clear selection
-                    }
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int square = getSquareFromPoint(e.getPoint());
+                if (square >= 0 && square < BOARD_SIZE * BOARD_SIZE && clickListener != null) {
+                    clickListener.onSquareClicked(square);
                 }
             }
         });
     }
 
-    // ADD THIS METHOD - This is what's missing!
-    public void updateState(GameState newState) {
-        this.state = newState;
-        this.selectedIndex = -1; // Clear selection when state updates
-        System.out.println("BoardPanel state updated - Red to move: " + state.redToMove);
+    // === PUBLIC INTERFACE ===
+
+    public void setGameState(GameState gameState) {
+        this.gameState = gameState;
+        repaint();
     }
 
-    public void paintComponent(Graphics g) {
+    public void setSelectedSquare(int square) {
+        this.selectedSquare = square;
+        updateLegalMoves();
+        repaint();
+    }
+
+    public void clearSelection() {
+        this.selectedSquare = -1;
+        this.legalMoves = null;
+        repaint();
+    }
+
+    public void setLastMove(Move move) {
+        this.lastMove = move;
+        repaint();
+    }
+
+    public void setClickListener(BoardClickListener listener) {
+        this.clickListener = listener;
+    }
+
+    public int getSelectedSquare() {
+        return selectedSquare;
+    }
+
+    public List<Move> getLegalMoves() {
+        return legalMoves;
+    }
+
+    // === RENDERING ===
+
+    @Override
+    protected void paintComponent(Graphics g) {
         super.paintComponent(g);
-        Graphics2D g2d = (Graphics2D) g;
 
-        // Use anti-aliasing for smoother text
+        if (gameState == null) {
+            drawEmptyBoard(g);
+            return;
+        }
+
+        Graphics2D g2d = (Graphics2D) g.create();
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-        // Draw rank numbers (1-7) and file letters (a-f)
-        drawLabels(g2d);
+        drawBoard(g2d);
+        drawPieces(g2d);
+        drawHighlights(g2d);
+        drawCoordinates(g2d);
 
-        // Draw grid
-        for (int r = 0; r < 7; r++) {
-            for (int f = 0; f < 7; f++) {
-                int x = labelSize + f * squareSize;
-                int y = labelSize + (6 - r) * squareSize;
-                g.setColor((r + f) % 2 == 0 ? Color.LIGHT_GRAY : Color.WHITE);
-                g.fillRect(x, y, squareSize, squareSize);
+        g2d.dispose();
+    }
 
-                int index = GameState.getIndex(r, f);
-                drawPiece(g, index, x, y);
+    private void drawEmptyBoard(Graphics g) {
+        g.setColor(Color.GRAY);
+        g.fillRect(0, 0, getWidth(), getHeight());
+
+        g.setColor(Color.WHITE);
+        g.setFont(new Font("Arial", Font.BOLD, 16));
+        FontMetrics fm = g.getFontMetrics();
+        String text = "No game loaded";
+        int x = (getWidth() - fm.stringWidth(text)) / 2;
+        int y = getHeight() / 2;
+        g.drawString(text, x, y);
+    }
+
+    private void drawBoard(Graphics2D g2d) {
+        for (int rank = 0; rank < BOARD_SIZE; rank++) {
+            for (int file = 0; file < BOARD_SIZE; file++) {
+                int x = file * (CELL_SIZE + BORDER_SIZE) + BORDER_SIZE;
+                int y = rank * (CELL_SIZE + BORDER_SIZE) + BORDER_SIZE;
+
+                // Square color
+                Color squareColor = ((rank + file) % 2 == 0) ? LIGHT_SQUARE : DARK_SQUARE;
+                g2d.setColor(squareColor);
+                g2d.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+
+                // Castle squares (D1 and D7)
+                int square = rank * BOARD_SIZE + file;
+                if (square == 3 || square == 45) { // D1 and D7
+                    g2d.setColor(CASTLE_BORDER);
+                    g2d.setStroke(new BasicStroke(3));
+                    g2d.drawRect(x, y, CELL_SIZE, CELL_SIZE);
+                    g2d.setStroke(new BasicStroke(1));
+                }
+
+                // Square border
+                g2d.setColor(Color.BLACK);
+                g2d.drawRect(x, y, CELL_SIZE, CELL_SIZE);
             }
         }
+    }
 
-        if (selectedIndex != -1) {
-            int f = GameState.file(selectedIndex);
-            int r = GameState.rank(selectedIndex);
-            g.setColor(Color.RED);
-            g.drawRect(labelSize + f * squareSize, labelSize + (6 - r) * squareSize, squareSize, squareSize);
+    private void drawHighlights(Graphics2D g2d) {
+        // Last move highlight
+        if (lastMove != null) {
+            drawSquareHighlight(g2d, lastMove.from, LAST_MOVE);
+            drawSquareHighlight(g2d, lastMove.to, LAST_MOVE);
+        }
+
+        // Selected square highlight
+        if (selectedSquare >= 0) {
+            drawSquareHighlight(g2d, selectedSquare, SELECTED_SQUARE);
+        }
+
+        // Legal moves highlight
+        if (legalMoves != null) {
+            for (Move move : legalMoves) {
+                drawSquareHighlight(g2d, move.to, LEGAL_MOVE);
+            }
         }
     }
 
-    private void drawLabels(Graphics2D g) {
-        g.setFont(new Font("SansSerif", Font.BOLD, 16));
+    private void drawSquareHighlight(Graphics2D g2d, int square, Color color) {
+        if (square < 0 || square >= BOARD_SIZE * BOARD_SIZE) return;
 
-        // Draw file letters (a-f)
-        for (int f = 0; f < 7; f++) {
-            String fileLetter = String.valueOf((char)('A' + f));
-            FontMetrics metrics = g.getFontMetrics();
-            int x = labelSize + f * squareSize + (squareSize - metrics.stringWidth(fileLetter)) / 2;
-            int y = labelSize + 7 * squareSize + 20; // Position below the board
+        int rank = square / BOARD_SIZE;
+        int file = square % BOARD_SIZE;
+        int x = file * (CELL_SIZE + BORDER_SIZE) + BORDER_SIZE;
+        int y = rank * (CELL_SIZE + BORDER_SIZE) + BORDER_SIZE;
 
-            g.setColor(Color.BLACK);
-            g.drawString(fileLetter, x, y);
-        }
+        g2d.setColor(color);
+        g2d.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+    }
 
-        // Draw rank numbers (1-7)
-        for (int r = 0; r < 7; r++) {
-            String rankNumber = String.valueOf(r + 1);
-            FontMetrics metrics = g.getFontMetrics();
-            int x = (labelSize - metrics.stringWidth(rankNumber)) / 2;
-            int y = labelSize + (6 - r) * squareSize + squareSize/2 + metrics.getAscent()/2;
+    private void drawPieces(Graphics2D g2d) {
+        g2d.setFont(new Font("Arial", Font.BOLD, 24));
+        FontMetrics fm = g2d.getFontMetrics();
 
-            g.setColor(Color.BLACK);
-            g.drawString(rankNumber, x, y);
+        for (int square = 0; square < BOARD_SIZE * BOARD_SIZE; square++) {
+            int rank = square / BOARD_SIZE;
+            int file = square % BOARD_SIZE;
+            int x = file * (CELL_SIZE + BORDER_SIZE) + BORDER_SIZE;
+            int y = rank * (CELL_SIZE + BORDER_SIZE) + BORDER_SIZE;
+
+            String pieceText = getPieceText(square);
+            if (!pieceText.isEmpty()) {
+                Color pieceColor = getPieceColor(square);
+
+                // Center the text
+                int textWidth = fm.stringWidth(pieceText);
+                int textHeight = fm.getHeight();
+                int textX = x + (CELL_SIZE - textWidth) / 2;
+                int textY = y + (CELL_SIZE + textHeight) / 2 - fm.getDescent();
+
+                // Draw text with border for better visibility
+                g2d.setColor(PIECE_BORDER);
+                g2d.drawString(pieceText, textX - 1, textY);
+                g2d.drawString(pieceText, textX + 1, textY);
+                g2d.drawString(pieceText, textX, textY - 1);
+                g2d.drawString(pieceText, textX, textY + 1);
+
+                g2d.setColor(pieceColor);
+                g2d.drawString(pieceText, textX, textY);
+            }
         }
     }
 
-    private void drawPiece(Graphics g, int index, int x, int y) {
-        long bit = GameState.bit(index);
+    private void drawCoordinates(Graphics2D g2d) {
+        g2d.setColor(Color.BLACK);
+        g2d.setFont(new Font("Arial", Font.PLAIN, 12));
+        FontMetrics fm = g2d.getFontMetrics();
 
-        // Set a bold, larger font
-        Font originalFont = g.getFont();
-        g.setFont(new Font("SansSerif", Font.BOLD, 21)); // You can tweak the size as needed
-
-        if ((state.redGuard & bit) != 0) {
-            g.setColor(Color.RED);
-            g.drawString("R", x + 30, y + 50);
-        } else if ((state.blueGuard & bit) != 0) {
-            g.setColor(Color.BLUE);
-            g.drawString("B", x + 30, y + 50);
-        } else if ((state.redTowers & bit) != 0) {
-            g.setColor(Color.RED);
-            g.drawString("" + state.redStackHeights[index], x + 30, y + 50);
-        } else if ((state.blueTowers & bit) != 0) {
-            g.setColor(Color.BLUE);
-            g.drawString("" + state.blueStackHeights[index], x + 30, y + 50);
+        // Files (A-G)
+        for (int file = 0; file < BOARD_SIZE; file++) {
+            String fileLabel = String.valueOf((char)('A' + file));
+            int x = file * (CELL_SIZE + BORDER_SIZE) + BORDER_SIZE + CELL_SIZE / 2 - fm.stringWidth(fileLabel) / 2;
+            int y = BOARD_SIZE * (CELL_SIZE + BORDER_SIZE) + BORDER_SIZE + fm.getHeight();
+            g2d.drawString(fileLabel, x, y);
         }
 
-        // Reset to original font if needed
-        g.setFont(originalFont);
+        // Ranks (1-7)
+        for (int rank = 0; rank < BOARD_SIZE; rank++) {
+            String rankLabel = String.valueOf(BOARD_SIZE - rank);
+            int x = -fm.stringWidth(rankLabel) - 5;
+            int y = rank * (CELL_SIZE + BORDER_SIZE) + BORDER_SIZE + CELL_SIZE / 2 + fm.getHeight() / 2;
+            g2d.drawString(rankLabel, x, y);
+        }
     }
 
-    public Dimension getPreferredSize() {
-        // Add space for the labels on each side
-        return new Dimension(7 * squareSize + labelSize * 2, 7 * squareSize + labelSize * 2);
+    // === HELPER METHODS ===
+
+    private String getPieceText(int square) {
+        if (gameState == null) return "";
+
+        // Guard
+        if ((gameState.redGuard & (1L << square)) != 0) {
+            return "G";
+        }
+        if ((gameState.blueGuard & (1L << square)) != 0) {
+            return "g";
+        }
+
+        // Towers
+        if (gameState.redStackHeights[square] > 0) {
+            return String.valueOf(gameState.redStackHeights[square]);
+        }
+        if (gameState.blueStackHeights[square] > 0) {
+            return String.valueOf(gameState.blueStackHeights[square]);
+        }
+
+        return "";
     }
 
-    @FunctionalInterface
-    interface MoveConsumer {
-        void onMove(Move move);
+    private Color getPieceColor(int square) {
+        if (gameState == null) return Color.BLACK;
+
+        if (gameState.redStackHeights[square] > 0 || (gameState.redGuard & (1L << square)) != 0) {
+            return RED_PIECE;
+        }
+        if (gameState.blueStackHeights[square] > 0 || (gameState.blueGuard & (1L << square)) != 0) {
+            return BLUE_PIECE;
+        }
+
+        return Color.BLACK;
+    }
+
+    private int getSquareFromPoint(Point point) {
+        int file = (point.x - BORDER_SIZE) / (CELL_SIZE + BORDER_SIZE);
+        int rank = (point.y - BORDER_SIZE) / (CELL_SIZE + BORDER_SIZE);
+
+        if (file >= 0 && file < BOARD_SIZE && rank >= 0 && rank < BOARD_SIZE) {
+            return rank * BOARD_SIZE + file;
+        }
+
+        return -1;
+    }
+
+    private void updateLegalMoves() {
+        if (gameState == null || selectedSquare < 0) {
+            legalMoves = null;
+            return;
+        }
+
+        try {
+            List<Move> allMoves = MoveGenerator.generateAllMoves(gameState);
+            legalMoves = allMoves.stream()
+                    .filter(move -> move.from == selectedSquare)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            legalMoves = null;
+        }
+    }
+
+    // === UTILITY METHODS ===
+
+    public boolean hasLegalMoveToSquare(int toSquare) {
+        if (legalMoves == null || selectedSquare < 0) return false;
+
+        return legalMoves.stream()
+                .anyMatch(move -> move.to == toSquare);
+    }
+
+    public Move getLegalMoveToSquare(int toSquare) {
+        if (legalMoves == null || selectedSquare < 0) return null;
+
+        return legalMoves.stream()
+                .filter(move -> move.to == toSquare)
+                .findFirst()
+                .orElse(null);
+    }
+
+    public boolean hasPiece(int square, boolean red) {
+        if (gameState == null) return false;
+
+        if (red) {
+            return gameState.redStackHeights[square] > 0 ||
+                    (gameState.redGuard & (1L << square)) != 0;
+        } else {
+            return gameState.blueStackHeights[square] > 0 ||
+                    (gameState.blueGuard & (1L << square)) != 0;
+        }
+    }
+
+    public String getSquareName(int square) {
+        if (square < 0 || square >= BOARD_SIZE * BOARD_SIZE) return "??";
+
+        int rank = square / BOARD_SIZE;
+        int file = square % BOARD_SIZE;
+        return String.valueOf((char)('A' + file)) + (BOARD_SIZE - rank);
+    }
+
+    // === DEBUG METHODS ===
+
+    public void highlightSquare(int square, Color color) {
+        // For debugging - can be used to highlight specific squares
+        Graphics2D g2d = (Graphics2D) getGraphics();
+        if (g2d != null) {
+            drawSquareHighlight(g2d, square, color);
+            g2d.dispose();
+        }
+    }
+
+    public void printBoardState() {
+        if (gameState == null) {
+            System.out.println("No game state loaded");
+            return;
+        }
+
+        System.out.println("=== BOARD STATE ===");
+        for (int rank = 0; rank < BOARD_SIZE; rank++) {
+            for (int file = 0; file < BOARD_SIZE; file++) {
+                int square = rank * BOARD_SIZE + file;
+                String piece = getPieceText(square);
+                System.out.print(piece.isEmpty() ? "." : piece);
+                System.out.print(" ");
+            }
+            System.out.println();
+        }
+        System.out.println("===================");
     }
 }

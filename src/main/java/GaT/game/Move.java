@@ -1,4 +1,4 @@
-package GaT.model;
+package GaT.game;
 
 import java.util.Objects;
 

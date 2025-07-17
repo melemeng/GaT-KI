@@ -1,7 +1,7 @@
 
-import GaT.model.GameState;
-import GaT.model.Move;
-import GaT.search.MoveGenerator;
+import GaT.game.GameState;
+import GaT.game.Move;
+import GaT.game.MoveGenerator;
 import org.junit.Test;
 
 import java.util.Arrays;

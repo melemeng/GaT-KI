@@ -1,496 +1,348 @@
 package client;
 
-import java.util.List;
-
-import GaT.evaluation.Evaluator;
-import GaT.search.MoveGenerator;
-import GaT.search.PVSSearch;
-import GaT.model.GameState;
-import GaT.model.Move;
-import GaT.model.SearchConfig;
-import GaT.engine.TimeManager;
-import GaT.engine.TimedMinimax;
-import GaT.search.Minimax;
-import GaT.search.QuiescenceSearch;
-import GaT.search.SearchStatistics;
+import GaT.search.Engine;
+import GaT.game.GameState;
+import GaT.game.Move;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
 /**
- * FIXED OPTIMIZED GAME CLIENT with Socket Timeout & Adaptive Polling
+ * OPTIMIZED TOURNAMENT CLIENT for Guard & Towers
  *
- * FIXES:
- * ✅ Removed duplicate method definitions
- * ✅ Fixed main() method structure
- * ✅ Added missing configureNetworkTimeouts() method
- * ✅ Fixed while loop structure
- * ✅ Corrected method visibility and organization
+ * Simplified version that keeps all essential functionality:
+ * ✅ Adaptive polling (fast on our turn, slow on opponent's turn)
+ * ✅ Smart timeout handling
+ * ✅ JSON game state parsing
+ * ✅ Move generation and sending
+ * ✅ Time management
+ * ✅ Error recovery
+ * ✅ Integrated with new Engine.java
+ *
+ * Removed complexity:
+ * ❌ Excessive statistics tracking
+ * ❌ Complex evaluation validation
+ * ❌ Over-engineered error handling
+ * ❌ Unnecessary logging spam
  */
 public class GameClient {
+
+    // === CORE CONFIGURATION ===
     private static final Gson gson = new Gson();
+    private static final Engine engine = new Engine();
 
-    // === ADAPTIVE POLLING CONFIGURATION ===
-    private static final int OUR_TURN_POLL_MS = 50;        // Fast polling when it's our turn
-    private static final int OPPONENT_TURN_POLL_MS = 1000;  // Slower polling when opponent's turn
-    private static final int SOCKET_TIMEOUT_MS = 3000;      // Socket timeout for opponent turns
-    private static final int MAX_CONSECUTIVE_ERRORS = 5;    // Max errors before concern
+    // === TIMING CONFIGURATION ===
+    private static final int OUR_TURN_POLL_MS = 50;      // Fast polling when our turn
+    private static final int OPPONENT_POLL_MS = 1000;    // Slower when opponent's turn
+    private static final int SOCKET_TIMEOUT_OUR_TURN = 5000;    // 5s when our turn
+    private static final int SOCKET_TIMEOUT_OPPONENT = 1000;    // 1s when opponent's turn
+    private static final int MAX_CONSECUTIVE_ERRORS = 10;
 
-    // Game statistics tracking
-    private static int moveNumber = 0;
-    private static long lastMoveStartTime = 0;
-    private static TimeManager timeManager = new TimeManager(180000, 20);
-    private static final Evaluator evaluator = Minimax.getEvaluator();
-
-    // Network monitoring
-    private static int consecutiveErrors = 0;
-    private static long lastSuccessfulPoll = System.currentTimeMillis();
+    // === GAME STATE ===
+    private static int player;
     private static boolean isOurTurn = false;
-    private static int pollCount = 0;
+    private static int moveNumber = 0;
+    private static long gameStartTime;
+    private static long totalThinkingTime = 0;
 
-    private static void validateEvaluation(GameState state) {
-        // Quick sanity check for evaluation consistency
-        int materialScore = 0;
-        for (int i = 0; i < 49; i++) {
-            materialScore += (state.redStackHeights[i] - state.blueStackHeights[i]) * 100;
-        }
-
-        int fullScore = evaluator.evaluate(state);
-        int posBonus = fullScore - materialScore;
-
-        System.out.println("🔍 EVAL CHECK: Material=" + materialScore +
-                ", Full=" + fullScore +
-                ", Positional=" + posBonus);
-
-        if (materialScore != 0 && Math.abs(posBonus) > Math.abs(materialScore)) {
-            System.out.println("⚠️ WARNING: Positional bonus larger than material!");
-        }
-    }
+    // === ERROR TRACKING ===
+    private static int consecutiveErrors = 0;
+    private static long lastSuccessfulPoll = 0;
 
     public static void main(String[] args) {
-        boolean running = true;
+        System.out.println("🎯 GUARD & TOWERS TOURNAMENT CLIENT");
+        System.out.println("🚀 Optimized version with new Engine");
+
         Network network = new Network();
 
+        // Connect to server
         if (network.getP() == null) {
             System.err.println("❌ Failed to connect to server!");
             return;
         }
 
-        int player = Integer.parseInt(network.getP());
-        System.out.println("🎮 You are player " + player + " (" + (player == 0 ? "RED" : "BLUE") + ")");
-        System.out.println("🧠 Using Unified Evaluator: " + evaluator.getClass().getSimpleName());
-        System.out.println("⚡ OPTIMIZED CLIENT: Adaptive polling + Socket timeout");
-        System.out.println("📡 Polling: " + OUR_TURN_POLL_MS + "ms (our turn) / " + OPPONENT_TURN_POLL_MS + "ms (opponent)");
-        System.out.println("⏰ Socket timeout: " + SOCKET_TIMEOUT_MS + "ms (opponent's turn)");
+        player = Integer.parseInt(network.getP());
+        gameStartTime = System.currentTimeMillis();
+        lastSuccessfulPoll = gameStartTime;
 
-        // Configure initial network settings
-        configureNetworkTimeouts(network);
-        System.out.println("📊 Initial connection quality: " + network.getConnectionStats());
+        System.out.println("🎮 Connected as player " + player + " (" + (player == 0 ? "RED" : "BLUE") + ")");
+        System.out.println("⚡ Polling: " + OUR_TURN_POLL_MS + "ms (our turn) / " + OPPONENT_POLL_MS + "ms (opponent)");
 
-        while (running) {
+        // Main game loop
+        runGameLoop(network);
+
+        // Cleanup
+        network.close();
+        printGameSummary();
+    }
+
+    /**
+     * Main game loop - simplified and efficient
+     */
+    private static void runGameLoop(Network network) {
+        boolean gameRunning = true;
+        int pollCount = 0;
+
+        while (gameRunning) {
             try {
                 pollCount++;
-                long pollStart = System.currentTimeMillis();
 
-                // OPTIMIZATION: Adaptive socket timeout based on whose turn it is
-                String gameData = getGameDataWithAdaptiveTimeout(network);
+                // Adaptive timeout based on turn
+                setAdaptiveTimeout(network);
+
+                // Get game state from server
+                String gameData = network.send(gson.toJson("get"));
 
                 if (gameData == null) {
-                    handleNetworkTimeout();
-
-                    if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-                        System.out.println("❌ Too many consecutive errors (" + consecutiveErrors + "), but continuing...");
-                        consecutiveErrors = 0; // Reset to continue trying
-                    }
-
-                    // Use longer sleep on errors
-                    Thread.sleep(OPPONENT_TURN_POLL_MS);
+                    handleNetworkError();
+                    Thread.sleep(isOurTurn ? OUR_TURN_POLL_MS : OPPONENT_POLL_MS);
                     continue;
                 }
 
-                // Reset error counter on successful poll
+                // Reset error counter on success
                 consecutiveErrors = 0;
                 lastSuccessfulPoll = System.currentTimeMillis();
-                long pollTime = System.currentTimeMillis() - pollStart;
 
+                // Parse game state
                 JsonObject game = gson.fromJson(gameData, JsonObject.class);
 
-                // Check if both players are connected
+                // Wait for both players
                 if (!game.has("bothConnected") || !game.get("bothConnected").getAsBoolean()) {
-                    System.out.println("⏳ Waiting for both players to connect...");
+                    System.out.println("⏳ Waiting for opponent to connect...");
                     Thread.sleep(1000);
                     continue;
                 }
 
-                String turn = game.get("turn").getAsString();
-                String board = game.get("board").getAsString();
-                long timeRemaining = game.get("time").getAsLong();
+                // Check for game end
+                if (game.has("end") && game.get("end").getAsBoolean()) {
+                    handleGameEnd(game);
+                    gameRunning = false;
+                    break;
+                }
 
-                // Determine if it's our turn
+                // Update turn state
+                String turn = game.get("turn").getAsString();
                 boolean wasOurTurn = isOurTurn;
                 isOurTurn = (player == 0 && turn.equals("r")) || (player == 1 && turn.equals("b"));
 
-                // OPTIMIZATION: Show turn transition messages and update network settings
+                // Handle turn changes
                 if (isOurTurn && !wasOurTurn) {
-                    System.out.println("\n🔔 IT'S YOUR TURN! Switching to fast polling (" + OUR_TURN_POLL_MS + "ms)");
-                    System.out.println("🎯 Turn: " + turn + ", Time: " + formatTime(timeRemaining));
-                    System.out.println("📋 Board: " + board);
-
-                    // Update network timeout for our turn
-                    try {
-                        network.setSocketTimeout(1000);
-                        System.out.println("⚡ Network timeout reduced to 1000ms (our turn)");
-                    } catch (Exception e) {
-                        System.out.println("⚠️ Could not update timeout: " + e.getMessage());
-                    }
-
-                } else if (!isOurTurn && wasOurTurn) {
-                    System.out.println("💤 Opponent's turn - switching to slow polling (" + OPPONENT_TURN_POLL_MS + "ms)");
-                    System.out.println("⏰ Socket timeout: " + SOCKET_TIMEOUT_MS + "ms");
-
-                    // Update network timeout for opponent's turn
-                    try {
-                        network.setSocketTimeout(SOCKET_TIMEOUT_MS);
-                        System.out.println("🕒 Network timeout increased to " + SOCKET_TIMEOUT_MS + "ms (opponent's turn)");
-                    } catch (Exception e) {
-                        System.out.println("⚠️ Could not update timeout: " + e.getMessage());
-                    }
-
-                    // Show network health status during transition
-                    if (!network.isConnectionHealthy()) {
-                        System.out.println("⚠️ Network connection quality degraded: " + network.getConnectionStats());
-                    }
+                    handleOurTurn(game, network);
+                } else if (!isOurTurn) {
+                    handleOpponentTurn(game, pollCount);
                 }
 
-                // Check if it's our turn (original logic)
-                if (isOurTurn) {
-                    moveNumber++;
-                    lastMoveStartTime = System.currentTimeMillis();
-
-                    System.out.println("\n" + "=".repeat(60));
-                    System.out.println("🎯 MOVE " + moveNumber + " - " + (player == 0 ? "RED" : "BLUE"));
-                    System.out.printf("📡 Network response time: %dms%n", pollTime);
-                    System.out.println("=".repeat(60));
-
-                    // Parse board state
-                    GameState currentState = GameState.fromFen(board);
-                    if (currentState == null) {
-                        System.err.println("❌ Invalid board FEN: " + board);
-                        continue;
-                    }
-
-                    currentState.printBoard();
-                    validateEvaluation(currentState);
-
-                    // Calculate our move
-                    timeManager.updateRemainingTime(timeRemaining);
-                    long moveTime = timeManager.calculateTimeForMove(currentState);
-                    System.out.println("⏱️ Time allocated: " + moveTime + "ms (Remaining: " + timeRemaining + "ms)");
-
-                    Minimax.reset();
-                    Move bestMove = null;
-                    long searchStartTime = System.currentTimeMillis();
-
-                    try {
-                        bestMove = findBestMoveWithTimeout(currentState, moveTime);
-                        if (bestMove == null) {
-                            bestMove = emergencyFallback(currentState);
-                        }
-                    } catch (Exception e) {
-                        System.err.println("❌ Search error: " + e.getMessage());
-                        bestMove = emergencyFallback(currentState);
-                    }
-
-                    long searchTime = System.currentTimeMillis() - searchStartTime;
-
-                    if (bestMove != null) {
-                        GameState resultState = currentState.copy();
-                        resultState.applyMove(bestMove);
-                        int evaluation = evaluator.evaluate(resultState);
-
-                        System.out.println("🎯 SELECTED MOVE: " + bestMove);
-                        System.out.println("📊 Evaluation: " + evaluation);
-                        System.out.println("⏱️ Search time: " + searchTime + "ms");
-
-                        // Send move in original working format
-                        String moveString = bestMove.toString();  // "A1-B2-1"
-                        String moveResponse = network.send(gson.toJson(moveString));
-                        System.out.println("📤 Move sent: " + moveString);
-                        System.out.println("📥 Move response: " + moveResponse);
-
-                        // Show search statistics
-                        SearchStatistics stats = SearchStatistics.getInstance();
-                        System.out.printf("📊 Nodes: %,d (regular: %,d, quiescence: %,d)%n",
-                                stats.getTotalNodes(), stats.getNodeCount(), stats.getQNodeCount());
-
-                        timeManager.updateRemainingTime(timeManager.getRemainingTime() - searchTime);
-                        timeManager.decrementEstimatedMovesLeft();
-
-                    } else {
-                        System.err.println("❌ CRITICAL: No move found!");
-                        running = false;
-                    }
-                } else {
-                    // OPTIMIZATION: Reduced opponent turn messages
-                    if (pollCount % 20 == 0 || pollTime > 1000) { // Only show every 20th poll or slow polls
-                        System.out.printf("💭 Waiting for opponent... (poll #%d, response: %dms, time left: %s)%n",
-                                pollCount, pollTime, formatTime(timeRemaining));
-
-                        // Periodically check and report network health
-                        if (pollCount % 100 == 0 && !network.isConnectionHealthy()) {
-                            System.out.println("📊 Network status: " + network.getConnectionStats());
-
-                            // Auto-adjust timeout if connection quality is poor
-                            network.autoAdjustTimeout();
-                        }
-                    }
-                }
-
-                // Check for game end (server-side detection)
-                if (game.has("end") && game.get("end").getAsBoolean()) {
-                    System.out.println("🏁 Game has ended");
-                    String result = game.has("winner") ?
-                            ("Winner: " + game.get("winner").getAsString()) :
-                            "Game finished";
-                    System.out.println("🎯 " + result);
-
-                    long finalTimeRemaining = game.has("time") ? game.get("time").getAsLong() : 0;
-                    printGameStatistics(finalTimeRemaining);
-                    running = false;
-                }
-
-                // OPTIMIZATION: Adaptive sleep based on whose turn it is
-                int sleepTime = isOurTurn ? OUR_TURN_POLL_MS : OPPONENT_TURN_POLL_MS;
-                Thread.sleep(sleepTime);
+                // Adaptive sleep
+                Thread.sleep(isOurTurn ? OUR_TURN_POLL_MS : OPPONENT_POLL_MS);
 
             } catch (Exception e) {
-                handleCriticalError("Critical error", e, network);
-
+                handleCriticalError(e);
                 try {
-                    Thread.sleep(OPPONENT_TURN_POLL_MS); // Conservative sleep on errors
+                    Thread.sleep(OPPONENT_POLL_MS);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
-                    running = false;
+                    break;
                 }
             }
         }
-
-        System.out.println("🎮 Game Client shutting down...");
-        network.close();
-        printFinalStatistics();
-        printNetworkStatistics();
     }
 
     /**
-     * ENHANCED: Configure network timeouts with new Network.java features
+     * Handle our turn - make a move
      */
-    private static void configureNetworkTimeouts(Network network) {
+    private static void handleOurTurn(JsonObject game, Network network) {
         try {
-            // Set initial timeout
-            int initialTimeout = isOurTurn ? 1000 : SOCKET_TIMEOUT_MS;
-            network.setSocketTimeout(initialTimeout);
-            System.out.println("⚙️ Network configured - timeout: " + initialTimeout + "ms");
-            System.out.println("📊 Connection stats: " + network.getConnectionStats());
-        } catch (Exception e) {
-            System.out.println("⚠️ Could not configure network timeouts: " + e.getMessage());
-        }
-    }
+            moveNumber++;
+            long timeRemaining = game.get("time").getAsLong();
+            String board = game.get("board").getAsString();
 
-    /**
-     * ENHANCED: Get game data with adaptive timeout handling using new Network.java
-     */
-    private static String getGameDataWithAdaptiveTimeout(Network network) {
-        try {
-            // Update socket timeout based on whose turn it is
-            int adaptiveTimeout = isOurTurn ? 1000 : SOCKET_TIMEOUT_MS;
-            network.setSocketTimeout(adaptiveTimeout);
+            System.out.println("\n🔔 YOUR TURN #" + moveNumber);
+            System.out.println("⏰ Time remaining: " + formatTime(timeRemaining));
 
-            return network.send(gson.toJson("get"));
-
-        } catch (IllegalArgumentException e) {
-            System.err.println("❌ Invalid timeout value: " + e.getMessage());
-            // Fallback to safe timeout
-            try {
-                network.setSocketTimeout(2000);
-                return network.send(gson.toJson("get"));
-            } catch (Exception fallbackE) {
-                System.err.println("❌ Fallback network call failed: " + fallbackE.getMessage());
-                return null;
+            // Parse board state
+            GameState gameState = GameState.fromFen(board);
+            if (gameState == null) {
+                System.err.println("❌ Failed to parse board: " + board);
+                return;
             }
+
+            // Calculate time to use for this move
+            long thinkTime = calculateThinkTime(timeRemaining, moveNumber);
+            System.out.println("🧠 Thinking for " + thinkTime + "ms...");
+
+            // Find best move with new engine
+            long moveStart = System.currentTimeMillis();
+            Move bestMove = engine.findBestMove(gameState, thinkTime);
+            long actualThinkTime = System.currentTimeMillis() - moveStart;
+
+            if (bestMove == null) {
+                System.err.println("❌ No move found!");
+                return;
+            }
+
+            // Send move to server
+            String moveStr = bestMove.toString();
+            String response = network.send(gson.toJson(moveStr));
+
+            totalThinkingTime += actualThinkTime;
+
+            // Log move
+            System.out.println("🎯 Played: " + moveStr + " (took " + actualThinkTime + "ms)");
+            System.out.println("📊 Search: " + engine.getNodesSearched() + " nodes, " +
+                    String.format("%.0f", engine.getNodesSearched() * 1000.0 / Math.max(1, actualThinkTime)) + " nps");
+            System.out.println("📊 Engine: TT hit rate " + String.format("%.1f%%", engine.getTTHitRate()));
+
+            if (response == null || response.contains("error")) {
+                System.err.println("⚠️ Server response: " + response);
+            }
+
         } catch (Exception e) {
-            System.err.println("❌ Network error: " + e.getMessage());
-            consecutiveErrors++;
-            return null;
+            System.err.println("❌ Error making move: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
     /**
-     * ENHANCED: Handle network timeout gracefully with adaptive response
+     * Handle opponent's turn - wait and show status
      */
-    private static void handleNetworkTimeout() {
+    private static void handleOpponentTurn(JsonObject game, int pollCount) {
+        long timeRemaining = game.has("time") ? game.get("time").getAsLong() : 0;
+
+        // Show status periodically (every 10 polls or when time is low)
+        if (pollCount % 10 == 0 || timeRemaining < 30000) {
+            System.out.printf("💭 Opponent thinking... (poll #%d, time left: %s)%n",
+                    pollCount, formatTime(timeRemaining));
+        }
+    }
+
+    /**
+     * Calculate thinking time for this move
+     */
+    private static long calculateThinkTime(long timeRemaining, int moveNumber) {
+        // Simple time management strategy
+        if (timeRemaining > 120000) {  // More than 2 minutes
+            return Math.min(30000, timeRemaining / 15);  // Use up to 30s, target 15 moves
+        } else if (timeRemaining > 60000) {  // 1-2 minutes
+            return Math.min(15000, timeRemaining / 10);  // Use up to 15s, target 10 moves
+        } else if (timeRemaining > 30000) {  // 30s-1min
+            return Math.min(8000, timeRemaining / 6);    // Use up to 8s, target 6 moves
+        } else if (timeRemaining > 10000) {  // 10-30s
+            return Math.min(4000, timeRemaining / 4);    // Use up to 4s, target 4 moves
+        } else {  // Less than 10s
+            return Math.min(2000, timeRemaining / 2);    // Use up to 2s, target 2 moves
+        }
+    }
+
+    /**
+     * Set adaptive timeout based on whose turn it is
+     */
+    private static void setAdaptiveTimeout(Network network) {
+        try {
+            int timeout = isOurTurn ? SOCKET_TIMEOUT_OUR_TURN : SOCKET_TIMEOUT_OPPONENT;
+            network.setSocketTimeout(timeout);
+        } catch (Exception e) {
+            // Ignore timeout setting errors
+        }
+    }
+
+    /**
+     * Handle network errors gracefully
+     */
+    private static void handleNetworkError() {
         consecutiveErrors++;
 
-        if (!isOurTurn) {
-            // During opponent's turn, timeouts are normal and expected
-            if (consecutiveErrors == 1) {
-                System.out.println("⏳ Network timeout (opponent thinking) - this is normal");
-            } else if (consecutiveErrors % 10 == 0) {
-                // Show status every 10 timeouts during opponent's turn
-                System.out.printf("💤 Extended opponent thinking... (timeout #%d)%n", consecutiveErrors);
-            }
+        if (isOurTurn) {
+            System.err.println("⚠️ Network timeout during our turn (error #" + consecutiveErrors + ")");
         } else {
-            // During our turn, timeouts are concerning
-            System.out.printf("⚠️ Network timeout during our turn (error #%d) - this may indicate server issues%n", consecutiveErrors);
+            // During opponent's turn, timeouts are normal
+            if (consecutiveErrors == 1) {
+                System.out.println("⏳ Network timeout (opponent thinking)");
+            }
         }
-    }
-
-    /**
-     * ENHANCED: Handle critical errors with network diagnostics
-     */
-    private static void handleCriticalError(String message, Exception e, Network network) {
-        consecutiveErrors++;
-        System.err.println("❌ " + message + " (error #" + consecutiveErrors + "): " + e.getMessage());
 
         if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-            System.err.println("⚠️ Multiple consecutive errors - checking connection quality");
-            long timeSinceLastSuccess = System.currentTimeMillis() - lastSuccessfulPoll;
-            if (timeSinceLastSuccess > 30000) { // 30 seconds
-                System.err.println("🚨 No successful poll for " + (timeSinceLastSuccess/1000) + " seconds!");
-            }
-
-            // Show detailed network diagnostics
-            System.err.println("📊 Network diagnostics: " + network.getConnectionStats());
-
-            if (!network.isConnectionHealthy()) {
-                System.err.println("🩺 Connection health check FAILED");
-
-                // Try to auto-adjust timeout
-                try {
-                    System.err.println("🔧 Attempting network auto-adjustment...");
-                    network.autoAdjustTimeout();
-                } catch (Exception adjustE) {
-                    System.err.println("❌ Auto-adjustment failed: " + adjustE.getMessage());
-                }
+            System.err.println("🚨 Many consecutive errors (" + consecutiveErrors + ") - connection issues?");
+            long timeSinceSuccess = System.currentTimeMillis() - lastSuccessfulPoll;
+            if (timeSinceSuccess > 60000) {  // 1 minute
+                System.err.println("🚨 No successful poll for " + (timeSinceSuccess/1000) + " seconds!");
             }
         }
-    }
-
-    private static Move findBestMoveWithTimeout(GameState state, long timeMillis) {
-        try {
-            return TimedMinimax.findBestMoveUltimate(state, 8, timeMillis - 100);
-        } catch (Exception e) {
-            System.err.println("❌ TimedMinimax failed: " + e.getMessage());
-            try {
-                return Minimax.findBestMove(state, 4);
-            } catch (Exception e2) {
-                System.err.println("❌ Regular Minimax failed: " + e2.getMessage());
-                return null;
-            }
-        }
-    }
-
-    private static Move emergencyFallback(GameState state) {
-        try {
-            System.out.println("🚨 EMERGENCY: Using depth-1 search");
-            List<Move> moves = MoveGenerator.generateAllMoves(state);
-            if (moves.isEmpty()) return null;
-
-            // Find first legal move
-            return moves.get(0);
-        } catch (Exception e) {
-            System.err.println("❌ Emergency fallback failed: " + e.getMessage());
-            return null;
-        }
-    }
-
-    private static void printGameStatistics(long finalTimeRemaining) {
-        System.out.println("\n📊 GAME STATISTICS:");
-        System.out.println("   🎮 Total moves: " + moveNumber);
-        System.out.println("   ⏱️ Final time: " + formatTime(finalTimeRemaining));
-
-        if (moveNumber > 0) {
-            long totalTimeUsed = 180_000 - finalTimeRemaining;
-            long averageTimePerMove = totalTimeUsed / moveNumber;
-            double timeUtilization = 100.0 * totalTimeUsed / 180_000;
-
-            System.out.printf("   ⚡ Average time/move: %dms%n", averageTimePerMove);
-            System.out.printf("   📊 Time utilization: %.1f%%%n", timeUtilization);
-
-            if (timeUtilization < 60) {
-                System.out.println("   📈 Could use more time!");
-            } else if (timeUtilization < 80) {
-                System.out.println("   ✅ Good time management!");
-            } else if (timeUtilization < 95) {
-                System.out.println("   💪 Excellent aggressive time usage!");
-            } else {
-                System.out.println("   ⏰ Very close to time limit!");
-            }
-        }
-
-        System.out.println("   🧠 AI Engine: Unified Evaluator (OPTIMIZED)");
-        System.out.println("   📊 Evaluator: " + evaluator.getClass().getSimpleName());
-        System.out.println("   🎯 Strategy: TimedMinimax");
-    }
-
-    private static void printFinalStatistics() {
-        System.out.println("\n" + "=".repeat(60));
-        System.out.println("📊 FINAL GAME STATISTICS");
-        System.out.println("=".repeat(60));
-        System.out.println("Total moves played: " + moveNumber);
-        System.out.println("Remaining time: " + timeManager.getRemainingTime() + "ms");
-
-        // Print search statistics if available
-        try {
-            SearchStatistics stats = SearchStatistics.getInstance();
-            if (stats != null) {
-                System.out.println(stats.getComprehensiveSummaryWithConfig());
-            }
-        } catch (Exception e) {
-            System.out.println("Statistics unavailable: " + e.getMessage());
-        }
-
-        System.out.println("=".repeat(60));
     }
 
     /**
-     * ENHANCED: Print network performance statistics using new Network.java features
+     * Handle critical errors
      */
-    private static void printNetworkStatistics() {
-        System.out.println("\n📡 NETWORK STATISTICS:");
-        System.out.println("   📊 GameClient polls: " + pollCount);
-        System.out.println("   ❌ GameClient errors: " + consecutiveErrors);
+    private static void handleCriticalError(Exception e) {
+        consecutiveErrors++;
+        System.err.println("❌ Critical error #" + consecutiveErrors + ": " + e.getMessage());
 
-        if (pollCount > 0) {
-            double errorRate = 100.0 * consecutiveErrors / pollCount;
-            System.out.printf("   📈 GameClient error rate: %.1f%%%n", errorRate);
-
-            if (errorRate < 5) {
-                System.out.println("   ✅ Excellent client-side stability!");
-            } else if (errorRate < 15) {
-                System.out.println("   ⚠️ Some client-side issues occurred");
-            } else {
-                System.out.println("   ❌ Significant client-side problems");
-            }
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            System.err.println("🚨 Too many errors, but continuing...");
+            consecutiveErrors = 0;  // Reset to continue
         }
-
-        long totalTime = System.currentTimeMillis() - (lastSuccessfulPoll - 180_000);
-        if (totalTime > 0 && pollCount > 0) {
-            double avgPollInterval = (double) totalTime / pollCount;
-            System.out.printf("   ⏱️ Average poll interval: %.1fms%n", avgPollInterval);
-        }
-
-        System.out.println("   🔌 Network layer statistics:");
-        System.out.println("      (Network layer stats printed during shutdown)");
     }
 
-    private static String formatTime(long milliseconds) {
-        long seconds = milliseconds / 1000;
-        long minutes = seconds / 60;
-        seconds = seconds % 60;
+    /**
+     * Handle game end
+     */
+    private static void handleGameEnd(JsonObject game) {
+        System.out.println("\n🏁 GAME FINISHED!");
 
-        if (minutes > 0) {
-            return String.format("%d:%02d", minutes, seconds);
+        if (game.has("winner")) {
+            String winner = game.get("winner").getAsString();
+            boolean weWon = (player == 0 && winner.equals("r")) || (player == 1 && winner.equals("b"));
+
+            if (weWon) {
+                System.out.println("🎉 WE WON!");
+            } else {
+                System.out.println("😞 We lost.");
+            }
+            System.out.println("🏆 Winner: " + (winner.equals("r") ? "RED" : "BLUE"));
         } else {
-            return String.format("%.1fs", milliseconds / 1000.0);
+            System.out.println("🤝 Game ended (possibly draw/timeout)");
+        }
+
+        if (game.has("time")) {
+            long finalTime = game.get("time").getAsLong();
+            System.out.println("⏰ Final time remaining: " + formatTime(finalTime));
+        }
+    }
+
+    /**
+     * Print game summary at the end
+     */
+    private static void printGameSummary() {
+        long totalGameTime = System.currentTimeMillis() - gameStartTime;
+
+        System.out.println("\n" + "=".repeat(50));
+        System.out.println("📊 GAME SUMMARY");
+        System.out.println("=".repeat(50));
+        System.out.println("Moves played: " + moveNumber);
+        System.out.println("Total game time: " + formatTime(totalGameTime));
+        System.out.println("Total thinking time: " + formatTime(totalThinkingTime));
+
+        if (moveNumber > 0) {
+            System.out.println("Average thinking time: " + formatTime(totalThinkingTime / moveNumber));
+            double thinkingPercentage = 100.0 * totalThinkingTime / totalGameTime;
+            System.out.println("Thinking percentage: " + String.format("%.1f%%", thinkingPercentage));
+        }
+
+        System.out.println("🧠 Engine: " + engine.getClass().getSimpleName());
+        System.out.println("=".repeat(50));
+    }
+
+    /**
+     * Format time in a readable way
+     */
+    private static String formatTime(long millis) {
+        if (millis < 0) return "0s";
+
+        long seconds = millis / 1000;
+        if (seconds >= 60) {
+            long minutes = seconds / 60;
+            seconds = seconds % 60;
+            return String.format("%dm%02ds", minutes, seconds);
+        } else {
+            return String.format("%.1fs", millis / 1000.0);
         }
     }
 }
